@@ -6,6 +6,7 @@ import { Eye, EyeOff } from 'lucide-react'
 import { Input } from './ui/input'
 import { toast } from 'sonner'
 import { useSystemConfig } from '../hooks/useSystemConfig'
+import { withBasePath } from '../lib/appBase'
 
 export function LoginPage() {
   const { language } = useLanguage()
@@ -22,13 +23,15 @@ export function LoginPage() {
   const adminMode = false
   const { config: systemConfig } = useSystemConfig()
   const registrationEnabled = systemConfig?.registration_enabled !== false
-  const [expiredToastId, setExpiredToastId] = useState<string | number | null>(null)
+  const [expiredToastId, setExpiredToastId] = useState<string | number | null>(
+    null
+  )
 
   // Show notification if user was redirected here due to 401
   useEffect(() => {
     if (sessionStorage.getItem('from401') === 'true') {
       const id = toast.warning(t('sessionExpired', language), {
-        duration: Infinity // Keep showing until user dismisses or logs in
+        duration: Infinity, // Keep showing until user dismisses or logs in
       })
       setExpiredToastId(id)
       sessionStorage.removeItem('from401')
@@ -111,7 +114,7 @@ export function LoginPage() {
         <div className="text-center mb-8">
           <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center">
             <img
-              src="/icons/nofx.svg"
+              src={withBasePath('/icons/nofx.svg')}
               alt="NoFx Logo"
               className="w-16 h-16 object-contain"
             />

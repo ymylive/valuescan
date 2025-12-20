@@ -24,6 +24,9 @@ export const translations = {
     strategyNav: 'Strategy',
     debateNav: 'Debate Arena',
     faqNav: 'FAQ',
+    signalsNav: 'Signals',
+    simulationNav: 'Simulation',
+    settingsNav: 'Settings',
 
     // Footer
     footerTitle: 'NOFX - AI Trading System',
@@ -1160,6 +1163,135 @@ export const translations = {
         summary: 'Summary',
       },
     },
+
+    // ValueScan Config UI
+    config: {
+      // Tab names
+      tabSignal: 'Signal Monitor',
+      tabTrader: 'Trader',
+      tabCopytrade: 'CopyTrade',
+      tabKeepalive: 'Keepalive',
+
+      // Signal Monitor groups
+      signalTelegram: 'Telegram Notifications',
+      signalTelegramDesc: 'Configure Telegram Bot for signal notifications',
+      signalBrowser: 'Browser Settings',
+      signalBrowserDesc: 'Chrome debug port and headless mode',
+      signalIpc: 'IPC Forwarding',
+      signalIpcDesc: 'Inter-process communication to trader module',
+      signalProxy: 'Proxy Settings',
+      signalProxyDesc: 'SOCKS5 and HTTP proxy configuration',
+      signalChart: 'Chart Settings',
+      signalChartDesc: 'TradingView chart screenshot configuration',
+      signalLogging: 'Logging',
+      signalLoggingDesc: 'Log level and file configuration',
+
+      // Trader groups
+      traderApi: 'Binance API',
+      traderApiDesc: 'Configure Binance API credentials',
+      traderTrading: 'Trading Settings',
+      traderTradingDesc: 'Leverage, margin type and basic settings',
+      traderRisk: 'Risk Management',
+      traderRiskDesc: 'Position limits and daily trade limits',
+      traderStopLoss: 'Stop Loss / Take Profit',
+      traderStopLossDesc: 'Configure stop loss and tiered take profit',
+      traderTrailing: 'Trailing Stop',
+      traderTrailingDesc: 'Dynamic stop loss adjustment',
+      traderMajorCoin: 'Major Coin Strategy',
+      traderMajorCoinDesc:
+        'Separate stop-loss/take-profit strategy for BTC, ETH, etc.',
+      traderExecution: 'Execution Settings',
+      traderExecutionDesc: 'Order type and execution parameters',
+
+      // Major Coin Strategy
+      enableMajorCoinStrategy: 'Enable Major Coin Strategy',
+      enableMajorCoinStrategyDesc:
+        'Major coins have lower volatility, use more conservative stop-loss/take-profit',
+      majorCoinsList: 'Major Coins List',
+      majorCoinsListDesc:
+        'These coins will use separate stop-loss/take-profit strategy',
+      majorCoinStopLoss: 'Major Coin Stop Loss %',
+      majorCoinTakeProfit: 'Major Coin Take Profit',
+      majorCoinTakeProfitDesc:
+        'Major coins have lower volatility, set more conservative take-profit levels',
+      majorCoinTrailingStop: 'Major Coin Trailing Stop',
+      majorCoinTrailingActivation: 'Activation Threshold %',
+      majorCoinTrailingActivationDesc:
+        'Start trailing stop after reaching this profit %',
+      majorCoinTrailingCallback: 'Callback %',
+      majorCoinTrailingCallbackDesc:
+        'Trigger stop when price drops this % from peak',
+      strategyComparison: 'Strategy Comparison',
+      majorCoin: 'Major Coin',
+      altcoin: 'Altcoin',
+      parameter: 'Parameter',
+
+      // CopyTrade groups
+      copytradeApi: 'Telegram API',
+      copytradeApiDesc: 'Configure Telegram client API',
+      copytradePosition: 'Position Settings',
+      copytradePositionDesc: 'Copy trade position calculation',
+      copytradeLeverage: 'Leverage Settings',
+      copytradeLeverageDesc: 'Copy trade leverage configuration',
+      copytradeRisk: 'Risk Control',
+      copytradeRiskDesc: 'Position and trade limits',
+      copytradeFilter: 'Signal Filter',
+      copytradeFilterDesc: 'Filter signals by criteria',
+
+      // Keepalive groups
+      keepaliveGlobal: 'Global Settings',
+      keepaliveGlobalDesc: 'Default health check parameters',
+      keepaliveTelegram: 'Telegram Alerts',
+      keepaliveTelegramDesc: 'Send Telegram notifications on service failure',
+      keepaliveServices: 'Monitored Services',
+      keepaliveServicesDesc: 'Configure systemd services to monitor',
+
+      // Common labels
+      enableTelegram: 'Enable Telegram',
+      botToken: 'Bot Token',
+      chatId: 'Chat ID',
+      apiKey: 'API Key',
+      apiSecret: 'API Secret',
+      useTestnet: 'Use Testnet',
+      leverage: 'Leverage',
+      marginType: 'Margin Type',
+      isolated: 'Isolated',
+      crossed: 'Cross',
+      maxPositionPercent: 'Max Position %',
+      maxTotalPositionPercent: 'Max Total Position %',
+      maxDailyTrades: 'Max Daily Trades',
+      maxDailyLossPercent: 'Max Daily Loss %',
+      stopLossPercent: 'Stop Loss %',
+      enableTrailingStop: 'Enable Trailing Stop',
+      enableAutoTrading: 'Enable Auto Trading',
+      autoTradingWarning:
+        'System will execute trades automatically based on signals',
+      highLeverageWarning:
+        'Leverage above 20x significantly increases liquidation risk',
+
+      // Validation messages
+      required: 'This field is required',
+      invalidNumber: 'Must be a valid number',
+      outOfRange: 'Value out of range',
+      checkIntervalRange: 'Check interval must be 10-300 seconds',
+      telegramRequired:
+        'Bot Token and Chat ID required when Telegram is enabled',
+
+      // Actions
+      save: 'Save',
+      saving: 'Saving...',
+      saveSuccess: 'Configuration saved successfully',
+      saveError: 'Failed to save configuration',
+      restartRequired: 'Service restart required to apply changes',
+      restartNow: 'Restart Now',
+      restartLater: 'Later',
+      export: 'Export',
+      import: 'Import',
+      exportConfig: 'Export Configuration',
+      importConfig: 'Import Configuration',
+      includeSensitive: 'Include sensitive fields',
+      excludeSensitive: 'Exclude sensitive fields (recommended)',
+    },
   },
   zh: {
     // Header
@@ -1184,6 +1316,9 @@ export const translations = {
     strategyNav: '策略',
     debateNav: '行情辩论',
     faqNav: '常见问题',
+    signalsNav: '信号监控',
+    simulationNav: '虚拟交易',
+    settingsNav: '系统设置',
 
     // Footer
     footerTitle: 'NOFX - AI交易系统',
@@ -2256,6 +2391,126 @@ export const translations = {
         vote: '投票',
         summary: '总结',
       },
+    },
+
+    // ValueScan Config UI
+    config: {
+      // Tab names
+      tabSignal: '信号监控',
+      tabTrader: '交易机器人',
+      tabCopytrade: '跟单系统',
+      tabKeepalive: '服务监控',
+
+      // Signal Monitor groups
+      signalTelegram: 'Telegram 通知',
+      signalTelegramDesc: '配置 Telegram Bot 发送信号通知',
+      signalBrowser: '浏览器设置',
+      signalBrowserDesc: 'Chrome 调试端口和无头模式',
+      signalIpc: 'IPC 转发',
+      signalIpcDesc: '进程间通信配置，用于转发信号到交易模块',
+      signalProxy: '代理设置',
+      signalProxyDesc: 'SOCKS5 和 HTTP 代理配置',
+      signalChart: '图表设置',
+      signalChartDesc: 'TradingView 图表截图配置',
+      signalLogging: '日志设置',
+      signalLoggingDesc: '日志级别和文件配置',
+
+      // Trader groups
+      traderApi: '币安 API',
+      traderApiDesc: '配置币安 API 密钥',
+      traderTrading: '交易设置',
+      traderTradingDesc: '杠杆、保证金类型等基础设置',
+      traderRisk: '风险管理',
+      traderRiskDesc: '仓位限制和每日交易限制',
+      traderStopLoss: '止损止盈',
+      traderStopLossDesc: '配置止损和分批止盈策略',
+      traderTrailing: '移动止损',
+      traderTrailingDesc: '动态调整止损位置',
+      traderMajorCoin: '主流币策略',
+      traderMajorCoinDesc: 'BTC、ETH等主流币使用独立的止盈止损策略',
+      traderExecution: '执行设置',
+      traderExecutionDesc: '订单类型和执行参数',
+
+      // Major Coin Strategy
+      enableMajorCoinStrategy: '启用主流币独立策略',
+      enableMajorCoinStrategyDesc: '主流币波动较小，使用更保守的止盈止损',
+      majorCoinsList: '主流币列表',
+      majorCoinsListDesc: '这些币种将使用独立的止盈止损策略',
+      majorCoinStopLoss: '主流币止损 %',
+      majorCoinTakeProfit: '主流币分批止盈',
+      majorCoinTakeProfitDesc: '主流币波动较小，止盈点设置更保守',
+      majorCoinTrailingStop: '主流币移动止损',
+      majorCoinTrailingActivation: '激活阈值 %',
+      majorCoinTrailingActivationDesc: '盈利达到此比例后启动移动止损',
+      majorCoinTrailingCallback: '回调比例 %',
+      majorCoinTrailingCallbackDesc: '从最高点回撤此比例触发止损',
+      strategyComparison: '策略对比',
+      majorCoin: '主流币',
+      altcoin: '山寨币',
+      parameter: '参数',
+
+      // CopyTrade groups
+      copytradeApi: 'Telegram API',
+      copytradeApiDesc: '配置 Telegram 客户端 API',
+      copytradePosition: '仓位设置',
+      copytradePositionDesc: '跟单仓位计算方式',
+      copytradeLeverage: '杠杆设置',
+      copytradeLeverageDesc: '跟单杠杆配置',
+      copytradeRisk: '风险控制',
+      copytradeRiskDesc: '仓位和交易限制',
+      copytradeFilter: '信号过滤',
+      copytradeFilterDesc: '过滤不符合条件的交易信号',
+
+      // Keepalive groups
+      keepaliveGlobal: '全局设置',
+      keepaliveGlobalDesc: '服务健康检查的默认参数',
+      keepaliveTelegram: 'Telegram 告警',
+      keepaliveTelegramDesc: '服务异常时发送 Telegram 通知',
+      keepaliveServices: '监控服务',
+      keepaliveServicesDesc: '配置需要监控的 systemd 服务',
+
+      // Common labels
+      enableTelegram: '启用 Telegram',
+      botToken: 'Bot Token',
+      chatId: 'Chat ID',
+      apiKey: 'API Key',
+      apiSecret: 'API Secret',
+      useTestnet: '使用测试网',
+      leverage: '杠杆倍数',
+      marginType: '保证金类型',
+      isolated: '逐仓',
+      crossed: '全仓',
+      maxPositionPercent: '单笔最大仓位 %',
+      maxTotalPositionPercent: '总仓位上限 %',
+      maxDailyTrades: '每日最大交易次数',
+      maxDailyLossPercent: '每日最大亏损 %',
+      stopLossPercent: '止损百分比',
+      enableTrailingStop: '启用移动止损',
+      enableAutoTrading: '启用自动交易',
+      autoTradingWarning: '系统将根据信号自动执行交易，请确保风险参数配置正确',
+      highLeverageWarning: '杠杆超过 20x 会显著增加爆仓风险，请谨慎操作',
+
+      // Validation messages
+      required: '此字段为必填项',
+      invalidNumber: '必须是有效数字',
+      outOfRange: '数值超出范围',
+      checkIntervalRange: '检查间隔必须在 10-300 秒之间',
+      telegramRequired: '启用 Telegram 告警时必须配置 Bot Token 和 Chat ID',
+
+      // Actions
+      save: '保存',
+      saving: '保存中...',
+      saveSuccess: '配置保存成功',
+      saveError: '保存配置失败',
+      restartRequired: '需要重启服务以应用更改',
+      restartNow: '立即重启',
+      restartLater: '稍后',
+      export: '导出',
+      import: '导入',
+      exportConfig: '导出配置',
+      importConfig: '导入配置',
+      includeSensitive: '包含敏感字段',
+      excludeSensitive: '排除敏感字段（推荐）',
     },
   },
 }

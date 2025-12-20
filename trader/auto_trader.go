@@ -29,6 +29,7 @@ type AutoTraderConfig struct {
 	// Binance API configuration
 	BinanceAPIKey    string
 	BinanceSecretKey string
+	BinanceTestnet   bool
 
 	// Bybit API configuration
 	BybitAPIKey    string
@@ -222,7 +223,7 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 	switch config.Exchange {
 	case "binance":
 		logger.Infof("🏦 [%s] Using Binance Futures trading", config.Name)
-		trader = NewFuturesTrader(config.BinanceAPIKey, config.BinanceSecretKey, userID)
+		trader = NewFuturesTrader(config.BinanceAPIKey, config.BinanceSecretKey, userID, config.BinanceTestnet)
 	case "bybit":
 		logger.Infof("🏦 [%s] Using Bybit Futures trading", config.Name)
 		trader = NewBybitTrader(config.BybitAPIKey, config.BybitSecretKey)
@@ -1869,4 +1870,3 @@ func (at *AutoTrader) enforceMaxPositions(currentPositionCount int) error {
 	}
 	return nil
 }
-

@@ -1,4 +1,5 @@
 import React from 'react'
+import { withBasePath } from '../lib/appBase'
 
 interface IconProps {
   width?: number
@@ -8,13 +9,13 @@ interface IconProps {
 
 // 本地图标路径映射
 const ICON_PATHS: Record<string, string> = {
-  binance: '/exchange-icons/binance.jpg',
-  bybit: '/exchange-icons/bybit.png',
-  okx: '/exchange-icons/okx.svg',
-  bitget: '/exchange-icons/bitget.svg',
-  hyperliquid: '/exchange-icons/hyperliquid.png',
-  aster: '/exchange-icons/aster.svg',
-  lighter: '/exchange-icons/lighter.png',
+  binance: withBasePath('/exchange-icons/binance.jpg'),
+  bybit: withBasePath('/exchange-icons/bybit.png'),
+  okx: withBasePath('/exchange-icons/okx.svg'),
+  bitget: withBasePath('/exchange-icons/bitget.svg'),
+  hyperliquid: withBasePath('/exchange-icons/hyperliquid.png'),
+  aster: withBasePath('/exchange-icons/aster.svg'),
+  lighter: withBasePath('/exchange-icons/lighter.png'),
 }
 
 // 通用图标组件

@@ -1,0 +1,15 @@
+[Unit]
+Description=ValueScan Telegram Copy Trade Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/valuescan/telegram_copytrade
+ExecStart=/usr/bin/python3.9 copytrade_main.py
+Restart=always
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

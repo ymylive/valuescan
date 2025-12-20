@@ -11,6 +11,7 @@
 
 import axios, { AxiosInstance, AxiosError, AxiosResponse } from 'axios'
 import { toast } from 'sonner'
+import { APP_BASE, withBasePath } from './appBase'
 
 /**
  * Business response format - only business errors reach the caller
@@ -87,8 +88,31 @@ export class HttpClient {
   private async handleError(error: AxiosError): Promise<any> {
     // Network error (no response from server)
     if (!error.response) {
+      const code = (error as any)?.code as string | undefined
+      const msg = (error.message || '').toLowerCase()
+
+      let requestUrl = ''
+      try {
+        const base = (error.config?.baseURL || '').toString()
+        const url = (error.config?.url || '').toString()
+        requestUrl = new URL(url, base || window.location.origin).toString()
+      } catch {
+        requestUrl = (error.config?.url || '').toString()
+      }
+
+      if (code === 'ECONNABORTED' || msg.includes('timeout')) {
+        toast.error('Request timeout', {
+          description: requestUrl
+            ? `No response: ${requestUrl}`
+            : 'The server took too long to respond',
+        })
+        throw new Error('Request timeout')
+      }
+
       toast.error('Network error - Please check your connection', {
-        description: 'Unable to reach the server',
+        description: requestUrl
+          ? `Unable to reach: ${requestUrl}`
+          : 'Unable to reach the server',
       })
       throw new Error('Network error')
     }
@@ -105,6 +129,9 @@ export class HttpClient {
       }
 
       HttpClient.isHandling401 = true
+      const basePath = APP_BASE.endsWith('/') ? APP_BASE.slice(0, -1) : APP_BASE
+      const loginPath = withBasePath('/login')
+      const rootPath = basePath || '/'
 
       // Clean up
       localStorage.removeItem('auth_token')
@@ -114,14 +141,14 @@ export class HttpClient {
       window.dispatchEvent(new Event('unauthorized'))
 
       // Only redirect if not already on login page
-      if (!window.location.pathname.includes('/login')) {
+      if (!window.location.pathname.startsWith(loginPath)) {
         const returnUrl = window.location.pathname + window.location.search
-        if (returnUrl !== '/login' && returnUrl !== '/') {
+        if (returnUrl !== loginPath && returnUrl !== rootPath) {
           sessionStorage.setItem('returnUrl', returnUrl)
         }
 
         sessionStorage.setItem('from401', 'true')
-        window.location.href = '/login'
+        window.location.href = loginPath
 
         // Return pending promise
         return new Promise(() => {})
@@ -171,6 +198,7 @@ export class HttpClient {
       data?: any
       params?: any
       headers?: Record<string, string>
+      timeoutMs?: number
     } = {}
   ): Promise<ApiResponse<T>> {
     try {
@@ -180,6 +208,7 @@ export class HttpClient {
         data: options.data,
         params: options.params,
         headers: options.headers,
+        timeout: options.timeoutMs,
       })
 
       // Success
@@ -210,9 +239,10 @@ export class HttpClient {
   async get<T = any>(
     url: string,
     params?: any,
-    headers?: Record<string, string>
+    headers?: Record<string, string>,
+    timeoutMs?: number
   ): Promise<ApiResponse<T>> {
-    return this.request<T>(url, { method: 'GET', params, headers })
+    return this.request<T>(url, { method: 'GET', params, headers, timeoutMs })
   }
 
   /**
@@ -221,9 +251,10 @@ export class HttpClient {
   async post<T = any>(
     url: string,
     data?: any,
-    headers?: Record<string, string>
+    headers?: Record<string, string>,
+    timeoutMs?: number
   ): Promise<ApiResponse<T>> {
-    return this.request<T>(url, { method: 'POST', data, headers })
+    return this.request<T>(url, { method: 'POST', data, headers, timeoutMs })
   }
 
   /**
@@ -232,9 +263,10 @@ export class HttpClient {
   async put<T = any>(
     url: string,
     data?: any,
-    headers?: Record<string, string>
+    headers?: Record<string, string>,
+    timeoutMs?: number
   ): Promise<ApiResponse<T>> {
-    return this.request<T>(url, { method: 'PUT', data, headers })
+    return this.request<T>(url, { method: 'PUT', data, headers, timeoutMs })
   }
 
   /**
@@ -242,9 +274,10 @@ export class HttpClient {
    */
   async delete<T = any>(
     url: string,
-    headers?: Record<string, string>
+    headers?: Record<string, string>,
+    timeoutMs?: number
   ): Promise<ApiResponse<T>> {
-    return this.request<T>(url, { method: 'DELETE', headers })
+    return this.request<T>(url, { method: 'DELETE', headers, timeoutMs })
   }
 
   /**
@@ -253,9 +286,10 @@ export class HttpClient {
   async patch<T = any>(
     url: string,
     data?: any,
-    headers?: Record<string, string>
+    headers?: Record<string, string>,
+    timeoutMs?: number
   ): Promise<ApiResponse<T>> {
-    return this.request<T>(url, { method: 'PATCH', data, headers })
+    return this.request<T>(url, { method: 'PATCH', data, headers, timeoutMs })
   }
 }
 

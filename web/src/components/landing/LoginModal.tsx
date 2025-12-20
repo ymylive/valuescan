@@ -2,6 +2,7 @@ import { motion } from 'framer-motion'
 import { X } from 'lucide-react'
 import { t, Language } from '../../i18n/translations'
 import { useSystemConfig } from '../../hooks/useSystemConfig'
+import { withBasePath } from '../../lib/appBase'
 
 interface LoginModalProps {
   onClose: () => void
@@ -53,7 +54,7 @@ export default function LoginModal({ onClose, language }: LoginModalProps) {
         <div className="space-y-3">
           <motion.button
             onClick={() => {
-              window.history.pushState({}, '', '/login')
+              window.history.pushState({}, '', withBasePath('/login'))
               window.dispatchEvent(new PopStateEvent('popstate'))
               onClose()
             }}
@@ -73,7 +74,7 @@ export default function LoginModal({ onClose, language }: LoginModalProps) {
           {registrationEnabled && (
             <motion.button
               onClick={() => {
-                window.history.pushState({}, '', '/register')
+                window.history.pushState({}, '', withBasePath('/register'))
                 window.dispatchEvent(new PopStateEvent('popstate'))
                 onClose()
               }}

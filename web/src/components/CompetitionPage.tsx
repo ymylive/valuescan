@@ -266,13 +266,14 @@ export function CompetitionPage() {
                       <div
                         className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
                         style={{
-                          background: index === 0
-                            ? 'linear-gradient(135deg, #F0B90B 0%, #FCD535 100%)'
-                            : index === 1
-                              ? 'linear-gradient(135deg, #C0C0C0 0%, #E8E8E8 100%)'
-                              : index === 2
-                                ? 'linear-gradient(135deg, #CD7F32 0%, #E8A64C 100%)'
-                                : '#2B3139',
+                          background:
+                            index === 0
+                              ? 'linear-gradient(135deg, #F0B90B 0%, #FCD535 100%)'
+                              : index === 1
+                                ? 'linear-gradient(135deg, #C0C0C0 0%, #E8E8E8 100%)'
+                                : index === 2
+                                  ? 'linear-gradient(135deg, #CD7F32 0%, #E8A64C 100%)'
+                                  : '#2B3139',
                           color: index < 3 ? '#000' : '#848E9C',
                         }}
                       >
@@ -280,7 +281,10 @@ export function CompetitionPage() {
                       </div>
                       {/* Punk Avatar */}
                       <PunkAvatar
-                        seed={getTraderAvatar(trader.trader_id, trader.trader_name)}
+                        seed={getTraderAvatar(
+                          trader.trader_id,
+                          trader.trader_name
+                        )}
                         size={36}
                         className="rounded-lg"
                       />
@@ -437,7 +441,10 @@ export function CompetitionPage() {
                     {/* Avatar */}
                     <div className="flex justify-center mb-3">
                       <PunkAvatar
-                        seed={getTraderAvatar(trader.trader_id, trader.trader_name)}
+                        seed={getTraderAvatar(
+                          trader.trader_id,
+                          trader.trader_name
+                        )}
                         size={56}
                         className="rounded-xl"
                       />

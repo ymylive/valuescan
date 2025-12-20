@@ -9,6 +9,7 @@ import { Eye, EyeOff } from 'lucide-react'
 import { Input } from './ui/input'
 import PasswordChecklist from 'react-password-checklist'
 import { RegistrationDisabled } from './RegistrationDisabled'
+import { withBasePath } from '../lib/appBase'
 
 export function RegisterPage() {
   const { language } = useLanguage()
@@ -117,7 +118,7 @@ export function RegisterPage() {
         <div className="text-center mb-8">
           <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center">
             <img
-              src="/icons/nofx.svg"
+              src={withBasePath('/icons/nofx.svg')}
               alt="NoFx Logo"
               className="w-16 h-16 object-contain"
             />
@@ -529,7 +530,7 @@ export function RegisterPage() {
               已有账户？{' '}
               <button
                 onClick={() => {
-                  window.location.href = '/login'
+                  window.location.href = withBasePath('/login')
                 }}
                 className="font-semibold hover:underline transition-colors"
                 style={{ color: 'var(--brand-yellow)' }}

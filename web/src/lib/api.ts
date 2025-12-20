@@ -20,7 +20,6 @@ import type {
   BacktestTradeEvent,
   BacktestMetrics,
   BacktestRunMetadata,
-  BacktestKlinesResponse,
   Strategy,
   StrategyConfig,
   DebateSession,
@@ -32,8 +31,9 @@ import type {
 } from '../types'
 import { CryptoService } from './crypto'
 import { httpClient } from './httpClient'
+import { withBasePath } from './appBase'
 
-const API_BASE = '/api'
+const API_BASE = withBasePath('/api')
 
 // Helper function to get auth headers
 function getAuthHeaders(): Record<string, string> {
@@ -110,7 +110,10 @@ export const api = {
     if (!result.success) throw new Error('停止交易员失败')
   },
 
-  async toggleCompetition(traderId: string, showInCompetition: boolean): Promise<void> {
+  async toggleCompetition(
+    traderId: string,
+    showInCompetition: boolean
+  ): Promise<void> {
     const result = await httpClient.put(
       `${API_BASE}/traders/${traderId}/competition`,
       { show_in_competition: showInCompetition }
@@ -118,7 +121,11 @@ export const api = {
     if (!result.success) throw new Error('更新竞技场显示设置失败')
   },
 
-  async closePosition(traderId: string, symbol: string, side: string): Promise<{ message: string }> {
+  async closePosition(
+    traderId: string,
+    symbol: string,
+    side: string
+  ): Promise<{ message: string }> {
     const result = await httpClient.post<{ message: string }>(
       `${API_BASE}/traders/${traderId}/close-position`,
       { symbol, side }
@@ -241,20 +248,30 @@ export const api = {
   },
 
   // 创建新的交易所账户
-  async createExchange(request: CreateExchangeRequest): Promise<{ id: string }> {
-    const result = await httpClient.post<{ id: string }>(`${API_BASE}/exchanges`, request)
+  async createExchange(
+    request: CreateExchangeRequest
+  ): Promise<{ id: string }> {
+    const result = await httpClient.post<{ id: string }>(
+      `${API_BASE}/exchanges`,
+      request
+    )
     if (!result.success) throw new Error('创建交易所账户失败')
     return result.data!
   },
 
   // 创建新的交易所账户（加密传输）
-  async createExchangeEncrypted(request: CreateExchangeRequest): Promise<{ id: string }> {
+  async createExchangeEncrypted(
+    request: CreateExchangeRequest
+  ): Promise<{ id: string }> {
     // 检查是否启用了传输加密
     const config = await CryptoService.fetchCryptoConfig()
 
     if (!config.transport_encryption) {
       // 传输加密禁用时，直接发送明文
-      const result = await httpClient.post<{ id: string }>(`${API_BASE}/exchanges`, request)
+      const result = await httpClient.post<{ id: string }>(
+        `${API_BASE}/exchanges`,
+        request
+      )
       if (!result.success) throw new Error('创建交易所账户失败')
       return result.data!
     }
@@ -287,7 +304,9 @@ export const api = {
 
   // 删除交易所账户
   async deleteExchange(exchangeId: string): Promise<void> {
-    const result = await httpClient.delete(`${API_BASE}/exchanges/${exchangeId}`)
+    const result = await httpClient.delete(
+      `${API_BASE}/exchanges/${exchangeId}`
+    )
     if (!result.success) throw new Error('删除交易所账户失败')
   },
 
@@ -410,12 +429,10 @@ export const api = {
   },
 
   // 批量获取多个交易员的历史数据（无需认证）
-  // hours: 可选参数，获取最近N小时的数据（0表示全部数据）
-  // 常用值: 24=1天, 72=3天, 168=7天, 720=30天, 0=全部
-  async getEquityHistoryBatch(traderIds: string[], hours?: number): Promise<any> {
+  async getEquityHistoryBatch(traderIds: string[]): Promise<any> {
     const result = await httpClient.post<any>(
       `${API_BASE}/equity-history-batch`,
-      { trader_ids: traderIds, hours: hours || 0 }
+      { trader_ids: traderIds }
     )
     if (!result.success) throw new Error('获取批量历史数据失败')
     return result.data!
@@ -480,7 +497,9 @@ export const api = {
     return handleJSONResponse<BacktestRunsResponse>(res)
   },
 
-  async startBacktest(config: BacktestStartConfig): Promise<BacktestRunMetadata> {
+  async startBacktest(
+    config: BacktestStartConfig
+  ): Promise<BacktestRunMetadata> {
     const res = await fetch(`${API_BASE}/backtest/start`, {
       method: 'POST',
       headers: getAuthHeaders(),
@@ -581,19 +600,6 @@ export const api = {
     return handleJSONResponse<BacktestMetrics>(res)
   },
 
-  async getBacktestKlines(
-    runId: string,
-    symbol: string,
-    timeframe?: string
-  ): Promise<BacktestKlinesResponse> {
-    const query = new URLSearchParams({ run_id: runId, symbol })
-    if (timeframe) query.set('timeframe', timeframe)
-    const res = await fetch(`${API_BASE}/backtest/klines?${query}`, {
-      headers: getAuthHeaders(),
-    })
-    return handleJSONResponse<BacktestKlinesResponse>(res)
-  },
-
   async getBacktestTrace(
     runId: string,
     cycle?: number
@@ -645,26 +651,34 @@ export const api = {
 
   // Strategy APIs
   async getStrategies(): Promise<Strategy[]> {
-    const result = await httpClient.get<{ strategies: Strategy[] }>(`${API_BASE}/strategies`)
+    const result = await httpClient.get<{ strategies: Strategy[] }>(
+      `${API_BASE}/strategies`
+    )
     if (!result.success) throw new Error('获取策略列表失败')
     const strategies = result.data?.strategies
     return Array.isArray(strategies) ? strategies : []
   },
 
   async getStrategy(strategyId: string): Promise<Strategy> {
-    const result = await httpClient.get<Strategy>(`${API_BASE}/strategies/${strategyId}`)
+    const result = await httpClient.get<Strategy>(
+      `${API_BASE}/strategies/${strategyId}`
+    )
     if (!result.success) throw new Error('获取策略失败')
     return result.data!
   },
 
   async getActiveStrategy(): Promise<Strategy> {
-    const result = await httpClient.get<Strategy>(`${API_BASE}/strategies/active`)
+    const result = await httpClient.get<Strategy>(
+      `${API_BASE}/strategies/active`
+    )
     if (!result.success) throw new Error('获取激活策略失败')
     return result.data!
   },
 
   async getDefaultStrategyConfig(): Promise<StrategyConfig> {
-    const result = await httpClient.get<StrategyConfig>(`${API_BASE}/strategies/default-config`)
+    const result = await httpClient.get<StrategyConfig>(
+      `${API_BASE}/strategies/default-config`
+    )
     if (!result.success) throw new Error('获取默认策略配置失败')
     return result.data!
   },
@@ -674,7 +688,10 @@ export const api = {
     description: string
     config: StrategyConfig
   }): Promise<Strategy> {
-    const result = await httpClient.post<Strategy>(`${API_BASE}/strategies`, data)
+    const result = await httpClient.post<Strategy>(
+      `${API_BASE}/strategies`,
+      data
+    )
     if (!result.success) throw new Error('创建策略失败')
     return result.data!
   },
@@ -687,24 +704,33 @@ export const api = {
       config?: StrategyConfig
     }
   ): Promise<Strategy> {
-    const result = await httpClient.put<Strategy>(`${API_BASE}/strategies/${strategyId}`, data)
+    const result = await httpClient.put<Strategy>(
+      `${API_BASE}/strategies/${strategyId}`,
+      data
+    )
     if (!result.success) throw new Error('更新策略失败')
     return result.data!
   },
 
   async deleteStrategy(strategyId: string): Promise<void> {
-    const result = await httpClient.delete(`${API_BASE}/strategies/${strategyId}`)
+    const result = await httpClient.delete(
+      `${API_BASE}/strategies/${strategyId}`
+    )
     if (!result.success) throw new Error('删除策略失败')
   },
 
   async activateStrategy(strategyId: string): Promise<Strategy> {
-    const result = await httpClient.post<Strategy>(`${API_BASE}/strategies/${strategyId}/activate`)
+    const result = await httpClient.post<Strategy>(
+      `${API_BASE}/strategies/${strategyId}/activate`
+    )
     if (!result.success) throw new Error('激活策略失败')
     return result.data!
   },
 
   async duplicateStrategy(strategyId: string): Promise<Strategy> {
-    const result = await httpClient.post<Strategy>(`${API_BASE}/strategies/${strategyId}/duplicate`)
+    const result = await httpClient.post<Strategy>(
+      `${API_BASE}/strategies/${strategyId}/duplicate`
+    )
     if (!result.success) throw new Error('复制策略失败')
     return result.data!
   },
@@ -717,32 +743,46 @@ export const api = {
   },
 
   async getDebate(debateId: string): Promise<DebateSessionWithDetails> {
-    const result = await httpClient.get<DebateSessionWithDetails>(`${API_BASE}/debates/${debateId}`)
+    const result = await httpClient.get<DebateSessionWithDetails>(
+      `${API_BASE}/debates/${debateId}`
+    )
     if (!result.success) throw new Error('获取辩论详情失败')
     return result.data!
   },
 
-  async createDebate(request: CreateDebateRequest): Promise<DebateSessionWithDetails> {
-    const result = await httpClient.post<DebateSessionWithDetails>(`${API_BASE}/debates`, request)
+  async createDebate(
+    request: CreateDebateRequest
+  ): Promise<DebateSessionWithDetails> {
+    const result = await httpClient.post<DebateSessionWithDetails>(
+      `${API_BASE}/debates`,
+      request
+    )
     if (!result.success) throw new Error('创建辩论失败')
     return result.data!
   },
 
   async startDebate(debateId: string): Promise<void> {
-    const result = await httpClient.post(`${API_BASE}/debates/${debateId}/start`)
+    const result = await httpClient.post(
+      `${API_BASE}/debates/${debateId}/start`
+    )
     if (!result.success) throw new Error('启动辩论失败')
   },
 
   async cancelDebate(debateId: string): Promise<void> {
-    const result = await httpClient.post(`${API_BASE}/debates/${debateId}/cancel`)
+    const result = await httpClient.post(
+      `${API_BASE}/debates/${debateId}/cancel`
+    )
     if (!result.success) throw new Error('取消辩论失败')
   },
 
-  async executeDebate(debateId: string, traderId: string): Promise<DebateSessionWithDetails> {
-    const result = await httpClient.post<{ message: string; session: DebateSessionWithDetails }>(
-      `${API_BASE}/debates/${debateId}/execute`,
-      { trader_id: traderId }
-    )
+  async executeDebate(
+    debateId: string,
+    traderId: string
+  ): Promise<DebateSessionWithDetails> {
+    const result = await httpClient.post<{
+      message: string
+      session: DebateSessionWithDetails
+    }>(`${API_BASE}/debates/${debateId}/execute`, { trader_id: traderId })
     if (!result.success) throw new Error('执行交易失败')
     return result.data!.session
   },
@@ -753,19 +793,25 @@ export const api = {
   },
 
   async getDebateMessages(debateId: string): Promise<DebateMessage[]> {
-    const result = await httpClient.get<DebateMessage[]>(`${API_BASE}/debates/${debateId}/messages`)
+    const result = await httpClient.get<DebateMessage[]>(
+      `${API_BASE}/debates/${debateId}/messages`
+    )
     if (!result.success) throw new Error('获取辩论消息失败')
     return result.data!
   },
 
   async getDebateVotes(debateId: string): Promise<DebateVote[]> {
-    const result = await httpClient.get<DebateVote[]>(`${API_BASE}/debates/${debateId}/votes`)
+    const result = await httpClient.get<DebateVote[]>(
+      `${API_BASE}/debates/${debateId}/votes`
+    )
     if (!result.success) throw new Error('获取辩论投票失败')
     return result.data!
   },
 
   async getDebatePersonalities(): Promise<DebatePersonalityInfo[]> {
-    const result = await httpClient.get<DebatePersonalityInfo[]>(`${API_BASE}/debates/personalities`)
+    const result = await httpClient.get<DebatePersonalityInfo[]>(
+      `${API_BASE}/debates/personalities`
+    )
     if (!result.success) throw new Error('获取AI性格列表失败')
     return result.data!
   },
@@ -773,6 +819,389 @@ export const api = {
   // SSE stream for live debate updates
   createDebateStream(debateId: string): EventSource {
     const token = localStorage.getItem('auth_token')
-    return new EventSource(`${API_BASE}/debates/${debateId}/stream?token=${token}`)
+    return new EventSource(
+      `${API_BASE}/debates/${debateId}/stream?token=${token}`
+    )
+  },
+
+  // ==================== ValueScan 特有 API ====================
+  // === ValueScan Configuration API ===
+  async getConfig(): Promise<any> {
+    const result = await httpClient.get<any>(`${API_BASE}/config`)
+    if (!result.success) throw new Error('获取配置失败')
+    return result.data
+  },
+
+  async saveConfig(config: any): Promise<any> {
+    const result = await httpClient.post<any>(`${API_BASE}/config`, config)
+    if (!result.success) throw new Error('保存配置失败')
+    return result.data
+  },
+
+  async getValueScanSignals(
+    limit: number = 10
+  ): Promise<{ signals: any[]; error?: string }> {
+    try {
+      const result = await httpClient.get<{ signals: any[]; error?: string }>(
+        `${API_BASE}/signals?limit=${limit}`
+      )
+      return result.success
+        ? { signals: result.data?.signals || [], error: result.data?.error }
+        : { signals: [], error: result.message || '获取信号失败' }
+    } catch {
+      return { signals: [], error: '获取信号失败' }
+    }
+  },
+
+  async getValueScanAlerts(
+    limit: number = 10
+  ): Promise<{ alerts: any[]; error?: string }> {
+    try {
+      const result = await httpClient.get<{ alerts: any[]; error?: string }>(
+        `${API_BASE}/alerts?limit=${limit}`
+      )
+      return result.success
+        ? { alerts: result.data?.alerts || [], error: result.data?.error }
+        : { alerts: [], error: result.message || '获取警报失败' }
+    } catch {
+      return { alerts: [], error: '获取警报失败' }
+    }
+  },
+
+  async getValueScanStatus(): Promise<{
+    signal_monitor: 'running' | 'stopped' | 'error'
+    trader: 'running' | 'stopped' | 'error'
+    copytrade: 'running' | 'stopped' | 'error'
+  }> {
+    const result = await httpClient.get<{
+      signal_monitor: 'running' | 'stopped' | 'error'
+      trader: 'running' | 'stopped' | 'error'
+      copytrade: 'running' | 'stopped' | 'error'
+    }>(`${API_BASE}/valuescan/status`)
+    if (!result.success || !result.data) throw new Error('获取状态失败')
+    return result.data
+  },
+
+  async getValueScanLoginStatus(): Promise<{
+    logged_in: boolean
+    cookies_count: number
+  }> {
+    try {
+      const result = await httpClient.get<{
+        logged_in: boolean
+        cookies_count: number
+      }>(`${API_BASE}/valuescan/login/status`)
+      return result.success
+        ? result.data!
+        : { logged_in: false, cookies_count: 0 }
+    } catch {
+      return { logged_in: false, cookies_count: 0 }
+    }
+  },
+
+  async getSimulationTraders(): Promise<any[]> {
+    const result = await httpClient.get<{
+      success: boolean
+      data?: any[]
+      error?: string
+    }>(`${API_BASE}/simulation/traders`)
+    if (!result.success) throw new Error(result.message || '获取模拟交易者失败')
+
+    const payload = result.data
+    if (!payload?.success)
+      throw new Error(payload?.error || '获取模拟交易者失败')
+    return Array.isArray(payload.data) ? payload.data : []
+  },
+
+  async getSimulationPositions(traderId: string): Promise<any[]> {
+    const result = await httpClient.get<{
+      success: boolean
+      data?: any[]
+      error?: string
+    }>(`${API_BASE}/simulation/traders/${traderId}/positions`)
+    if (!result.success) throw new Error(result.message || '获取模拟持仓失败')
+
+    const payload = result.data
+    if (!payload?.success) throw new Error(payload?.error || '获取模拟持仓失败')
+    return Array.isArray(payload.data) ? payload.data : []
+  },
+
+  async getSimulationTrades(
+    traderId: string,
+    limit: number = 50
+  ): Promise<any[]> {
+    const result = await httpClient.get<{
+      success: boolean
+      data?: any[]
+      error?: string
+    }>(`${API_BASE}/simulation/traders/${traderId}/trades`)
+    if (!result.success) throw new Error(result.message || '获取模拟交易失败')
+
+    const payload = result.data
+    if (!payload?.success) throw new Error(payload?.error || '获取模拟交易失败')
+    const trades = Array.isArray(payload.data) ? payload.data : []
+    return trades.slice(0, Math.max(0, limit))
+  },
+
+  async getSimulationMetrics(traderId: string): Promise<any> {
+    const result = await httpClient.get<{
+      success: boolean
+      data?: any
+      error?: string
+    }>(`${API_BASE}/simulation/traders/${traderId}/metrics`)
+    if (!result.success) throw new Error(result.message || '获取模拟指标失败')
+
+    const payload = result.data
+    if (!payload?.success) throw new Error(payload?.error || '获取模拟指标失败')
+    return payload.data
+  },
+
+  async getServiceStatus(): Promise<{
+    signal_monitor: 'running' | 'stopped' | 'error'
+    trader: 'running' | 'stopped' | 'error'
+    copytrade: 'running' | 'stopped' | 'error'
+    keepalive: 'running' | 'stopped' | 'error'
+  }> {
+    try {
+      const result = await httpClient.get<{
+        signal_monitor: 'running' | 'stopped' | 'error'
+        trader: 'running' | 'stopped' | 'error'
+        copytrade: 'running' | 'stopped' | 'error'
+        keepalive: 'running' | 'stopped' | 'error'
+      }>(`${API_BASE}/valuescan/status`)
+      return result.success
+        ? result.data || {
+            signal_monitor: 'stopped',
+            trader: 'stopped',
+            copytrade: 'stopped',
+            keepalive: 'stopped',
+          }
+        : {
+            signal_monitor: 'stopped',
+            trader: 'stopped',
+            copytrade: 'stopped',
+            keepalive: 'stopped',
+          }
+    } catch {
+      return {
+        signal_monitor: 'stopped',
+        trader: 'stopped',
+        copytrade: 'stopped',
+        keepalive: 'stopped',
+      }
+    }
+  },
+
+  async controlService(
+    service: 'signal' | 'trader' | 'copytrade',
+    action: 'start' | 'stop' | 'restart'
+  ): Promise<{ success: boolean; message?: string }> {
+    const result = await httpClient.post<{
+      success: boolean
+      message?: string
+    }>(`${API_BASE}/service/${service}/${action}`)
+    return result.success
+      ? result.data!
+      : { success: false, message: '操作失败' }
+  },
+
+  async getValuescanLoginStatus(): Promise<{
+    logged_in: boolean
+    cookies_count: number
+  }> {
+    try {
+      const result = await httpClient.get<{
+        logged_in: boolean
+        cookies_count: number
+      }>(`${API_BASE}/valuescan/login/status`)
+      return result.success
+        ? result.data!
+        : { logged_in: false, cookies_count: 0 }
+    } catch {
+      return { logged_in: false, cookies_count: 0 }
+    }
+  },
+
+  async valuescanLogin(
+    email: string,
+    password: string
+  ): Promise<{ success: boolean; message?: string; error?: string }> {
+    const result = await httpClient.post<{
+      success: boolean
+      message?: string
+      error?: string
+    }>(`${API_BASE}/valuescan/login`, { email, password }, undefined, 240_000)
+    return result.success
+      ? result.data!
+      : { success: false, error: result.message || '登录失败' }
+  },
+
+  async prepareValuescanBrowserLogin(): Promise<{
+    nonce: string
+    expires_in_s: number
+    valuescan_login_url: string
+    bookmarklet: string
+    console_snippet: string
+    redirect_url: string
+  }> {
+    const result = await httpClient.post<any>(
+      `${API_BASE}/valuescan/login/browser/prepare`,
+      {},
+      undefined,
+      30_000
+    )
+    if (!result.success)
+      throw new Error(result.message || '无法创建 ValueScan 登录会话')
+    return result.data!
+  },
+
+  async importValuescanBrowserLogin(payload: {
+    nonce: string
+    localstorage: Record<string, any>
+    cookies?: string
+    url?: string
+  }): Promise<{
+    success: boolean
+    status?: any
+    error?: string
+    seen_url?: string
+    available_keys?: string[]
+  }> {
+    try {
+      const result = await httpClient.post<any>(
+        `${API_BASE}/valuescan/login/browser/import`,
+        payload,
+        undefined,
+        60_000
+      )
+      if (result.success) return { success: true, ...(result.data || {}) }
+      return { success: false, error: result.message || '导入失败' }
+    } catch (e: any) {
+      const data = e?.response?.data || {}
+      return {
+        success: false,
+        error: data.error || data.message || e?.message || '导入失败',
+        seen_url: data.seen_url,
+        available_keys: data.available_keys,
+      }
+    }
+  },
+
+  async getValuescanArtifacts(): Promise<{
+    paths: {
+      cookies_file: string
+      localstorage_file: string
+      sessionstorage_file: string
+    }
+    cookies: any
+    localstorage: any
+    sessionstorage: any
+    cookies_count: number
+    has_account_token: boolean
+    has_refresh_token: boolean
+  }> {
+    const result = await httpClient.get<any>(`${API_BASE}/valuescan/artifacts`)
+    if (!result.success) throw new Error('获取 ValueScan 登录数据失败')
+    return result.data!
+  },
+
+  async saveValuescanArtifacts(payload: {
+    cookies?: any
+    localstorage?: any
+    sessionstorage?: any
+  }): Promise<{ success: boolean; saved?: any; errors?: string[] }> {
+    const result = await httpClient.post<any>(
+      `${API_BASE}/valuescan/artifacts`,
+      payload
+    )
+    if (!result.success)
+      throw new Error(result.message || '保存 ValueScan 登录数据失败')
+    return result.data!
+  },
+
+  async getValuescanCoinPoolConfig(): Promise<{ config: any; path: string }> {
+    const result = await httpClient.get<any>(
+      `${API_BASE}/valuescan/coinpool/config`
+    )
+    if (!result.success) throw new Error('获取 AI 选币数据源配置失败')
+    return result.data!
+  },
+
+  async saveValuescanCoinPoolConfig(config: any): Promise<{
+    success: boolean
+    config?: any
+    errors?: string[]
+    error?: string
+  }> {
+    const result = await httpClient.post<any>(
+      `${API_BASE}/valuescan/coinpool/config`,
+      { config }
+    )
+    if (!result.success)
+      throw new Error(result.message || '保存 AI 选币数据源配置失败')
+    return result.data!
+  },
+
+  async getServiceLogs(
+    service: 'signal' | 'trader' | 'proxy' | 'xray',
+    lines: number = 100
+  ): Promise<{ logs: string }> {
+    const result = await httpClient.get<{ logs: string }>(
+      `${API_BASE}/logs/${service}?lines=${lines}`
+    )
+    if (!result.success) throw new Error('获取日志失败')
+    return result.data!
+  },
+
+  // ==================== Keepalive Configuration API ====================
+  async getKeepaliveConfig(): Promise<{
+    success: boolean
+    config?: any
+    path?: string
+    error?: string
+  }> {
+    const result = await httpClient.get<any>(`${API_BASE}/keepalive/config`)
+    if (!result.success) throw new Error('获取 Keepalive 配置失败')
+    return result.data!
+  },
+
+  async saveKeepaliveConfig(config: any): Promise<{
+    success: boolean
+    config?: any
+    errors?: string[]
+    error?: string
+    needs_restart?: string[]
+  }> {
+    const result = await httpClient.post<any>(
+      `${API_BASE}/keepalive/config`,
+      config
+    )
+    if (!result.success)
+      throw new Error(result.message || '保存 Keepalive 配置失败')
+    return result.data!
+  },
+
+  // ==================== Config Export/Import API ====================
+  async exportConfig(
+    sections: string[],
+    includeSensitive: boolean = false
+  ): Promise<any> {
+    const result = await httpClient.post<any>(`${API_BASE}/config/export`, {
+      sections,
+      include_sensitive: includeSensitive,
+    })
+    if (!result.success) throw new Error('导出配置失败')
+    return result.data!
+  },
+
+  async importConfig(
+    config: any
+  ): Promise<{ success: boolean; errors?: string[]; merged?: any }> {
+    const result = await httpClient.post<any>(
+      `${API_BASE}/config/import`,
+      config
+    )
+    if (!result.success) throw new Error(result.message || '导入配置失败')
+    return result.data!
   },
 }

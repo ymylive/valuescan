@@ -1,11 +1,12 @@
 import { useLanguage } from '../contexts/LanguageContext'
 import { t } from '../i18n/translations'
+import { withBasePath } from '../lib/appBase'
 
 export function RegistrationDisabled() {
   const { language } = useLanguage()
 
   const handleBackToLogin = () => {
-    window.history.pushState({}, '', '/login')
+    window.history.pushState({}, '', withBasePath('/login'))
     window.dispatchEvent(new PopStateEvent('popstate'))
   }
 
@@ -16,7 +17,7 @@ export function RegistrationDisabled() {
     >
       <div className="text-center max-w-md px-6">
         <img
-          src="/icons/nofx.svg"
+          src={withBasePath('/icons/nofx.svg')}
           alt="NoFx Logo"
           className="w-16 h-16 mx-auto mb-4"
         />

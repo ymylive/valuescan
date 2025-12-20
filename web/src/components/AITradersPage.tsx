@@ -28,8 +28,6 @@ import {
   Eye,
   EyeOff,
   ExternalLink,
-  Copy,
-  Check,
 } from 'lucide-react'
 import { confirmToast } from '../lib/notify'
 import { toast } from 'sonner'
@@ -55,11 +53,14 @@ function getShortName(fullName: string): string {
 }
 
 // AI Provider configuration - default models and API links
-const AI_PROVIDER_CONFIG: Record<string, {
-  defaultModel: string
-  apiUrl: string
-  apiName: string
-}> = {
+const AI_PROVIDER_CONFIG: Record<
+  string,
+  {
+    defaultModel: string
+    apiUrl: string
+    apiName: string
+  }
+> = {
   deepseek: {
     defaultModel: 'deepseek-chat',
     apiUrl: 'https://platform.deepseek.com/api_keys',
@@ -102,41 +103,17 @@ interface AITradersPageProps {
 }
 
 // Helper function to get exchange display name from exchange ID (UUID)
-function getExchangeDisplayName(exchangeId: string | undefined, exchanges: Exchange[]): string {
+function getExchangeDisplayName(
+  exchangeId: string | undefined,
+  exchanges: Exchange[]
+): string {
   if (!exchangeId) return 'Unknown'
-  const exchange = exchanges.find(e => e.id === exchangeId)
+  const exchange = exchanges.find((e) => e.id === exchangeId)
   if (!exchange) return exchangeId.substring(0, 8).toUpperCase() + '...' // Show truncated UUID if not found
   const typeName = exchange.exchange_type?.toUpperCase() || exchange.name
-  return exchange.account_name ? `${typeName} - ${exchange.account_name}` : typeName
-}
-
-// Helper function to check if exchange is a perp-dex type (wallet-based)
-function isPerpDexExchange(exchangeType: string | undefined): boolean {
-  if (!exchangeType) return false
-  const perpDexTypes = ['hyperliquid', 'lighter', 'aster']
-  return perpDexTypes.includes(exchangeType.toLowerCase())
-}
-
-// Helper function to get wallet address for perp-dex exchanges
-function getWalletAddress(exchange: Exchange | undefined): string | undefined {
-  if (!exchange) return undefined
-  const type = exchange.exchange_type?.toLowerCase()
-  switch (type) {
-    case 'hyperliquid':
-      return exchange.hyperliquidWalletAddr
-    case 'lighter':
-      return exchange.lighterWalletAddr
-    case 'aster':
-      return exchange.asterSigner
-    default:
-      return undefined
-  }
-}
-
-// Helper function to truncate wallet address for display
-function truncateAddress(address: string, startLen = 6, endLen = 4): string {
-  if (address.length <= startLen + endLen + 3) return address
-  return `${address.slice(0, startLen)}...${address.slice(-endLen)}`
+  return exchange.account_name
+    ? `${typeName} - ${exchange.account_name}`
+    : typeName
 }
 
 export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
@@ -153,61 +130,28 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
   const [allModels, setAllModels] = useState<AIModel[]>([])
   const [allExchanges, setAllExchanges] = useState<Exchange[]>([])
   const [supportedModels, setSupportedModels] = useState<AIModel[]>([])
-  const [visibleTraderAddresses, setVisibleTraderAddresses] = useState<Set<string>>(new Set())
-  const [visibleExchangeAddresses, setVisibleExchangeAddresses] = useState<Set<string>>(new Set())
-  const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [supportedExchanges, setSupportedExchanges] = useState<Exchange[]>([])
 
-  // Toggle wallet address visibility for a trader
-  const toggleTraderAddressVisibility = (traderId: string) => {
-    setVisibleTraderAddresses(prev => {
-      const next = new Set(prev)
-      if (next.has(traderId)) {
-        next.delete(traderId)
-      } else {
-        next.add(traderId)
-      }
-      return next
-    })
-  }
-
-  // Toggle wallet address visibility for an exchange
-  const toggleExchangeAddressVisibility = (exchangeId: string) => {
-    setVisibleExchangeAddresses(prev => {
-      const next = new Set(prev)
-      if (next.has(exchangeId)) {
-        next.delete(exchangeId)
-      } else {
-        next.add(exchangeId)
-      }
-      return next
-    })
-  }
-
-  // Copy wallet address to clipboard
-  const handleCopyAddress = async (id: string, address: string) => {
-    try {
-      await navigator.clipboard.writeText(address)
-      setCopiedId(id)
-      setTimeout(() => setCopiedId(null), 2000)
-    } catch (err) {
-      console.error('Failed to copy address:', err)
-    }
-  }
-
-  const { data: traders, mutate: mutateTraders, isLoading: isTradersLoading } = useSWR<TraderInfo[]>(
-    user && token ? 'traders' : null,
-    api.getTraders,
-    { refreshInterval: 5000 }
-  )
+  const {
+    data: traders,
+    mutate: mutateTraders,
+    isLoading: isTradersLoading,
+  } = useSWR<TraderInfo[]>(user && token ? 'traders' : null, api.getTraders, {
+    refreshInterval: 5000,
+  })
 
   // 加载AI模型和交易所配置
   useEffect(() => {
     const loadConfigs = async () => {
       if (!user || !token) {
-        // 未登录时只加载公开的支持模型
+        // 未登录时只加载公开的支持模型和交易所
         try {
-          const supportedModels = await api.getSupportedModels()
+          const [supportedModels, supportedExchanges] = await Promise.all([
+            api.getSupportedModels(),
+            api.getSupportedExchanges(),
+          ])
           setSupportedModels(supportedModels)
+          setSupportedExchanges(supportedExchanges)
         } catch (err) {
           console.error('Failed to load supported configs:', err)
         }
@@ -219,14 +163,17 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
           modelConfigs,
           exchangeConfigs,
           supportedModels,
+          supportedExchanges,
         ] = await Promise.all([
           api.getModelConfigs(),
           api.getExchangeConfigs(),
           api.getSupportedModels(),
+          api.getSupportedExchanges(),
         ])
         setAllModels(modelConfigs)
         setAllExchanges(exchangeConfigs)
         setSupportedModels(supportedModels)
+        setSupportedExchanges(supportedExchanges)
       } catch (error) {
         console.error('Failed to load configs:', error)
       }
@@ -287,25 +234,9 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
     return traders?.some((t) => t.ai_model === modelId && t.is_running)
   }
 
-  // 检查模型被哪些交易员使用
-  const getModelUsageInfo = (modelId: string) => {
-    const usingTraders = traders?.filter((t) => t.ai_model === modelId) || []
-    const runningCount = usingTraders.filter((t) => t.is_running).length
-    const totalCount = usingTraders.length
-    return { runningCount, totalCount, usingTraders }
-  }
-
   // 检查交易所是否正在被运行中的交易员使用（用于UI禁用）
   const isExchangeInUse = (exchangeId: string) => {
     return traders?.some((t) => t.exchange_id === exchangeId && t.is_running)
-  }
-
-  // 检查交易所被哪些交易员使用
-  const getExchangeUsageInfo = (exchangeId: string) => {
-    const usingTraders = traders?.filter((t) => t.exchange_id === exchangeId) || []
-    const runningCount = usingTraders.filter((t) => t.is_running).length
-    const totalCount = usingTraders.length
-    return { runningCount, totalCount, usingTraders }
   }
 
   // 检查模型是否被任何交易员使用（包括停止状态的）
@@ -398,7 +329,10 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
       }
 
       console.log('🔥 handleSaveEditTrader - data:', data)
-      console.log('🔥 handleSaveEditTrader - data.strategy_id:', data.strategy_id)
+      console.log(
+        '🔥 handleSaveEditTrader - data.strategy_id:',
+        data.strategy_id
+      )
       console.log('🔥 handleSaveEditTrader - request:', request)
 
       await toast.promise(api.updateTrader(editingTrader.trader_id, request), {
@@ -461,7 +395,10 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
     }
   }
 
-  const handleToggleCompetition = async (traderId: string, currentShowInCompetition: boolean) => {
+  const handleToggleCompetition = async (
+    traderId: string,
+    currentShowInCompetition: boolean
+  ) => {
     try {
       const newValue = !currentShowInCompetition
       await toast.promise(api.toggleCompetition(traderId, newValue), {
@@ -684,9 +621,16 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
 
     try {
       await toast.promise(api.deleteExchange(exchangeId), {
-        loading: language === 'zh' ? '正在删除交易所账户…' : 'Deleting exchange account...',
-        success: language === 'zh' ? '交易所账户已删除' : 'Exchange account deleted',
-        error: language === 'zh' ? '删除交易所账户失败' : 'Failed to delete exchange account',
+        loading:
+          language === 'zh'
+            ? '正在删除交易所账户…'
+            : 'Deleting exchange account...',
+        success:
+          language === 'zh' ? '交易所账户已删除' : 'Exchange account deleted',
+        error:
+          language === 'zh'
+            ? '删除交易所账户失败'
+            : 'Failed to delete exchange account',
       })
 
       // 重新获取用户配置以确保数据同步
@@ -748,9 +692,16 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
         }
 
         await toast.promise(api.updateExchangeConfigsEncrypted(request), {
-          loading: language === 'zh' ? '正在更新交易所配置…' : 'Updating exchange config...',
-          success: language === 'zh' ? '交易所配置已更新' : 'Exchange config updated',
-          error: language === 'zh' ? '更新交易所配置失败' : 'Failed to update exchange config',
+          loading:
+            language === 'zh'
+              ? '正在更新交易所配置…'
+              : 'Updating exchange config...',
+          success:
+            language === 'zh' ? '交易所配置已更新' : 'Exchange config updated',
+          error:
+            language === 'zh'
+              ? '更新交易所配置失败'
+              : 'Failed to update exchange config',
         })
       } else {
         // 创建新账户
@@ -773,9 +724,16 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
         }
 
         await toast.promise(api.createExchangeEncrypted(createRequest), {
-          loading: language === 'zh' ? '正在创建交易所账户…' : 'Creating exchange account...',
-          success: language === 'zh' ? '交易所账户已创建' : 'Exchange account created',
-          error: language === 'zh' ? '创建交易所账户失败' : 'Failed to create exchange account',
+          loading:
+            language === 'zh'
+              ? '正在创建交易所账户…'
+              : 'Creating exchange account...',
+          success:
+            language === 'zh' ? '交易所账户已创建' : 'Exchange account created',
+          error:
+            language === 'zh'
+              ? '创建交易所账户失败'
+              : 'Failed to create exchange account',
         })
       }
 
@@ -904,7 +862,6 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
           <div className="space-y-2 md:space-y-3">
             {configuredModels.map((model) => {
               const inUse = isModelInUse(model.id)
-              const usageInfo = getModelUsageInfo(model.id)
               return (
                 <div
                   key={model.id}
@@ -942,30 +899,16 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                         {getShortName(model.name)}
                       </div>
                       <div className="text-xs" style={{ color: '#F0B90B' }}>
-                        {model.customModelName || AI_PROVIDER_CONFIG[model.provider]?.defaultModel || ''}
+                        {model.customModelName ||
+                          AI_PROVIDER_CONFIG[model.provider]?.defaultModel ||
+                          ''}
                       </div>
-                      <div className="text-xs flex items-center gap-1.5" style={{ color: '#848E9C' }}>
-                        {usageInfo.totalCount > 0 ? (
-                          <span
-                            className="px-1.5 py-0.5 rounded text-[10px] font-medium"
-                            style={
-                              usageInfo.runningCount > 0
-                                ? { background: 'rgba(14, 203, 129, 0.15)', color: '#0ECB81' }
-                                : { background: 'rgba(240, 185, 11, 0.15)', color: '#F0B90B' }
-                            }
-                          >
-                            {usageInfo.runningCount > 0
-                              ? `${usageInfo.runningCount}/${usageInfo.totalCount} ${language === 'zh' ? '运行中' : 'Running'}`
-                              : `${usageInfo.totalCount} ${language === 'zh' ? '个交易员' : usageInfo.totalCount === 1 ? 'Trader' : 'Traders'}`
-                            }
-                          </span>
-                        ) : (
-                          <span style={{ color: '#848E9C' }}>
-                            {model.enabled
-                              ? (language === 'zh' ? '空闲' : 'Idle')
-                              : (language === 'zh' ? '已配置' : 'Configured')}
-                          </span>
-                        )}
+                      <div className="text-xs" style={{ color: '#848E9C' }}>
+                        {inUse
+                          ? t('inUse', language)
+                          : model.enabled
+                            ? t('enabled', language)
+                            : t('configured', language)}
                       </div>
                     </div>
                   </div>
@@ -1004,7 +947,6 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
           <div className="space-y-2 md:space-y-3">
             {configuredExchanges.map((exchange) => {
               const inUse = isExchangeInUse(exchange.id)
-              const usageInfo = getExchangeUsageInfo(exchange.id)
               return (
                 <div
                   key={exchange.id}
@@ -1016,107 +958,40 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                   style={{ background: '#0B0E11', border: '1px solid #2B3139' }}
                   onClick={() => handleExchangeClick(exchange.id)}
                 >
-                  {/* Left: Icon + Name + Type */}
-                  <div className="flex items-center gap-2 md:gap-3 min-w-0">
+                  <div className="flex items-center gap-2 md:gap-3">
                     <div className="w-7 h-7 md:w-8 md:h-8 flex items-center justify-center flex-shrink-0">
-                      {getExchangeIcon(exchange.exchange_type || exchange.id, { width: 28, height: 28 })}
+                      {getExchangeIcon(exchange.exchange_type || exchange.id, {
+                        width: 28,
+                        height: 28,
+                      })}
                     </div>
                     <div className="min-w-0">
                       <div
                         className="font-semibold text-sm md:text-base truncate"
                         style={{ color: '#EAECEF' }}
                       >
-                        {exchange.exchange_type?.toUpperCase() || getShortName(exchange.name)}
-                        <span className="text-xs font-normal ml-1.5" style={{ color: '#F0B90B' }}>
+                        {exchange.exchange_type?.toUpperCase() ||
+                          getShortName(exchange.name)}
+                        <span
+                          className="text-xs font-normal ml-1.5"
+                          style={{ color: '#F0B90B' }}
+                        >
                           - {exchange.account_name || 'Default'}
                         </span>
                       </div>
-                      <div className="text-xs flex items-center gap-1.5" style={{ color: '#848E9C' }}>
-                        <span>{exchange.type?.toUpperCase() || 'CEX'}</span>
-                        <span>•</span>
-                        {usageInfo.totalCount > 0 ? (
-                          <span
-                            className="px-1.5 py-0.5 rounded text-[10px] font-medium"
-                            style={
-                              usageInfo.runningCount > 0
-                                ? { background: 'rgba(14, 203, 129, 0.15)', color: '#0ECB81' }
-                                : { background: 'rgba(240, 185, 11, 0.15)', color: '#F0B90B' }
-                            }
-                          >
-                            {usageInfo.runningCount > 0
-                              ? `${usageInfo.runningCount}/${usageInfo.totalCount} ${language === 'zh' ? '运行中' : 'Running'}`
-                              : `${usageInfo.totalCount} ${language === 'zh' ? '个交易员' : usageInfo.totalCount === 1 ? 'Trader' : 'Traders'}`
-                            }
-                          </span>
-                        ) : (
-                          <span style={{ color: '#848E9C' }}>
-                            {exchange.enabled
-                              ? (language === 'zh' ? '空闲' : 'Idle')
-                              : (language === 'zh' ? '已配置' : 'Configured')}
-                          </span>
-                        )}
+                      <div className="text-xs" style={{ color: '#848E9C' }}>
+                        {exchange.type?.toUpperCase() || 'CEX'} •{' '}
+                        {inUse
+                          ? t('inUse', language)
+                          : exchange.enabled
+                            ? t('enabled', language)
+                            : t('configured', language)}
                       </div>
                     </div>
                   </div>
-                  {/* Right: Wallet Address + Status Dot */}
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    {/* Wallet address for DEX exchanges */}
-                    {(() => {
-                      const walletAddr = exchange.hyperliquidWalletAddr || exchange.asterUser || exchange.lighterWalletAddr
-                      if (exchange.type !== 'dex' || !walletAddr) return null
-
-                      const isVisible = visibleExchangeAddresses.has(exchange.id)
-                      const isCopied = copiedId === `exchange-${exchange.id}`
-
-                      return (
-                        <div
-                          className="flex items-center gap-1 px-2 py-1 rounded"
-                          style={{
-                            background: 'rgba(240, 185, 11, 0.08)',
-                            border: '1px solid rgba(240, 185, 11, 0.2)',
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <span className="text-xs font-mono" style={{ color: '#F0B90B' }}>
-                            {isVisible ? walletAddr : truncateAddress(walletAddr)}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              toggleExchangeAddressVisibility(exchange.id)
-                            }}
-                            className="p-0.5 rounded hover:bg-gray-700 transition-colors"
-                            title={isVisible ? (language === 'zh' ? '隐藏' : 'Hide') : (language === 'zh' ? '显示' : 'Show')}
-                          >
-                            {isVisible ? (
-                              <EyeOff className="w-3 h-3" style={{ color: '#848E9C' }} />
-                            ) : (
-                              <Eye className="w-3 h-3" style={{ color: '#848E9C' }} />
-                            )}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleCopyAddress(`exchange-${exchange.id}`, walletAddr)
-                            }}
-                            className="p-0.5 rounded hover:bg-gray-700 transition-colors"
-                            title={language === 'zh' ? '复制' : 'Copy'}
-                          >
-                            {isCopied ? (
-                              <Check className="w-3 h-3" style={{ color: '#0ECB81' }} />
-                            ) : (
-                              <Copy className="w-3 h-3" style={{ color: '#848E9C' }} />
-                            )}
-                          </button>
-                        </div>
-                      )
-                    })()}
-                    <div
-                      className={`w-2.5 h-2.5 md:w-3 md:h-3 rounded-full flex-shrink-0 ${exchange.enabled ? 'bg-green-400' : 'bg-gray-500'}`}
-                    />
-                  </div>
+                  <div
+                    className={`w-2.5 h-2.5 md:w-3 md:h-3 rounded-full flex-shrink-0 ${exchange.enabled ? 'bg-green-400' : 'bg-gray-500'}`}
+                  />
                 </div>
               )
             })}
@@ -1185,12 +1060,18 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                 <div className="flex items-center gap-3 md:gap-4">
                   <div className="flex-shrink-0">
                     <PunkAvatar
-                      seed={getTraderAvatar(trader.trader_id, trader.trader_name)}
+                      seed={getTraderAvatar(
+                        trader.trader_id,
+                        trader.trader_name
+                      )}
                       size={48}
                       className="rounded-lg hidden md:block"
                     />
                     <PunkAvatar
-                      seed={getTraderAvatar(trader.trader_id, trader.trader_name)}
+                      seed={getTraderAvatar(
+                        trader.trader_id,
+                        trader.trader_name
+                      )}
                       size={40}
                       className="rounded-lg md:hidden"
                     />
@@ -1213,66 +1094,13 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                       {getModelDisplayName(
                         trader.ai_model.split('_').pop() || trader.ai_model
                       )}{' '}
-                      Model • {getExchangeDisplayName(trader.exchange_id, allExchanges)}
+                      Model •{' '}
+                      {getExchangeDisplayName(trader.exchange_id, allExchanges)}
                     </div>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-3 md:gap-4 flex-wrap md:flex-nowrap">
-                  {/* Wallet Address for Perp-DEX - placed before status for alignment */}
-                  {(() => {
-                    const exchange = allExchanges.find(e => e.id === trader.exchange_id)
-                    const walletAddr = getWalletAddress(exchange)
-                    const isPerpDex = isPerpDexExchange(exchange?.exchange_type)
-                    if (!isPerpDex || !walletAddr) return null
-
-                    const isVisible = visibleTraderAddresses.has(trader.trader_id)
-                    const isCopied = copiedId === trader.trader_id
-
-                    return (
-                      <div
-                        className="flex items-center gap-1 px-2 py-1 rounded"
-                        style={{
-                          background: 'rgba(240, 185, 11, 0.08)',
-                          border: '1px solid rgba(240, 185, 11, 0.2)',
-                        }}
-                      >
-                        <span className="text-xs font-mono" style={{ color: '#F0B90B' }}>
-                          {isVisible ? walletAddr : truncateAddress(walletAddr)}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            toggleTraderAddressVisibility(trader.trader_id)
-                          }}
-                          className="p-0.5 rounded hover:bg-gray-700 transition-colors"
-                          title={isVisible ? (language === 'zh' ? '隐藏' : 'Hide') : (language === 'zh' ? '显示' : 'Show')}
-                        >
-                          {isVisible ? (
-                            <EyeOff className="w-3 h-3" style={{ color: '#848E9C' }} />
-                          ) : (
-                            <Eye className="w-3 h-3" style={{ color: '#848E9C' }} />
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleCopyAddress(trader.trader_id, walletAddr)
-                          }}
-                          className="p-0.5 rounded hover:bg-gray-700 transition-colors"
-                          title={language === 'zh' ? '复制' : 'Copy'}
-                        >
-                          {isCopied ? (
-                            <Check className="w-3 h-3" style={{ color: '#0ECB81' }} />
-                          ) : (
-                            <Copy className="w-3 h-3" style={{ color: '#848E9C' }} />
-                          )}
-                        </button>
-                      </div>
-                    )
-                  })()}
                   {/* Status */}
                   <div className="text-center">
                     {/* <div className="text-xs mb-1" style={{ color: '#848E9C' }}>
@@ -1309,9 +1137,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                         if (onTraderSelect) {
                           onTraderSelect(trader.trader_id)
                         } else {
-                          // 使用 slug 格式: name-id前4位
-                          const slug = `${trader.trader_name}-${trader.trader_id.slice(0, 4)}`
-                          navigate(`/dashboard?trader=${encodeURIComponent(slug)}`)
+                          navigate(`/dashboard?trader=${trader.trader_id}`)
                         }
                       }}
                       className="px-2 md:px-3 py-1.5 md:py-2 rounded text-xs md:text-sm font-semibold transition-all hover:scale-105 flex items-center gap-1 whitespace-nowrap"
@@ -1365,7 +1191,12 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                     </button>
 
                     <button
-                      onClick={() => handleToggleCompetition(trader.trader_id, trader.show_in_competition ?? true)}
+                      onClick={() =>
+                        handleToggleCompetition(
+                          trader.trader_id,
+                          trader.show_in_competition ?? true
+                        )
+                      }
                       className="px-2 md:px-3 py-1.5 md:py-2 rounded text-xs md:text-sm font-semibold transition-all hover:scale-105 whitespace-nowrap flex items-center gap-1"
                       style={
                         trader.show_in_competition !== false
@@ -1378,7 +1209,11 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                               color: '#848E9C',
                             }
                       }
-                      title={trader.show_in_competition !== false ? '在竞技场显示' : '在竞技场隐藏'}
+                      title={
+                        trader.show_in_competition !== false
+                          ? '在竞技场显示'
+                          : '在竞技场隐藏'
+                      }
                     >
                       {trader.show_in_competition !== false ? (
                         <Eye className="w-3 h-3 md:w-4 md:h-4" />
@@ -1476,7 +1311,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
       {/* Exchange Configuration Modal */}
       {showExchangeModal && (
         <ExchangeConfigModal
-          allExchanges={allExchanges}
+          allExchanges={supportedExchanges}
           editingExchangeId={editingExchange}
           onSave={handleSaveExchangeConfig}
           onDelete={handleDeleteExchangeConfig}
@@ -1649,9 +1484,18 @@ function ModelConfigModal({
                 </div>
                 {/* Default model info and API link */}
                 {AI_PROVIDER_CONFIG[selectedModel.provider] && (
-                  <div className="mt-3 pt-3" style={{ borderTop: '1px solid #2B3139' }}>
+                  <div
+                    className="mt-3 pt-3"
+                    style={{ borderTop: '1px solid #2B3139' }}
+                  >
                     <div className="text-xs mb-2" style={{ color: '#848E9C' }}>
-                      {t('defaultModel', language)}: <span style={{ color: '#F0B90B' }}>{AI_PROVIDER_CONFIG[selectedModel.provider].defaultModel}</span>
+                      {t('defaultModel', language)}:{' '}
+                      <span style={{ color: '#F0B90B' }}>
+                        {
+                          AI_PROVIDER_CONFIG[selectedModel.provider]
+                            .defaultModel
+                        }
+                      </span>
                     </div>
                     <a
                       href={AI_PROVIDER_CONFIG[selectedModel.provider].apiUrl}
@@ -1661,10 +1505,17 @@ function ModelConfigModal({
                       style={{ color: '#F0B90B' }}
                     >
                       <ExternalLink className="w-3 h-3" />
-                      {t('applyApiKey', language)} → {AI_PROVIDER_CONFIG[selectedModel.provider].apiName}
+                      {t('applyApiKey', language)} →{' '}
+                      {AI_PROVIDER_CONFIG[selectedModel.provider].apiName}
                     </a>
                     {selectedModel.provider === 'kimi' && (
-                      <div className="mt-2 text-xs p-2 rounded" style={{ background: 'rgba(246, 70, 93, 0.1)', color: '#F6465D' }}>
+                      <div
+                        className="mt-2 text-xs p-2 rounded"
+                        style={{
+                          background: 'rgba(246, 70, 93, 0.1)',
+                          color: '#F6465D',
+                        }}
+                      >
                         ⚠️ {t('kimiApiNote', language)}
                       </div>
                     )}

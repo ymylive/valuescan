@@ -7,6 +7,7 @@ import { ArrowLeft, KeyRound, Eye, EyeOff } from 'lucide-react'
 import PasswordChecklist from 'react-password-checklist'
 import { Input } from './ui/input'
 import { toast } from 'sonner'
+import { withBasePath } from '../lib/appBase'
 
 export function ResetPasswordPage() {
   const { language } = useLanguage()
@@ -42,7 +43,7 @@ export function ResetPasswordPage() {
       toast.success(t('resetPasswordSuccess', language) || '重置成功')
       // 3秒后跳转到登录页面
       setTimeout(() => {
-        window.history.pushState({}, '', '/login')
+        window.history.pushState({}, '', withBasePath('/login'))
         window.dispatchEvent(new PopStateEvent('popstate'))
       }, 3000)
     } else {
@@ -66,7 +67,7 @@ export function ResetPasswordPage() {
           {/* Back to Login */}
           <button
             onClick={() => {
-              window.history.pushState({}, '', '/login')
+              window.history.pushState({}, '', withBasePath('/login'))
               window.dispatchEvent(new PopStateEvent('popstate'))
             }}
             className="flex items-center gap-2 mb-6 text-sm hover:text-[#F0B90B] transition-colors"

@@ -1,9 +1,10 @@
 import { motion } from 'framer-motion'
-import { ArrowRight, Play, Github, Zap } from 'lucide-react'
+import { ArrowRight, Play, Github, Sparkles } from 'lucide-react'
 import { t, Language } from '../../i18n/translations'
 import { useGitHubStats } from '../../hooks/useGitHubStats'
 import { useCounterAnimation } from '../../hooks/useCounterAnimation'
 import { OFFICIAL_LINKS } from '../../constants/branding'
+import { SpotlightBackground } from '../ui/SpotlightBackground'
 
 interface HeroSectionProps {
   language: Language
@@ -18,72 +19,51 @@ export default function HeroSection({ language }: HeroSectionProps) {
   })
 
   return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-16">
-      {/* Animated Background */}
-      <div className="absolute inset-0 overflow-hidden">
-        {/* Grid Pattern */}
-        <div
-          className="absolute inset-0 opacity-[0.03]"
-          style={{
-            backgroundImage: `linear-gradient(#F0B90B 1px, transparent 1px), linear-gradient(90deg, #F0B90B 1px, transparent 1px)`,
-            backgroundSize: '60px 60px',
-          }}
-        />
-        {/* Radial Gradient */}
-        <div
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full"
-          style={{
-            background: 'radial-gradient(circle, rgba(240, 185, 11, 0.08) 0%, transparent 70%)',
-          }}
-        />
-        {/* Floating Orbs */}
+    <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-20">
+      <SpotlightBackground />
+      
+      {/* Dynamic Background Elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <motion.div
-          className="absolute top-20 right-20 w-32 h-32 rounded-full blur-3xl"
-          style={{ background: 'rgba(240, 185, 11, 0.15)' }}
+          className="absolute top-1/4 -left-20 w-[500px] h-[500px] bg-white/5 rounded-full blur-[120px]"
           animate={{
-            y: [0, 30, 0],
-            scale: [1, 1.1, 1],
+            x: [0, 50, 0],
+            opacity: [0.3, 0.5, 0.3],
           }}
-          transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
+          transition={{ duration: 15, repeat: Infinity, ease: 'linear' }}
         />
         <motion.div
-          className="absolute bottom-40 left-20 w-48 h-48 rounded-full blur-3xl"
-          style={{ background: 'rgba(240, 185, 11, 0.1)' }}
+          className="absolute bottom-1/4 -right-20 w-[400px] h-[400px] bg-white/5 rounded-full blur-[100px]"
           animate={{
-            y: [0, -40, 0],
-            scale: [1, 1.2, 1],
+            x: [0, -30, 0],
+            opacity: [0.2, 0.4, 0.2],
           }}
-          transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut' }}
+          transition={{ duration: 12, repeat: Infinity, ease: 'linear' }}
         />
       </div>
 
-      <div className="relative z-10 max-w-6xl mx-auto px-4 text-center">
+      <div className="relative z-10 max-w-7xl mx-auto px-6 text-center">
         {/* Badge */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-full mb-8"
-          style={{
-            background: 'rgba(240, 185, 11, 0.1)',
-            border: '1px solid rgba(240, 185, 11, 0.3)',
-          }}
+          className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full mb-10 glass border-white/10"
         >
-          <Zap className="w-4 h-4" style={{ color: '#F0B90B' }} />
-          <span className="text-sm font-medium" style={{ color: '#F0B90B' }}>
+          <Sparkles className="w-3.5 h-3.5 text-yellow-400 animate-pulse" />
+          <span className="text-xs font-medium tracking-wide text-neutral-300">
             {isLoading ? (
               t('githubStarsInDays', language)
             ) : language === 'zh' ? (
               <>
                 {daysOld} 天内获得{' '}
-                <span className="font-bold tabular-nums">
+                <span className="text-white font-bold tabular-nums">
                   {(animatedStars / 1000).toFixed(1)}K+
                 </span>{' '}
                 GitHub Stars
               </>
             ) : (
               <>
-                <span className="font-bold tabular-nums">
+                <span className="text-white font-bold tabular-nums">
                   {(animatedStars / 1000).toFixed(1)}K+
                 </span>{' '}
                 GitHub Stars in {daysOld} days
@@ -96,63 +76,40 @@ export default function HeroSection({ language }: HeroSectionProps) {
         <motion.h1
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.1 }}
-          className="text-5xl sm:text-6xl lg:text-7xl font-bold mb-6 leading-tight"
+          transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+          className="text-5xl sm:text-7xl lg:text-8xl font-bold mb-8 leading-[1.1] tracking-tight"
         >
-          <span style={{ color: '#EAECEF' }}>{t('heroTitle1', language)}</span>
+          <span className="text-white inline-block">{t('heroTitle1', language)}</span>
           <br />
-          <span
-            className="relative inline-block"
-            style={{
-              background: 'linear-gradient(135deg, #F0B90B 0%, #FCD535 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-            }}
-          >
+          <span className="text-gradient inline-block mt-2">
             {t('heroTitle2', language)}
-            <motion.span
-              className="absolute -bottom-2 left-0 h-1 rounded-full"
-              style={{ background: 'linear-gradient(90deg, #F0B90B, #FCD535)' }}
-              initial={{ width: 0 }}
-              animate={{ width: '100%' }}
-              transition={{ duration: 0.8, delay: 0.8 }}
-            />
           </span>
         </motion.h1>
 
         {/* Description */}
         <motion.p
-          initial={{ opacity: 0, y: 30 }}
+          initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.2 }}
-          className="text-lg sm:text-xl max-w-3xl mx-auto mb-10 leading-relaxed"
-          style={{ color: '#848E9C' }}
+          transition={{ duration: 0.8, delay: 0.2 }}
+          className="text-lg sm:text-xl max-w-2xl mx-auto mb-12 leading-relaxed text-neutral-400 font-medium"
         >
           {t('heroDescription', language)}
         </motion.p>
 
         {/* CTA Buttons */}
         <motion.div
-          initial={{ opacity: 0, y: 30 }}
+          initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.3 }}
-          className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12"
+          transition={{ duration: 0.8, delay: 0.3 }}
+          className="flex flex-col sm:flex-row items-center justify-center gap-5 mb-20"
         >
           <motion.a
             href="/competition"
-            className="group flex items-center gap-3 px-8 py-4 rounded-xl font-bold text-lg transition-all"
-            style={{
-              background: 'linear-gradient(135deg, #F0B90B 0%, #FCD535 100%)',
-              color: '#0B0E11',
-              boxShadow: '0 4px 24px rgba(240, 185, 11, 0.3)',
-            }}
-            whileHover={{
-              scale: 1.02,
-              boxShadow: '0 8px 32px rgba(240, 185, 11, 0.4)',
-            }}
-            whileTap={{ scale: 0.98 }}
+            className="group btn-modern btn-modern-primary px-8 py-4 text-lg font-bold min-w-[200px]"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
           >
-            <Play className="w-5 h-5" />
+            <Play className="w-5 h-5 fill-current" />
             {t('liveCompetition', language) || 'Live Competition'}
             <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
           </motion.a>
@@ -161,18 +118,9 @@ export default function HeroSection({ language }: HeroSectionProps) {
             href={OFFICIAL_LINKS.github}
             target="_blank"
             rel="noopener noreferrer"
-            className="group flex items-center gap-3 px-8 py-4 rounded-xl font-bold text-lg transition-all"
-            style={{
-              background: 'rgba(255, 255, 255, 0.05)',
-              color: '#EAECEF',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-            }}
-            whileHover={{
-              scale: 1.02,
-              background: 'rgba(255, 255, 255, 0.08)',
-              borderColor: 'rgba(240, 185, 11, 0.3)',
-            }}
-            whileTap={{ scale: 0.98 }}
+            className="group btn-modern btn-modern-ghost glass border-white/5 px-8 py-4 text-lg font-bold min-w-[200px]"
+            whileHover={{ scale: 1.05, backgroundColor: 'rgba(255,255,255,0.05)' }}
+            whileTap={{ scale: 0.95 }}
           >
             <Github className="w-5 h-5" />
             {t('viewSourceCode', language)}
@@ -181,71 +129,62 @@ export default function HeroSection({ language }: HeroSectionProps) {
 
         {/* Stats Row */}
         <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.4 }}
-          className="flex flex-wrap items-center justify-center gap-8 sm:gap-12"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 1, delay: 0.5 }}
+          className="grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-12 max-w-4xl mx-auto"
         >
           {[
             { label: 'GitHub Stars', value: `${(stars / 1000).toFixed(1)}K+` },
-            { label: language === 'zh' ? '支持交易所' : 'Exchanges', value: '5+' },
-            { label: language === 'zh' ? 'AI 模型' : 'AI Models', value: '10+' },
-            { label: language === 'zh' ? '开源免费' : 'Open Source', value: '100%' },
-          ].map((stat, index) => (
+            {
+              label: language === 'zh' ? '支持交易所' : 'Exchanges',
+              value: '5+',
+            },
+            {
+              label: language === 'zh' ? 'AI 模型' : 'AI Models',
+              value: '10+',
+            },
+            {
+              label: language === 'zh' ? '开源免费' : 'Open Source',
+              value: '100%',
+            },
+          ].map((stat) => (
             <motion.div
               key={stat.label}
-              className="text-center"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.5 + index * 0.1 }}
+              className="text-center group"
+              whileHover={{ y: -5 }}
+              transition={{ type: 'spring', stiffness: 300 }}
             >
-              <div
-                className="text-3xl sm:text-4xl font-bold mb-1"
-                style={{
-                  background: 'linear-gradient(135deg, #F0B90B 0%, #FCD535 100%)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                }}
-              >
+              <div className="text-3xl sm:text-4xl font-bold mb-2 text-white group-hover:text-yellow-400 transition-colors">
                 {stat.value}
               </div>
-              <div className="text-sm" style={{ color: '#5E6673' }}>
+              <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-bold">
                 {stat.label}
               </div>
             </motion.div>
           ))}
         </motion.div>
-
-        {/* Powered By */}
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.6, delay: 0.8 }}
-          className="mt-16 text-xs"
-          style={{ color: '#5E6673' }}
-        >
-          {t('poweredBy', language)}
-        </motion.p>
       </div>
 
       {/* Scroll Indicator */}
       <motion.div
-        className="absolute bottom-8 left-1/2 -translate-x-1/2"
+        className="absolute bottom-10 left-1/2 -translate-x-1/2 pointer-events-none"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ delay: 1 }}
+        transition={{ delay: 1.5 }}
       >
-        <motion.div
-          className="w-6 h-10 rounded-full flex justify-center pt-2"
-          style={{ border: '2px solid rgba(240, 185, 11, 0.3)' }}
-          animate={{ y: [0, 8, 0] }}
-          transition={{ duration: 2, repeat: Infinity }}
-        >
+        <div className="flex flex-col items-center gap-2">
+          <span className="text-[10px] uppercase tracking-[0.2em] text-neutral-600 font-bold">Scroll</span>
           <motion.div
-            className="w-1.5 h-3 rounded-full"
-            style={{ background: '#F0B90B' }}
+            className="w-[1px] h-12 bg-gradient-to-b from-white/20 to-transparent"
+            animate={{
+              scaleY: [0, 1, 0],
+              translateY: [0, 20, 40],
+              opacity: [0, 1, 0]
+            }}
+            transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
           />
-        </motion.div>
+        </div>
       </motion.div>
     </section>
   )

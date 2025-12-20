@@ -1,3 +1,7 @@
+import { withBasePath } from './appBase'
+
+const API_BASE = withBasePath('/api')
+
 export interface EncryptedPayload {
   wrappedKey: string // RSA-OAEP(K)
   iv: string // 12 bytes
@@ -39,7 +43,7 @@ export class CryptoService {
   }
 
   static async fetchCryptoConfig(): Promise<CryptoConfig> {
-    const response = await fetch('/api/crypto/config')
+    const response = await fetch(`${API_BASE}/crypto/config`)
     if (!response.ok) {
       throw new Error(`Failed to fetch crypto config: ${response.statusText}`)
     }
@@ -167,7 +171,7 @@ export class CryptoService {
   }
 
   static async fetchPublicKey(): Promise<string> {
-    const response = await fetch('/api/crypto/public-key')
+    const response = await fetch(`${API_BASE}/crypto/public-key`)
     if (!response.ok) {
       throw new Error(`Failed to fetch public key: ${response.statusText}`)
     }
@@ -182,7 +186,7 @@ export class CryptoService {
   static async decryptSensitiveData(
     payload: EncryptedPayload
   ): Promise<string> {
-    const response = await fetch('/api/crypto/decrypt', {
+    const response = await fetch(`${API_BASE}/crypto/decrypt`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

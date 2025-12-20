@@ -8,13 +8,46 @@ interface DecisionCardProps {
 }
 
 // Action type configuration
-const ACTION_CONFIG: Record<string, { color: string; bg: string; icon: string; label: string }> = {
-  open_long: { color: '#0ECB81', bg: 'rgba(14, 203, 129, 0.15)', icon: '📈', label: 'LONG' },
-  open_short: { color: '#F6465D', bg: 'rgba(246, 70, 93, 0.15)', icon: '📉', label: 'SHORT' },
-  close_long: { color: '#F0B90B', bg: 'rgba(240, 185, 11, 0.15)', icon: '💰', label: 'CLOSE' },
-  close_short: { color: '#F0B90B', bg: 'rgba(240, 185, 11, 0.15)', icon: '💰', label: 'CLOSE' },
-  hold: { color: '#848E9C', bg: 'rgba(132, 142, 156, 0.15)', icon: '⏸️', label: 'HOLD' },
-  wait: { color: '#848E9C', bg: 'rgba(132, 142, 156, 0.15)', icon: '⏳', label: 'WAIT' },
+const ACTION_CONFIG: Record<
+  string,
+  { color: string; bg: string; icon: string; label: string }
+> = {
+  open_long: {
+    color: '#0ECB81',
+    bg: 'rgba(14, 203, 129, 0.15)',
+    icon: '📈',
+    label: 'LONG',
+  },
+  open_short: {
+    color: '#F6465D',
+    bg: 'rgba(246, 70, 93, 0.15)',
+    icon: '📉',
+    label: 'SHORT',
+  },
+  close_long: {
+    color: '#F0B90B',
+    bg: 'rgba(240, 185, 11, 0.15)',
+    icon: '💰',
+    label: 'CLOSE',
+  },
+  close_short: {
+    color: '#F0B90B',
+    bg: 'rgba(240, 185, 11, 0.15)',
+    icon: '💰',
+    label: 'CLOSE',
+  },
+  hold: {
+    color: '#848E9C',
+    bg: 'rgba(132, 142, 156, 0.15)',
+    icon: '⏸️',
+    label: 'HOLD',
+  },
+  wait: {
+    color: '#848E9C',
+    bg: 'rgba(132, 142, 156, 0.15)',
+    icon: '⏳',
+    label: 'WAIT',
+  },
 }
 
 // Format price with proper decimals
@@ -26,7 +59,11 @@ function formatPrice(price: number | undefined): string {
 }
 
 // Calculate percentage change
-function calcPctChange(entry: number | undefined, target: number | undefined, isLong: boolean): string {
+function calcPctChange(
+  entry: number | undefined,
+  target: number | undefined,
+  isLong: boolean
+): string {
   if (!entry || !target || entry === 0) return '-'
   const pct = ((target - entry) / entry) * 100
   const adjustedPct = isLong ? pct : -pct
@@ -42,7 +79,13 @@ function getConfidenceColor(confidence: number | undefined): string {
 }
 
 // Single Action Card Component
-function ActionCard({ action, language }: { action: DecisionAction; language: Language }) {
+function ActionCard({
+  action,
+  language,
+}: {
+  action: DecisionAction
+  language: Language
+}) {
   const config = ACTION_CONFIG[action.action] || ACTION_CONFIG.wait
   const isLong = action.action.includes('long')
   const isOpen = action.action.includes('open')
@@ -60,12 +103,19 @@ function ActionCard({ action, language }: { action: DecisionAction; language: La
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
           <span className="text-xl">{config.icon}</span>
-          <span className="font-mono font-bold text-lg" style={{ color: '#EAECEF' }}>
+          <span
+            className="font-mono font-bold text-lg"
+            style={{ color: '#EAECEF' }}
+          >
             {action.symbol.replace('USDT', '')}
           </span>
           <span
             className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider"
-            style={{ background: config.bg, color: config.color, border: `1px solid ${config.color}55` }}
+            style={{
+              background: config.bg,
+              color: config.color,
+              border: `1px solid ${config.color}55`,
+            }}
           >
             {config.label}
           </span>
@@ -78,7 +128,7 @@ function ActionCard({ action, language }: { action: DecisionAction; language: La
               className="px-2 py-1 rounded text-xs font-semibold"
               style={{
                 background: `${getConfidenceColor(action.confidence)}22`,
-                color: getConfidenceColor(action.confidence)
+                color: getConfidenceColor(action.confidence),
               }}
             >
               {action.confidence.toFixed(0)}%
@@ -93,13 +143,19 @@ function ActionCard({ action, language }: { action: DecisionAction; language: La
 
       {/* Trading Details Grid */}
       {isOpen && (
-        <div className="grid grid-cols-4 gap-3 mt-3 pt-3" style={{ borderTop: '1px solid #2B3139' }}>
+        <div
+          className="grid grid-cols-4 gap-3 mt-3 pt-3"
+          style={{ borderTop: '1px solid #2B3139' }}
+        >
           {/* Entry Price */}
           <div className="text-center">
             <div className="text-xs mb-1" style={{ color: '#848E9C' }}>
               {t('entryPrice', language)}
             </div>
-            <div className="font-mono font-semibold" style={{ color: '#EAECEF' }}>
+            <div
+              className="font-mono font-semibold"
+              style={{ color: '#EAECEF' }}
+            >
               {formatPrice(action.price)}
             </div>
           </div>
@@ -109,7 +165,10 @@ function ActionCard({ action, language }: { action: DecisionAction; language: La
             <div className="text-xs mb-1" style={{ color: '#F6465D' }}>
               {t('stopLoss', language)}
             </div>
-            <div className="font-mono font-semibold" style={{ color: '#F6465D' }}>
+            <div
+              className="font-mono font-semibold"
+              style={{ color: '#F6465D' }}
+            >
               {formatPrice(action.stop_loss)}
             </div>
             {action.stop_loss && action.price && (
@@ -124,7 +183,10 @@ function ActionCard({ action, language }: { action: DecisionAction; language: La
             <div className="text-xs mb-1" style={{ color: '#0ECB81' }}>
               {t('takeProfit', language)}
             </div>
-            <div className="font-mono font-semibold" style={{ color: '#0ECB81' }}>
+            <div
+              className="font-mono font-semibold"
+              style={{ color: '#0ECB81' }}
+            >
               {formatPrice(action.take_profit)}
             </div>
             {action.take_profit && action.price && (
@@ -139,7 +201,10 @@ function ActionCard({ action, language }: { action: DecisionAction; language: La
             <div className="text-xs mb-1" style={{ color: '#848E9C' }}>
               {t('leverage', language)}
             </div>
-            <div className="font-mono font-semibold" style={{ color: '#F0B90B' }}>
+            <div
+              className="font-mono font-semibold"
+              style={{ color: '#F0B90B' }}
+            >
               {action.leverage}x
             </div>
           </div>
@@ -148,14 +213,20 @@ function ActionCard({ action, language }: { action: DecisionAction; language: La
 
       {/* Risk/Reward Ratio for open positions */}
       {isOpen && action.stop_loss && action.take_profit && action.price && (
-        <div className="mt-3 pt-3 flex items-center justify-between" style={{ borderTop: '1px solid #2B3139' }}>
-          <span className="text-xs" style={{ color: '#848E9C' }}>{t('riskReward', language)}</span>
+        <div
+          className="mt-3 pt-3 flex items-center justify-between"
+          style={{ borderTop: '1px solid #2B3139' }}
+        >
+          <span className="text-xs" style={{ color: '#848E9C' }}>
+            {t('riskReward', language)}
+          </span>
           <div className="flex items-center gap-2">
             {(() => {
               const slDist = Math.abs(action.price - action.stop_loss)
               const tpDist = Math.abs(action.take_profit - action.price)
-              const ratio = slDist > 0 ? (tpDist / slDist) : 0
-              const ratioColor = ratio >= 3 ? '#0ECB81' : ratio >= 2 ? '#F0B90B' : '#F6465D'
+              const ratio = slDist > 0 ? tpDist / slDist : 0
+              const ratioColor =
+                ratio >= 3 ? '#0ECB81' : ratio >= 2 ? '#F0B90B' : '#F6465D'
               return (
                 <>
                   <div className="flex gap-1">
@@ -173,8 +244,8 @@ function ActionCard({ action, language }: { action: DecisionAction; language: La
                     <div
                       className="h-full rounded-full transition-all duration-300"
                       style={{
-                        width: `${Math.min(ratio / 5 * 100, 100)}%`,
-                        background: ratioColor
+                        width: `${Math.min((ratio / 5) * 100, 100)}%`,
+                        background: ratioColor,
                       }}
                     />
                   </div>
@@ -246,8 +317,16 @@ export function DecisionCard({ decision, language }: DecisionCardProps) {
           className="px-4 py-1.5 rounded-full text-xs font-bold tracking-wider"
           style={
             decision.success
-              ? { background: 'rgba(14, 203, 129, 0.15)', color: '#0ECB81', border: '1px solid rgba(14, 203, 129, 0.3)' }
-              : { background: 'rgba(246, 70, 93, 0.15)', color: '#F6465D', border: '1px solid rgba(246, 70, 93, 0.3)' }
+              ? {
+                  background: 'rgba(14, 203, 129, 0.15)',
+                  color: '#0ECB81',
+                  border: '1px solid rgba(14, 203, 129, 0.3)',
+                }
+              : {
+                  background: 'rgba(246, 70, 93, 0.15)',
+                  color: '#F6465D',
+                  border: '1px solid rgba(246, 70, 93, 0.3)',
+                }
           }
         >
           {t(decision.success ? 'success' : 'failed', language)}
@@ -258,7 +337,11 @@ export function DecisionCard({ decision, language }: DecisionCardProps) {
       {decision.decisions && decision.decisions.length > 0 && (
         <div className="space-y-3 mb-4">
           {decision.decisions.map((action, index) => (
-            <ActionCard key={`${action.symbol}-${index}`} action={action} language={language} />
+            <ActionCard
+              key={`${action.symbol}-${index}`}
+              action={action}
+              language={language}
+            />
           ))}
         </div>
       )}
@@ -280,9 +363,14 @@ export function DecisionCard({ decision, language }: DecisionCardProps) {
               </div>
               <span
                 className="text-xs px-2 py-0.5 rounded"
-                style={{ background: 'rgba(96, 165, 250, 0.15)', color: '#60a5fa' }}
+                style={{
+                  background: 'rgba(96, 165, 250, 0.15)',
+                  color: '#60a5fa',
+                }}
               >
-                {showInputPrompt ? t('collapse', language) : t('expand', language)}
+                {showInputPrompt
+                  ? t('collapse', language)
+                  : t('expand', language)}
               </span>
             </button>
             {showInputPrompt && (
@@ -315,7 +403,10 @@ export function DecisionCard({ decision, language }: DecisionCardProps) {
               </div>
               <span
                 className="text-xs px-2 py-0.5 rounded"
-                style={{ background: 'rgba(240, 185, 11, 0.15)', color: '#F0B90B' }}
+                style={{
+                  background: 'rgba(240, 185, 11, 0.15)',
+                  color: '#F0B90B',
+                }}
               >
                 {showCoT ? t('collapse', language) : t('expand', language)}
               </span>

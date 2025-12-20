@@ -1,0 +1,25 @@
+[Unit]
+Description=ValueScan Process Keepalive Service
+Documentation=https://github.com/valuescan/keepalive
+After=network.target
+Wants=valuescan-monitor.service valuescan-api.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/valuescan
+ExecStart=/usr/bin/python3.9 /root/valuescan/keepalive_main.py --config /root/valuescan/keepalive_config.json
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=valuescan-keepalive
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
+
+# Resource limits
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

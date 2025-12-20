@@ -15,7 +15,12 @@ interface ChartTabsProps {
 
 type ChartTab = 'equity' | 'kline'
 
-export function ChartTabs({ traderId, selectedSymbol, updateKey, exchangeId }: ChartTabsProps) {
+export function ChartTabs({
+  traderId,
+  selectedSymbol,
+  updateKey,
+  exchangeId,
+}: ChartTabsProps) {
   const { language } = useLanguage()
   const [activeTab, setActiveTab] = useState<ChartTab>('equity')
   const [chartSymbol, setChartSymbol] = useState<string>('BTCUSDT')
@@ -23,7 +28,12 @@ export function ChartTabs({ traderId, selectedSymbol, updateKey, exchangeId }: C
   // 当从外部选择币种时，自动切换到K线图
   useEffect(() => {
     if (selectedSymbol) {
-      console.log('[ChartTabs] 收到币种选择:', selectedSymbol, 'updateKey:', updateKey)
+      console.log(
+        '[ChartTabs] 收到币种选择:',
+        selectedSymbol,
+        'updateKey:',
+        updateKey
+      )
       setChartSymbol(selectedSymbol)
       setActiveTab('kline')
     }
@@ -46,10 +56,11 @@ export function ChartTabs({ traderId, selectedSymbol, updateKey, exchangeId }: C
             console.log('[ChartTabs] switching to equity')
             setActiveTab('equity')
           }}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'equity'
-            ? 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/30 shadow-[0_0_10px_rgba(252,213,53,0.15)]'
-            : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
-            }`}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+            activeTab === 'equity'
+              ? 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/30 shadow-[0_0_10px_rgba(252,213,53,0.15)]'
+              : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
+          }`}
         >
           <BarChart3 className="w-4 h-4" />
           {t('accountEquityCurve', language)}
@@ -60,10 +71,11 @@ export function ChartTabs({ traderId, selectedSymbol, updateKey, exchangeId }: C
             console.log('[ChartTabs] switching to kline')
             setActiveTab('kline')
           }}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'kline'
-            ? 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/30 shadow-[0_0_10px_rgba(252,213,53,0.15)]'
-            : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
-            }`}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+            activeTab === 'kline'
+              ? 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/30 shadow-[0_0_10px_rgba(252,213,53,0.15)]'
+              : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
+          }`}
         >
           <CandlestickChart className="w-4 h-4" />
           {t('marketChart', language)}

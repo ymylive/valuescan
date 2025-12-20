@@ -1,3 +1,5 @@
+import { withBasePath } from '../lib/appBase'
+
 interface IconProps {
   width?: number
   height?: number
@@ -24,25 +26,25 @@ export const getModelIcon = (modelType: string, props: IconProps = {}) => {
 
   switch (type) {
     case 'deepseek':
-      iconPath = '/icons/deepseek.svg'
+      iconPath = withBasePath('/icons/deepseek.svg')
       break
     case 'qwen':
-      iconPath = '/icons/qwen.svg'
+      iconPath = withBasePath('/icons/qwen.svg')
       break
     case 'claude':
-      iconPath = '/icons/claude.svg'
+      iconPath = withBasePath('/icons/claude.svg')
       break
     case 'kimi':
-      iconPath = '/icons/kimi.svg'
+      iconPath = withBasePath('/icons/kimi.svg')
       break
     case 'gemini':
-      iconPath = '/icons/gemini.svg'
+      iconPath = withBasePath('/icons/gemini.svg')
       break
     case 'grok':
-      iconPath = '/icons/grok.svg'
+      iconPath = withBasePath('/icons/grok.svg')
       break
     case 'openai':
-      iconPath = '/icons/openai.svg'
+      iconPath = withBasePath('/icons/openai.svg')
       break
     default:
       return null

@@ -46,10 +46,10 @@ export interface DecisionAction {
   quantity: number
   leverage: number
   price: number
-  stop_loss?: number      // Stop loss price
-  take_profit?: number    // Take profit price
-  confidence?: number     // AI confidence (0-100)
-  reasoning?: string      // Brief reasoning
+  stop_loss?: number // Stop loss price
+  take_profit?: number // Take profit price
+  confidence?: number // AI confidence (0-100)
+  reasoning?: string // Brief reasoning
   order_id: number
   timestamp: string
   success: boolean
@@ -114,15 +114,15 @@ export interface AIModel {
 }
 
 export interface Exchange {
-  id: string                     // UUID (empty for supported exchange templates)
-  exchange_type: string          // "binance", "bybit", "okx", "hyperliquid", "aster", "lighter"
-  account_name: string           // User-defined account name
-  name: string                   // Display name
+  id: string // UUID (empty for supported exchange templates)
+  exchange_type: string // "binance", "bybit", "okx", "hyperliquid", "aster", "lighter"
+  account_name: string // User-defined account name
+  name: string // Display name
   type: 'cex' | 'dex'
   enabled: boolean
   apiKey?: string
   secretKey?: string
-  passphrase?: string            // OKX specific
+  passphrase?: string // OKX specific
   testnet?: boolean
   // Hyperliquid specific
   hyperliquidWalletAddr?: string
@@ -138,8 +138,8 @@ export interface Exchange {
 }
 
 export interface CreateExchangeRequest {
-  exchange_type: string          // "binance", "bybit", "okx", "hyperliquid", "aster", "lighter"
-  account_name: string           // User-defined account name
+  exchange_type: string // "binance", "bybit", "okx", "hyperliquid", "aster", "lighter"
+  account_name: string // User-defined account name
   enabled: boolean
   api_key?: string
   secret_key?: string
@@ -234,10 +234,10 @@ export interface TraderConfigData {
   trader_name: string
   ai_model: string
   exchange_id: string
-  strategy_id?: string  // 策略ID
-  strategy_name?: string  // 策略名称
+  strategy_id?: string // 策略ID
+  strategy_name?: string // 策略名称
   is_cross_margin: boolean
-  show_in_competition: boolean  // 是否在竞技场显示
+  show_in_competition: boolean // 是否在竞技场显示
   scan_interval_minutes: number
   initial_balance: number
   is_running: boolean
@@ -254,393 +254,366 @@ export interface TraderConfigData {
 
 // Backtest types
 export interface BacktestRunSummary {
-  symbol_count: number;
-  decision_tf: string;
-  processed_bars: number;
-  progress_pct: number;
-  equity_last: number;
-  max_drawdown_pct: number;
-  liquidated: boolean;
-  liquidation_note?: string;
+  symbol_count: number
+  decision_tf: string
+  processed_bars: number
+  progress_pct: number
+  equity_last: number
+  max_drawdown_pct: number
+  liquidated: boolean
+  liquidation_note?: string
 }
 
 export interface BacktestRunMetadata {
-  run_id: string;
-  label?: string;
-  user_id?: string;
-  last_error?: string;
-  version: number;
-  state: string;
-  created_at: string;
-  updated_at: string;
-  summary: BacktestRunSummary;
+  run_id: string
+  label?: string
+  user_id?: string
+  last_error?: string
+  version: number
+  state: string
+  created_at: string
+  updated_at: string
+  summary: BacktestRunSummary
 }
 
 export interface BacktestRunsResponse {
-  total: number;
-  items: BacktestRunMetadata[];
-}
-
-// Position status for real-time display during backtest
-export interface BacktestPositionStatus {
-  symbol: string;
-  side: string;
-  quantity: number;
-  entry_price: number;
-  mark_price: number;
-  leverage: number;
-  unrealized_pnl: number;
-  unrealized_pnl_pct: number;
-  margin_used: number;
+  total: number
+  items: BacktestRunMetadata[]
 }
 
 export interface BacktestStatusPayload {
-  run_id: string;
-  state: string;
-  progress_pct: number;
-  processed_bars: number;
-  current_time: number;
-  decision_cycle: number;
-  equity: number;
-  unrealized_pnl: number;
-  realized_pnl: number;
-  positions?: BacktestPositionStatus[];
-  note?: string;
-  last_error?: string;
-  last_updated_iso: string;
+  run_id: string
+  state: string
+  progress_pct: number
+  processed_bars: number
+  current_time: number
+  decision_cycle: number
+  equity: number
+  unrealized_pnl: number
+  realized_pnl: number
+  note?: string
+  last_error?: string
+  last_updated_iso: string
 }
 
 export interface BacktestEquityPoint {
-  ts: number;
-  equity: number;
-  available: number;
-  pnl: number;
-  pnl_pct: number;
-  dd_pct: number;
-  cycle: number;
+  ts: number
+  equity: number
+  available: number
+  pnl: number
+  pnl_pct: number
+  dd_pct: number
+  cycle: number
 }
 
 export interface BacktestTradeEvent {
-  ts: number;
-  symbol: string;
-  action: string;
-  side?: string;
-  qty: number;
-  price: number;
-  fee: number;
-  slippage: number;
-  order_value: number;
-  realized_pnl: number;
-  leverage?: number;
-  cycle: number;
-  position_after: number;
-  liquidation: boolean;
-  note?: string;
+  ts: number
+  symbol: string
+  action: string
+  side?: string
+  qty: number
+  price: number
+  fee: number
+  slippage: number
+  order_value: number
+  realized_pnl: number
+  leverage?: number
+  cycle: number
+  position_after: number
+  liquidation: boolean
+  note?: string
 }
 
 export interface BacktestMetrics {
-  total_return_pct: number;
-  max_drawdown_pct: number;
-  sharpe_ratio: number;
-  profit_factor: number;
-  win_rate: number;
-  trades: number;
-  avg_win: number;
-  avg_loss: number;
-  best_symbol: string;
-  worst_symbol: string;
-  liquidated: boolean;
+  total_return_pct: number
+  max_drawdown_pct: number
+  sharpe_ratio: number
+  profit_factor: number
+  win_rate: number
+  trades: number
+  avg_win: number
+  avg_loss: number
+  best_symbol: string
+  worst_symbol: string
+  liquidated: boolean
   symbol_stats?: Record<
     string,
     {
-      total_trades: number;
-      winning_trades: number;
-      losing_trades: number;
-      total_pnl: number;
-      avg_pnl: number;
-      win_rate: number;
+      total_trades: number
+      winning_trades: number
+      losing_trades: number
+      total_pnl: number
+      avg_pnl: number
+      win_rate: number
     }
-  >;
+  >
 }
 
 export interface BacktestStartConfig {
-  run_id?: string;
-  ai_model_id?: string;
-  strategy_id?: string; // Optional: use saved strategy from Strategy Studio
-  symbols: string[];
-  timeframes: string[];
-  decision_timeframe: string;
-  decision_cadence_nbars: number;
-  start_ts: number;
-  end_ts: number;
-  initial_balance: number;
-  fee_bps: number;
-  slippage_bps: number;
-  fill_policy: string;
-  prompt_variant?: string;
-  prompt_template?: string;
-  custom_prompt?: string;
-  override_prompt?: boolean;
-  cache_ai?: boolean;
-  replay_only?: boolean;
-  checkpoint_interval_bars?: number;
-  checkpoint_interval_seconds?: number;
-  replay_decision_dir?: string;
-  shared_ai_cache_path?: string;
+  run_id?: string
+  ai_model_id?: string
+  symbols: string[]
+  timeframes: string[]
+  decision_timeframe: string
+  decision_cadence_nbars: number
+  start_ts: number
+  end_ts: number
+  initial_balance: number
+  fee_bps: number
+  slippage_bps: number
+  fill_policy: string
+  prompt_variant?: string
+  prompt_template?: string
+  custom_prompt?: string
+  override_prompt?: boolean
+  cache_ai?: boolean
+  replay_only?: boolean
+  checkpoint_interval_bars?: number
+  checkpoint_interval_seconds?: number
+  replay_decision_dir?: string
+  shared_ai_cache_path?: string
   ai?: {
-    provider?: string;
-    model?: string;
-    key?: string;
-    secret_key?: string;
-    base_url?: string;
-  };
+    provider?: string
+    model?: string
+    key?: string
+    secret_key?: string
+    base_url?: string
+  }
   leverage?: {
-    btc_eth_leverage?: number;
-    altcoin_leverage?: number;
-  };
-}
-
-// Kline data for backtest chart
-export interface BacktestKline {
-  time: number;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-}
-
-export interface BacktestKlinesResponse {
-  symbol: string;
-  timeframe: string;
-  start_ts: number;
-  end_ts: number;
-  count: number;
-  klines: BacktestKline[];
-  run_id: string;
+    btc_eth_leverage?: number
+    altcoin_leverage?: number
+  }
 }
 
 // Strategy Studio Types
 export interface Strategy {
-  id: string;
-  name: string;
-  description: string;
-  is_active: boolean;
-  is_default: boolean;
-  config: StrategyConfig;
-  created_at: string;
-  updated_at: string;
+  id: string
+  name: string
+  description: string
+  is_active: boolean
+  is_default: boolean
+  config: StrategyConfig
+  created_at: string
+  updated_at: string
 }
 
 export interface PromptSectionsConfig {
-  role_definition?: string;
-  trading_frequency?: string;
-  entry_standards?: string;
-  decision_process?: string;
+  role_definition?: string
+  trading_frequency?: string
+  entry_standards?: string
+  decision_process?: string
 }
 
 export interface StrategyConfig {
-  coin_source: CoinSourceConfig;
-  indicators: IndicatorConfig;
-  custom_prompt?: string;
-  risk_control: RiskControlConfig;
-  prompt_sections?: PromptSectionsConfig;
+  coin_source: CoinSourceConfig
+  indicators: IndicatorConfig
+  custom_prompt?: string
+  risk_control: RiskControlConfig
+  prompt_sections?: PromptSectionsConfig
 }
 
 export interface CoinSourceConfig {
-  source_type: 'static' | 'coinpool' | 'oi_top' | 'mixed';
-  static_coins?: string[];
-  use_coin_pool: boolean;
-  coin_pool_limit?: number;
-  coin_pool_api_url?: string;  // AI500 币种池 API URL
-  use_oi_top: boolean;
-  oi_top_limit?: number;
-  oi_top_api_url?: string;     // OI Top API URL
+  source_type: 'static' | 'coinpool' | 'oi_top' | 'mixed'
+  static_coins?: string[]
+  use_coin_pool: boolean
+  coin_pool_limit?: number
+  coin_pool_api_url?: string // AI500 币种池 API URL
+  use_oi_top: boolean
+  oi_top_limit?: number
+  oi_top_api_url?: string // OI Top API URL
 }
 
 export interface IndicatorConfig {
-  klines: KlineConfig;
+  klines: KlineConfig
   // Raw OHLCV kline data - required for AI analysis
-  enable_raw_klines: boolean;
+  enable_raw_klines: boolean
   // Technical indicators (optional)
-  enable_ema: boolean;
-  enable_macd: boolean;
-  enable_rsi: boolean;
-  enable_atr: boolean;
-  enable_boll: boolean;
-  enable_volume: boolean;
-  enable_oi: boolean;
-  enable_funding_rate: boolean;
-  ema_periods?: number[];
-  rsi_periods?: number[];
-  atr_periods?: number[];
-  boll_periods?: number[];
-  external_data_sources?: ExternalDataSource[];
+  enable_ema: boolean
+  enable_macd: boolean
+  enable_rsi: boolean
+  enable_atr: boolean
+  enable_volume: boolean
+  enable_oi: boolean
+  enable_funding_rate: boolean
+  ema_periods?: number[]
+  rsi_periods?: number[]
+  atr_periods?: number[]
+  external_data_sources?: ExternalDataSource[]
   // 量化数据源（资金流向、持仓变化、价格变化）
-  enable_quant_data?: boolean;
-  quant_data_api_url?: string;
-  enable_quant_oi?: boolean;
-  enable_quant_netflow?: boolean;
+  enable_quant_data?: boolean
+  quant_data_api_url?: string
+  enable_quant_oi?: boolean
+  enable_quant_netflow?: boolean
   // OI 排行数据（市场持仓量增减排行）
-  enable_oi_ranking?: boolean;
-  oi_ranking_api_url?: string;
-  oi_ranking_duration?: string;  // "1h", "4h", "24h"
-  oi_ranking_limit?: number;
+  enable_oi_ranking?: boolean
+  oi_ranking_api_url?: string
+  oi_ranking_duration?: string // "1h", "4h", "24h"
+  oi_ranking_limit?: number
 }
 
 export interface KlineConfig {
-  primary_timeframe: string;
-  primary_count: number;
-  longer_timeframe?: string;
-  longer_count?: number;
-  enable_multi_timeframe: boolean;
+  primary_timeframe: string
+  primary_count: number
+  longer_timeframe?: string
+  longer_count?: number
+  enable_multi_timeframe: boolean
   // 新增：支持选择多个时间周期
-  selected_timeframes?: string[];
+  selected_timeframes?: string[]
 }
 
 export interface ExternalDataSource {
-  name: string;
-  type: 'api' | 'webhook';
-  url: string;
-  method: string;
-  headers?: Record<string, string>;
-  data_path?: string;
-  refresh_secs?: number;
+  name: string
+  type: 'api' | 'webhook'
+  url: string
+  method: string
+  headers?: Record<string, string>
+  data_path?: string
+  refresh_secs?: number
 }
 
 export interface RiskControlConfig {
   // Max number of coins held simultaneously (CODE ENFORCED)
-  max_positions: number;
+  max_positions: number
 
   // Trading Leverage - exchange leverage for opening positions (AI guided)
-  btc_eth_max_leverage: number;    // BTC/ETH max exchange leverage
-  altcoin_max_leverage: number;    // Altcoin max exchange leverage
+  btc_eth_max_leverage: number // BTC/ETH max exchange leverage
+  altcoin_max_leverage: number // Altcoin max exchange leverage
 
   // Position Value Ratio - single position notional value / account equity (CODE ENFORCED)
   // Max position value = equity × this ratio
-  btc_eth_max_position_value_ratio?: number;     // default: 5 (BTC/ETH max position = 5x equity)
-  altcoin_max_position_value_ratio?: number;     // default: 1 (Altcoin max position = 1x equity)
+  btc_eth_max_position_value_ratio?: number // default: 5 (BTC/ETH max position = 5x equity)
+  altcoin_max_position_value_ratio?: number // default: 1 (Altcoin max position = 1x equity)
 
   // Risk Parameters
-  max_margin_usage: number;        // Max margin utilization, e.g. 0.9 = 90% (CODE ENFORCED)
-  min_position_size: number;       // Min position size in USDT (CODE ENFORCED)
-  min_risk_reward_ratio: number;   // Min take_profit / stop_loss ratio (AI guided)
-  min_confidence: number;          // Min AI confidence to open position (AI guided)
+  max_margin_usage: number // Max margin utilization, e.g. 0.9 = 90% (CODE ENFORCED)
+  min_position_size: number // Min position size in USDT (CODE ENFORCED)
+  min_risk_reward_ratio: number // Min take_profit / stop_loss ratio (AI guided)
+  min_confidence: number // Min AI confidence to open position (AI guided)
 }
 
 // Debate Arena Types
-export type DebateStatus = 'pending' | 'running' | 'voting' | 'completed' | 'cancelled';
-export type DebatePersonality = 'bull' | 'bear' | 'analyst' | 'contrarian' | 'risk_manager';
+export type DebateStatus =
+  | 'pending'
+  | 'running'
+  | 'voting'
+  | 'completed'
+  | 'cancelled'
+export type DebatePersonality =
+  | 'bull'
+  | 'bear'
+  | 'analyst'
+  | 'contrarian'
+  | 'risk_manager'
 
 export interface DebateDecision {
-  action: string;
-  symbol: string;
-  confidence: number;
-  leverage?: number;
-  position_pct?: number;
-  position_size_usd?: number;
-  stop_loss?: number;
-  take_profit?: number;
-  reasoning: string;
+  action: string
+  symbol: string
+  confidence: number
+  leverage?: number
+  position_pct?: number
+  position_size_usd?: number
+  stop_loss?: number
+  take_profit?: number
+  reasoning: string
   // Execution tracking
-  executed?: boolean;
-  executed_at?: string;
-  order_id?: string;
-  error?: string;
+  executed?: boolean
+  executed_at?: string
+  order_id?: string
+  error?: string
 }
 
 export interface DebateSession {
-  id: string;
-  user_id: string;
-  name: string;
-  strategy_id: string;
-  status: DebateStatus;
-  symbol: string;
-  interval_minutes: number;
-  prompt_variant: string;
-  trader_id?: string;
-  max_rounds: number;
-  current_round: number;
-  final_decision?: DebateDecision;
-  final_decisions?: DebateDecision[];  // Multi-coin decisions
-  auto_execute: boolean;
-  created_at: string;
-  updated_at: string;
+  id: string
+  user_id: string
+  name: string
+  strategy_id: string
+  status: DebateStatus
+  symbol: string
+  interval_minutes: number
+  prompt_variant: string
+  trader_id?: string
+  max_rounds: number
+  current_round: number
+  final_decision?: DebateDecision
+  final_decisions?: DebateDecision[] // Multi-coin decisions
+  auto_execute: boolean
+  created_at: string
+  updated_at: string
 }
 
 export interface DebateParticipant {
-  id: string;
-  session_id: string;
-  ai_model_id: string;
-  ai_model_name: string;
-  provider: string;
-  personality: DebatePersonality;
-  color: string;
-  speak_order: number;
-  created_at: string;
+  id: string
+  session_id: string
+  ai_model_id: string
+  ai_model_name: string
+  provider: string
+  personality: DebatePersonality
+  color: string
+  speak_order: number
+  created_at: string
 }
 
 export interface DebateMessage {
-  id: string;
-  session_id: string;
-  round: number;
-  ai_model_id: string;
-  ai_model_name: string;
-  provider: string;
-  personality: DebatePersonality;
-  message_type: string;
-  content: string;
-  decision?: DebateDecision;
-  decisions?: DebateDecision[];  // Multi-coin decisions
-  confidence: number;
-  created_at: string;
+  id: string
+  session_id: string
+  round: number
+  ai_model_id: string
+  ai_model_name: string
+  provider: string
+  personality: DebatePersonality
+  message_type: string
+  content: string
+  decision?: DebateDecision
+  decisions?: DebateDecision[] // Multi-coin decisions
+  confidence: number
+  created_at: string
 }
 
 export interface DebateVote {
-  id: string;
-  session_id: string;
-  ai_model_id: string;
-  ai_model_name: string;
-  action: string;
-  symbol: string;
-  confidence: number;
-  leverage?: number;
-  position_pct?: number;
-  stop_loss_pct?: number;
-  take_profit_pct?: number;
-  reasoning: string;
-  created_at: string;
+  id: string
+  session_id: string
+  ai_model_id: string
+  ai_model_name: string
+  action: string
+  symbol: string
+  confidence: number
+  leverage?: number
+  position_pct?: number
+  stop_loss_pct?: number
+  take_profit_pct?: number
+  reasoning: string
+  created_at: string
 }
 
 export interface DebateSessionWithDetails extends DebateSession {
-  participants: DebateParticipant[];
-  messages: DebateMessage[];
-  votes: DebateVote[];
+  participants: DebateParticipant[]
+  messages: DebateMessage[]
+  votes: DebateVote[]
 }
 
 export interface CreateDebateRequest {
-  name: string;
-  strategy_id: string;
-  symbol: string;
-  max_rounds?: number;
-  interval_minutes?: number;  // 5, 15, 30, 60 minutes
-  prompt_variant?: string;    // balanced, aggressive, conservative, scalping
-  auto_execute?: boolean;
-  trader_id?: string;         // Trader to use for auto-execute
+  name: string
+  strategy_id: string
+  symbol: string
+  max_rounds?: number
+  interval_minutes?: number // 5, 15, 30, 60 minutes
+  prompt_variant?: string // balanced, aggressive, conservative, scalping
+  auto_execute?: boolean
+  trader_id?: string // Trader to use for auto-execute
   // OI Ranking data options
-  enable_oi_ranking?: boolean;  // Whether to include OI ranking data
-  oi_ranking_limit?: number;    // Number of OI ranking entries (default 10)
-  oi_duration?: string;         // Duration for OI data (1h, 4h, 24h, etc.)
+  enable_oi_ranking?: boolean // Whether to include OI ranking data
+  oi_ranking_limit?: number // Number of OI ranking entries (default 10)
+  oi_duration?: string // Duration for OI data (1h, 4h, 24h, etc.)
   participants: {
-    ai_model_id: string;
-    personality: DebatePersonality;
-  }[];
+    ai_model_id: string
+    personality: DebatePersonality
+  }[]
 }
 
 export interface DebatePersonalityInfo {
-  id: DebatePersonality;
-  name: string;
-  emoji: string;
-  color: string;
-  description: string;
+  id: DebatePersonality
+  name: string
+  emoji: string
+  color: string
+  description: string
 }
