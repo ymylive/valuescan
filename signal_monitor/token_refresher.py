@@ -17,6 +17,7 @@ import base64
 import json
 import logging
 import os
+import subprocess
 import sys
 import tempfile
 import time
@@ -46,6 +47,8 @@ TOKEN_REFRESH_SAFETY_SECONDS = int(os.getenv("VALUESCAN_TOKEN_REFRESH_SAFETY_SEC
 LOGIN_RETRY_COOLDOWN_SECONDS = int(os.getenv("VALUESCAN_LOGIN_RETRY_COOLDOWN_SECONDS", "60"))
 LOGIN_LOCK_TIMEOUT_SECONDS = int(os.getenv("VALUESCAN_LOGIN_LOCK_TIMEOUT_SECONDS", "180"))
 LOGIN_LOCK_STALE_SECONDS = int(os.getenv("VALUESCAN_LOGIN_LOCK_STALE_SECONDS", "1200"))
+
+LOGIN_METHOD_RAW = os.getenv("VALUESCAN_LOGIN_METHOD", "auto")
 
 
 def _login_lock_path() -> Path:
@@ -245,6 +248,61 @@ def _pick_browser_path() -> str:
     return ""
 
 
+def _normalize_login_method(value: str) -> str:
+    raw = (value or "").strip().lower()
+    if raw in {"api", "http", "http_api", "http-api", "httpapi"}:
+        return "api"
+    if raw in {"browser", "chromium", "ui", "drission"}:
+        return "browser"
+    return "auto"
+
+
+def _run_http_api_login(email: str, password: str, timeout_seconds: int = 90) -> bool:
+    """Attempt ValueScan login using the HTTP API helper script."""
+    script = BASE_DIR / "http_api_login.py"
+    if not script.exists():
+        logger.warning("HTTP login script missing: %s", script)
+        return False
+
+    python_bin = sys.executable or "python3"
+    env = dict(os.environ)
+    env.setdefault("VALUESCAN_LOGIN_OUT_DIR", str(BASE_DIR))
+    env.setdefault("VALUESCAN_TOKEN_FILE", str(LOCALSTORAGE_FILE))
+    env.setdefault("VALUESCAN_COOKIES_FILE", str(COOKIES_FILE))
+    env.setdefault("VALUESCAN_SESSION_FILE", str(SESSIONSTORAGE_FILE))
+    env["VALUESCAN_EMAIL"] = email
+    env["VALUESCAN_PASSWORD"] = password
+
+    try:
+        res = subprocess.run(
+            [python_bin, str(script)],
+            cwd=str(BASE_DIR),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+        )
+    except Exception as exc:
+        logger.warning("HTTP login failed to run: %s", exc)
+        return False
+
+    if res.returncode != 0:
+        msg = (res.stderr or res.stdout or "").strip()
+        if msg:
+            logger.warning("HTTP login failed: %s", msg[-200:])
+        return False
+
+    data = _load_localstorage(retries=3)
+    if (data.get("account_token") or "").strip():
+        logger.info("Token refreshed successfully via HTTP login.")
+        return True
+
+    msg = (res.stderr or res.stdout or "").strip()
+    if msg:
+        logger.warning("HTTP login completed but no account_token found: %s", msg[-200:])
+    return False
+
+
 def get_token_expiry() -> Optional[datetime]:
     """Parse `account_token` expiry from the local storage file."""
     data = _load_localstorage()
@@ -306,7 +364,6 @@ def _get_storage_item(page, key: str) -> Optional[str]:
 
 def _cleanup_stale_browsers() -> None:
     """Kill any stale chromium processes that might block new browser instances."""
-    import subprocess
     if os.getenv("VALUESCAN_KILL_STALE_BROWSERS", "0").strip() != "1":
         return
     try:
@@ -589,6 +646,15 @@ def login_and_refresh_token(email: str, password: str, headless: bool = True) ->
 
         # Optional cleanup (disabled by default)
         _cleanup_stale_browsers()
+
+        login_method = _normalize_login_method(LOGIN_METHOD_RAW)
+        if login_method in {"auto", "api"}:
+            logger.info("Attempting HTTP API login (method=%s)...", login_method)
+            if _run_http_api_login(email, password):
+                return True
+            if login_method == "api":
+                logger.error("HTTP API login failed and browser login is disabled.")
+                return False
 
         logger.info("Launching Chromium for ValueScan login (headless=%s)...", headless)
 
