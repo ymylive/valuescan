@@ -314,6 +314,8 @@ VALUESCAN_ENV_ALLOWED_KEYS = [
     "VALUESCAN_AUTO_RELOGIN",
     "VALUESCAN_AUTO_RELOGIN_USE_BROWSER",
     "VALUESCAN_AUTO_RELOGIN_COOLDOWN",
+    "VALUESCAN_EMAIL",
+    "VALUESCAN_PASSWORD",
 ]
 VALUESCAN_ENV_BOOL_KEYS = {
     "VALUESCAN_AUTO_RELOGIN",
@@ -994,6 +996,7 @@ def ensure_major_coin_strategy_fields(content: str, trader_data: dict) -> str:
         "major_coin_leverage": "MAJOR_COIN_LEVERAGE",
         "major_coin_max_position_percent": "MAJOR_COIN_MAX_POSITION_PERCENT",
         "major_coin_stop_loss_percent": "MAJOR_COIN_STOP_LOSS_PERCENT",
+        "major_coin_enable_trailing_stop": "MAJOR_COIN_ENABLE_TRAILING_STOP",
         "major_coin_trailing_stop_activation": "MAJOR_COIN_TRAILING_STOP_ACTIVATION",
         "major_coin_trailing_stop_callback": "MAJOR_COIN_TRAILING_STOP_CALLBACK",
     }
@@ -1004,6 +1007,7 @@ def ensure_major_coin_strategy_fields(content: str, trader_data: dict) -> str:
         "major_coin_leverage": None,
         "major_coin_max_position_percent": None,
         "major_coin_stop_loss_percent": 1.5,
+        "major_coin_enable_trailing_stop": True,
         "major_coin_trailing_stop_activation": 1.0,
         "major_coin_trailing_stop_callback": 0.8,
     }
@@ -2792,66 +2796,6 @@ def valuescan_auto_login():
         }), 500
 
 
-@app.route('/api/valuescan/token/refresh', methods=['POST'])
-def valuescan_refresh_token():
-    """
-    手动触发 token 刷新（使用保存的凭据）
-    """
-    try:
-        sys.path.insert(0, str(BASE_DIR / 'signal_monitor'))
-        from token_refresher import login_and_refresh_token, load_credentials, get_token_expiry
-        
-        # 加载保存的凭据
-        creds = load_credentials()
-        if not creds:
-            return jsonify({
-                'success': False,
-                'error': '未找到保存的登录凭据，请先登录'
-            }), 400
-        
-        email = creds.get('email')
-        password = creds.get('password')
-        
-        if not email or not password:
-            return jsonify({
-                'success': False,
-                'error': '凭据不完整，请重新登录'
-            }), 400
-        
-        # 执行刷新
-        print(f"[API] 开始刷新 token: {email}")
-        success = login_and_refresh_token(email, password, headless=True)
-        
-        if success:
-            expiry = get_token_expiry()
-            expiry_str = expiry.isoformat() if expiry else None
-            
-            # 重启信号监测服务
-            try:
-                if shutil.which('systemctl'):
-                    subprocess.run(['systemctl', 'restart', 'valuescan-signal'], timeout=30)
-            except Exception:
-                pass
-            
-            return jsonify({
-                'success': True,
-                'message': 'Token 刷新成功',
-                'token_expiry': expiry_str
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'error': 'Token 刷新失败'
-            }), 500
-            
-    except Exception as e:
-        print(f"[API] Token 刷新出错: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-
 @app.route('/api/valuescan/token/status', methods=['GET'])
 def valuescan_token_status():
     """
@@ -2864,14 +2808,23 @@ def valuescan_token_status():
         expiry = get_token_expiry()
         valid = is_token_valid()
         creds = load_credentials()
-        has_credentials = bool(creds and creds.get('email'))
+        env_email = (os.getenv("VALUESCAN_EMAIL") or "").strip()
+        env_password = (os.getenv("VALUESCAN_PASSWORD") or "").strip()
+        has_saved = bool(creds and creds.get('email'))
+        has_env = bool(env_email and env_password)
+        has_credentials = has_saved or has_env
+        email_value = ''
+        if has_saved and creds:
+            email_value = creds.get('email', '')
+        elif env_email:
+            email_value = env_email
         
         return jsonify({
             'success': True,
             'token_valid': valid,
             'token_expiry': expiry.isoformat() if expiry else None,
             'has_credentials': has_credentials,
-            'email': creds.get('email', '') if creds else ''
+            'email': email_value
         })
     except Exception as e:
         return jsonify({

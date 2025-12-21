@@ -333,7 +333,8 @@ def _sync_tree(
     glob_pattern: str = "*",
 ) -> None:
     if not local_root.exists():
-        raise SystemExit(f"Local path not found: {local_root}")
+        print(f"SKIP missing local path: {local_root}")
+        return
     if local_root.is_file():
         _sftp_put_mkdir(sftp, local_root, remote_root)
         return

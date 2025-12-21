@@ -139,10 +139,20 @@ def _build_login_attempts(email: str, password: str) -> List[Tuple[str, Dict[str
     endpoints = [
         # Most reliable based on existing repo scripts
         "https://api.valuescan.io/api/account/login",
+        # Newer versioned endpoints observed in the wild
+        "https://api.valuescan.io/api/v1/account/login",
+        "https://api.valuescan.io/api/v1/login",
+        "https://api.valuescan.io/api/v1/auth/login",
+        "https://api.valuescan.io/api/v2/account/login",
+        "https://api.valuescan.io/v1/account/login",
+        "https://api.valuescan.io/v1/login",
         # Older/alternate endpoints
         "https://api.valuescan.io/api/login",
         "https://api.valuescan.io/api/user/login",
         "https://api.valuescan.io/api/auth/login",
+        "https://api.valuescan.io/login",
+        "https://www.valuescan.io/api/v1/login",
+        "https://www.valuescan.io/api/v1/account/login",
         "https://www.valuescan.io/api/auth/login",
         "https://www.valuescan.io/api/login",
         "https://www.valuescan.io/api/account/login",

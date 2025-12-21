@@ -111,6 +111,10 @@ MAX_POSITION_PERCENT = 5.0  # 单币种最多5%本金（合约建议更保守）
 # 总仓位比例上限（占总资金百分比）
 MAX_TOTAL_POSITION_PERCENT = 30.0  # 所有持仓合计不超过30%本金
 
+# Separate caps for major vs alt positions (set None to use MAX_TOTAL_POSITION_PERCENT)
+MAJOR_TOTAL_POSITION_PERCENT = 30.0
+ALT_TOTAL_POSITION_PERCENT = 30.0
+
 # 每日最大交易次数
 MAX_DAILY_TRADES = 15  # 合约交易建议减少频率
 
@@ -192,6 +196,7 @@ MAJOR_COIN_PYRAMIDING_EXIT_LEVELS = [
 ]
 
 # 主流币移动止损配置
+MAJOR_COIN_ENABLE_TRAILING_STOP = True  # 主流币是否启用移动止损
 MAJOR_COIN_TRAILING_STOP_ACTIVATION = 1.0  # 盈利1%启动移动止损
 MAJOR_COIN_TRAILING_STOP_CALLBACK = 0.8    # 回撤0.8%触发
 

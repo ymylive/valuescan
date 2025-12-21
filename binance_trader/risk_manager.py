@@ -61,7 +61,9 @@ class RiskManager:
                  take_profit_1_percent: float = 5.0,  # 第一目标盈利(50%仓位)
                  take_profit_2_percent: float = 10.0,  # 第二目标盈利(剩余仓位)
                  major_coins: list = None,
-                 major_coin_max_position_percent: float = None):
+                 major_coin_max_position_percent: float = None,
+                 major_total_position_percent: Optional[float] = None,
+                 alt_total_position_percent: Optional[float] = None):
         """
         初始化风险管理器
 
@@ -83,8 +85,11 @@ class RiskManager:
         self.stop_loss_percent = stop_loss_percent
         self.take_profit_1_percent = take_profit_1_percent
         self.take_profit_2_percent = take_profit_2_percent
-        self.major_coins = major_coins or []
+        self.major_coins = [str(s).upper() for s in (major_coins or [])]
+        self._major_coin_set = set(self.major_coins)
         self.major_coin_max_position_percent = major_coin_max_position_percent
+        self.major_total_position_percent = major_total_position_percent
+        self.alt_total_position_percent = alt_total_position_percent
 
         # 当前持仓
         self.positions: Dict[str, PositionInfo] = {}
@@ -112,6 +117,27 @@ class RiskManager:
             f"止损={stop_loss_percent}%, "
             f"止盈1={take_profit_1_percent}%, 止盈2={take_profit_2_percent}%"
         )
+        if self.major_total_position_percent is not None or self.alt_total_position_percent is not None:
+            major_limit = (
+                self.major_total_position_percent
+                if self.major_total_position_percent is not None
+                else self.max_total_position_percent
+            )
+            alt_limit = (
+                self.alt_total_position_percent
+                if self.alt_total_position_percent is not None
+                else self.max_total_position_percent
+            )
+            self.logger.info(
+                f"Position caps by group: major={major_limit}%, alt={alt_limit}%"
+            )
+
+    def _normalize_symbol(self, symbol: str) -> str:
+        return symbol.replace("USDT", "").replace("BUSD", "").upper()
+
+    def _is_major_symbol(self, symbol: str) -> bool:
+        return self._normalize_symbol(symbol) in self._major_coin_set
+
 
     def update_balance(self, total_balance: float, available_balance: float):
         """更新账户余额"""
@@ -224,10 +250,8 @@ class RiskManager:
         max_percent = self.max_position_percent
         
         # Check if symbol is major coin
-        if self.major_coin_max_position_percent is not None:
-            base_symbol = symbol.replace("USDT", "").replace("BUSD", "")
-            if base_symbol in self.major_coins:
-                max_percent = self.major_coin_max_position_percent
+        if self.major_coin_max_position_percent is not None and self._is_major_symbol(symbol):
+            max_percent = self.major_coin_max_position_percent
         
         # 单个标的最大可用资金
         max_position_value = self.total_balance * (max_percent / 100)
@@ -272,17 +296,56 @@ class RiskManager:
         if self.total_balance <= 0:
             return False, "账户余额不可用"
 
-        # 6. 检查总仓位限制
+        # 6. Check total position caps (major/alt independent when configured)
         total_position_value = sum(
             pos.quantity * pos.current_price
             for pos in self.positions.values()
         )
-        total_position_percent = (total_position_value / self.total_balance) * 100
 
-        if total_position_percent >= self.max_total_position_percent:
-            return False, (f"达到总仓位限制 "
-                          f"({total_position_percent:.1f}% >= {self.max_total_position_percent}%)")
+        use_group_caps = (
+            self.major_total_position_percent is not None
+            or self.alt_total_position_percent is not None
+        )
+        if use_group_caps:
+            major_position_value = sum(
+                pos.quantity * pos.current_price
+                for pos in self.positions.values()
+                if self._is_major_symbol(pos.symbol)
+            )
+            alt_position_value = total_position_value - major_position_value
+            major_percent = (major_position_value / self.total_balance) * 100
+            alt_percent = (alt_position_value / self.total_balance) * 100
 
+            if self._is_major_symbol(symbol):
+                limit = (
+                    self.major_total_position_percent
+                    if self.major_total_position_percent is not None
+                    else self.max_total_position_percent
+                )
+                if major_percent >= limit:
+                    return False, (
+                        f"Major position cap reached "
+                        f"({major_percent:.1f}% >= {limit}%)"
+                    )
+            else:
+                limit = (
+                    self.alt_total_position_percent
+                    if self.alt_total_position_percent is not None
+                    else self.max_total_position_percent
+                )
+                if alt_percent >= limit:
+                    return False, (
+                        f"Alt position cap reached "
+                        f"({alt_percent:.1f}% >= {limit}%)"
+                    )
+        else:
+            total_position_percent = (total_position_value / self.total_balance) * 100
+
+            if total_position_percent >= self.max_total_position_percent:
+                return False, (
+                    f"Total position cap reached "
+                    f"({total_position_percent:.1f}% >= {self.max_total_position_percent}%)"
+                )
         # 7. 检查可用余额
         if self.available_balance < (self.total_balance * 0.05):  # 至少保留5%
             return False, "可用余额不足"
@@ -364,14 +427,21 @@ class RiskManager:
         self.halt_reason = ""
         self.logger.info("✅ 交易已恢复")
 
+
     def get_status(self) -> Dict:
-        """获取风控状态"""
+        """Get risk manager status."""
         today = datetime.now().strftime("%Y-%m-%d")
 
         total_position_value = sum(
             pos.quantity * pos.current_price
             for pos in self.positions.values()
         )
+        major_position_value = sum(
+            pos.quantity * pos.current_price
+            for pos in self.positions.values()
+            if self._is_major_symbol(pos.symbol)
+        )
+        alt_position_value = total_position_value - major_position_value
         total_unrealized_pnl = sum(
             pos.unrealized_pnl for pos in self.positions.values()
         )
@@ -384,6 +454,10 @@ class RiskManager:
             "position_count": len(self.positions),
             "total_position_value": total_position_value,
             "total_position_percent": (total_position_value / self.total_balance * 100) if self.total_balance > 0 else 0,
+            "major_position_value": major_position_value,
+            "major_position_percent": (major_position_value / self.total_balance * 100) if self.total_balance > 0 else 0,
+            "alt_position_value": alt_position_value,
+            "alt_position_percent": (alt_position_value / self.total_balance * 100) if self.total_balance > 0 else 0,
             "total_unrealized_pnl": total_unrealized_pnl,
             "daily_trades": self.daily_trades[today],
             "daily_pnl": self.daily_pnl[today],

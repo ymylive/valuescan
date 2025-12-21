@@ -15,8 +15,6 @@ import (
 	"github.com/adshao/go-binance/v2/futures"
 )
 
-const binanceFuturesTestnetBaseURL = "https://testnet.binancefuture.com"
-
 // getBrOrderID generates unique order ID (for futures contracts)
 // Format: x-{BR_ID}{TIMESTAMP}{RANDOM}
 // Futures limit is 32 characters, use this limit consistently
@@ -67,8 +65,8 @@ type FuturesTrader struct {
 func NewFuturesTrader(apiKey, secretKey string, userId string, testnet bool) *FuturesTrader {
 	client := futures.NewClient(apiKey, secretKey)
 	if testnet {
-		client.BaseURL = binanceFuturesTestnetBaseURL
-		logger.Infof("Binance Futures testnet enabled (base URL: %s)", client.BaseURL)
+		futures.UseTestnet = true
+		logger.Infof("🧪 Using Binance Futures TESTNET")
 	}
 
 	hookRes := hook.HookExec[hook.NewBinanceTraderResult](hook.NEW_BINANCE_TRADER, userId, client)

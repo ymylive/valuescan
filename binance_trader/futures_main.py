@@ -116,7 +116,9 @@ class FuturesAutoTradingSystem:
             take_profit_1_percent=config.TAKE_PROFIT_1_PERCENT,
             take_profit_2_percent=config.TAKE_PROFIT_2_PERCENT,
             major_coins=getattr(config, 'MAJOR_COINS', []),
-            major_coin_max_position_percent=getattr(config, 'MAJOR_COIN_MAX_POSITION_PERCENT', None)
+            major_coin_max_position_percent=getattr(config, 'MAJOR_COIN_MAX_POSITION_PERCENT', None),
+            major_total_position_percent=getattr(config, 'MAJOR_TOTAL_POSITION_PERCENT', None),
+            alt_total_position_percent=getattr(config, 'ALT_TOTAL_POSITION_PERCENT', None),
         )
 
         # 3. 初始化合约交易器
@@ -146,7 +148,11 @@ class FuturesAutoTradingSystem:
 
         # 4. 初始化移动止损管理器（如果启用）
         self.trailing_stop_manager = None
-        if config.ENABLE_TRAILING_STOP:
+        enable_alt_trailing = bool(getattr(config, "ENABLE_TRAILING_STOP", False))
+        enable_major_trailing = bool(getattr(config, "ENABLE_MAJOR_COIN_STRATEGY", False)) and bool(
+            getattr(config, "MAJOR_COIN_ENABLE_TRAILING_STOP", True)
+        )
+        if enable_alt_trailing or enable_major_trailing:
             self.trailing_stop_manager = TrailingStopManager(
                 activation_percent=config.TRAILING_STOP_ACTIVATION,
                 callback_percent=config.TRAILING_STOP_CALLBACK,
@@ -208,30 +214,50 @@ class FuturesAutoTradingSystem:
             
             for symbol, position in self.trader.positions.items():
                 symbol_base = symbol.replace("USDT", "")
-                
+
                 # 只追踪多仓
                 if position.quantity > 0:
                     # 添加到移动止损跟踪
                     if self.trailing_stop_manager:
-                        self.trailing_stop_manager.add_position(
-                            symbol_base,
-                            position.entry_price,
-                            position.mark_price
-                        )
-                        self.logger.info(
-                            f"  ✅ {symbol_base} 已添加到移动止损跟踪 "
-                            f"(入场={position.entry_price:.4f}, 当前={position.mark_price:.4f})"
-                        )
-                    
+                        enabled, activation, callback = self._get_trailing_stop_settings(symbol_base)
+                        if enabled:
+                            self.trailing_stop_manager.add_position(
+                                symbol_base,
+                                position.entry_price,
+                                position.mark_price,
+                                activation_percent=activation,
+                                callback_percent=callback,
+                            )
+                            self.logger.info(
+                                f"  ✅ {symbol_base} 已添加到移动止损跟踪 "
+                                f"(入场={position.entry_price:.4f}, 当前={position.mark_price:.4f})"
+                            )
+
                     # 添加到分批止盈跟踪
                     if self.pyramiding_manager:
                         self.pyramiding_manager.add_position(symbol_base, position.entry_price)
                         self.logger.info(f"  ✅ {symbol_base} 已添加到金字塔止盈跟踪")
                 else:
                     self.logger.info(f"  ⏭️ {symbol_base} 是空仓，跳过追踪")
-                    
+
         except Exception as e:
             self.logger.warning(f"初始化已有持仓追踪失败: {e}")
+
+    def _get_trailing_stop_settings(self, symbol_base: str):
+        """
+        Per-symbol trailing-stop configuration.
+
+        Returns:
+            (enabled, activation_percent, callback_percent)
+        """
+        try:
+            strategy = self.trader.get_coin_strategy_params(symbol_base)
+            enabled = bool(strategy.get("enable_trailing_stop", False))
+            if not enabled:
+                return False, None, None
+            return True, strategy.get("trailing_activation"), strategy.get("trailing_callback")
+        except Exception:
+            return bool(getattr(config, "ENABLE_TRAILING_STOP", False)), None, None
 
     def _setup_logging(self):
         """配置日志系统"""
@@ -262,7 +288,16 @@ class FuturesAutoTradingSystem:
         short_enabled = getattr(config, 'SHORT_TRADING_ENABLED', False)
         self.logger.info(f"做多策略: {'已启用 ✅' if long_enabled else '已禁用'}")
         self.logger.info(f"做空策略: {'已启用 ✅' if short_enabled else '已禁用'}")
-        self.logger.info(f"追踪止损: {'已启用 ✅' if config.ENABLE_TRAILING_STOP else '已禁用'}")
+        enable_alt_trailing = bool(getattr(config, "ENABLE_TRAILING_STOP", False))
+        enable_major_trailing = bool(getattr(config, "ENABLE_MAJOR_COIN_STRATEGY", False)) and bool(
+            getattr(config, "MAJOR_COIN_ENABLE_TRAILING_STOP", True)
+        )
+        trailing_status = []
+        if enable_alt_trailing:
+            trailing_status.append("山寨币")
+        if enable_major_trailing:
+            trailing_status.append("主流币")
+        self.logger.info(f"追踪止损: {'已启用 ✅ (' + ','.join(trailing_status) + ')' if trailing_status else '已禁用'}")
         self.logger.info(f"金字塔退出: {'已启用 ✅' if config.ENABLE_PYRAMIDING_EXIT else '已禁用'}")
         self.logger.info(f"总余额: {status['total_balance']:.2f} USDT")
         self.logger.info(f"可用余额: {status['available_balance']:.2f} USDT")
@@ -419,11 +454,15 @@ class FuturesAutoTradingSystem:
 
             # 添加到移动止损跟踪（仅做多）
             if trade_signal.direction == 'LONG' and self.trailing_stop_manager:
-                self.trailing_stop_manager.add_position(
-                    trade_signal.symbol,
-                    current_price,
-                    current_price
-                )
+                enabled, activation, callback = self._get_trailing_stop_settings(trade_signal.symbol)
+                if enabled:
+                    self.trailing_stop_manager.add_position(
+                        trade_signal.symbol,
+                        current_price,
+                        current_price,
+                        activation_percent=activation,
+                        callback_percent=callback,
+                    )
 
             # 添加到分批止盈跟踪（仅做多）
             if trade_signal.direction == 'LONG' and self.pyramiding_manager:
@@ -505,11 +544,15 @@ class FuturesAutoTradingSystem:
 
                 # 添加到移动止损跟踪
                 if self.trailing_stop_manager:
-                    self.trailing_stop_manager.add_position(
-                        confluence.symbol,
-                        current_price,
-                        current_price
-                    )
+                    enabled, activation, callback = self._get_trailing_stop_settings(confluence.symbol)
+                    if enabled:
+                        self.trailing_stop_manager.add_position(
+                            confluence.symbol,
+                            current_price,
+                            current_price,
+                            activation_percent=activation,
+                            callback_percent=callback,
+                        )
 
                 # 添加到分批止盈跟踪
                 if self.pyramiding_manager:
@@ -551,12 +594,16 @@ class FuturesAutoTradingSystem:
                 if position and position.quantity > 0:  # 只追踪多仓
                     # 添加到移动止损跟踪
                     if self.trailing_stop_manager and symbol_base not in self.trailing_stop_manager.tracking_data:
-                        self.trailing_stop_manager.add_position(
-                            symbol_base,
-                            position.entry_price,
-                            position.mark_price
-                        )
-                        self.logger.info(f"📊 自动添加 {symbol_base} 到移动止损跟踪 (入场价={position.entry_price:.4f})")
+                        enabled, activation, callback = self._get_trailing_stop_settings(symbol_base)
+                        if enabled:
+                            self.trailing_stop_manager.add_position(
+                                symbol_base,
+                                position.entry_price,
+                                position.mark_price,
+                                activation_percent=activation,
+                                callback_percent=callback,
+                            )
+                            self.logger.info(f"📊 自动添加 {symbol_base} 到移动止损跟踪 (入场价={position.entry_price:.4f})")
                     # 添加到分批止盈跟踪
                     if self.pyramiding_manager and symbol_base not in self.pyramiding_manager.entry_prices:
                         self.pyramiding_manager.add_position(symbol_base, position.entry_price)
@@ -578,6 +625,27 @@ class FuturesAutoTradingSystem:
         # 遍历所有持仓
         for symbol, position in self.trader.positions.items():
             symbol_base = symbol.replace("USDT", "")
+
+            enabled, activation, callback = self._get_trailing_stop_settings(symbol_base)
+            if not enabled:
+                if symbol_base in self.trailing_stop_manager.tracking_data:
+                    self.trailing_stop_manager.remove_position(symbol_base)
+                continue
+
+            if symbol_base not in self.trailing_stop_manager.tracking_data:
+                self.trailing_stop_manager.add_position(
+                    symbol_base,
+                    position.entry_price,
+                    position.mark_price,
+                    activation_percent=activation,
+                    callback_percent=callback,
+                )
+            else:
+                tracking = self.trailing_stop_manager.tracking_data.get(symbol_base) or {}
+                if activation is not None:
+                    tracking["activation_percent"] = activation
+                if callback is not None:
+                    tracking["callback_percent"] = callback
 
             # 更新价格并检查触发
             trigger = self.trailing_stop_manager.update_price(

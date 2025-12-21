@@ -779,7 +779,7 @@ export function ExchangeConfigModal({
                       currentExchangeType === 'bitget') && (
                       <div>
                         <label
-                          className="block text-sm font-semibold mb-2"
+                          className="block text-sm font-semibold mb-2"     
                           style={{ color: '#EAECEF' }}
                         >
                           {t('passphrase', language)}
@@ -787,8 +787,8 @@ export function ExchangeConfigModal({
                         <input
                           type="password"
                           value={passphrase}
-                          onChange={(e) => setPassphrase(e.target.value)}
-                          placeholder={t('enterPassphrase', language)}
+                          onChange={(e) => setPassphrase(e.target.value)}   
+                          placeholder={t('enterPassphrase', language)}      
                           className="w-full px-3 py-2 rounded"
                           style={{
                             background: '#0B0E11',
@@ -797,6 +797,40 @@ export function ExchangeConfigModal({
                           }}
                           required
                         />
+                      </div>
+                    )}
+
+                    {/* Binance Testnet */}
+                    {currentExchangeType === 'binance' && (
+                      <div
+                        className="flex items-center justify-between p-3 rounded mb-4"
+                        style={{
+                          background: '#0B0E11',
+                          border: '1px solid #2B3139',
+                        }}
+                      >
+                        <div>
+                          <div
+                            className="text-sm font-semibold"
+                            style={{ color: '#EAECEF' }}
+                          >
+                            {language === 'zh' ? '测试网模式' : 'Testnet Mode'}
+                          </div>
+                          <div className="text-xs" style={{ color: '#848E9C' }}>
+                            {language === 'zh'
+                              ? '启用后将连接到 Binance 测试网，用于模拟交易'
+                              : 'Enable to connect to Binance Testnet for paper trading'}
+                          </div>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={testnet}
+                            onChange={(e) => setTestnet(e.target.checked)}
+                            className="sr-only peer"
+                          />
+                          <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#F0B90B]"></div>
+                        </label>
                       </div>
                     )}
 

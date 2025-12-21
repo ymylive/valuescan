@@ -45,14 +45,26 @@ class TrailingStopManager:
             f"激活={activation_percent}%, 回调={callback_percent}%"
         )
 
-    def add_position(self, symbol: str, entry_price: float, current_price: float):
+    def add_position(
+        self,
+        symbol: str,
+        entry_price: float,
+        current_price: float,
+        activation_percent: Optional[float] = None,
+        callback_percent: Optional[float] = None,
+    ):
         """添加新持仓到跟踪列表"""
+        activation = self.activation_percent if activation_percent is None else float(activation_percent)
+        callback = self.callback_percent if callback_percent is None else float(callback_percent)
+
         self.tracking_data[symbol] = {
             'entry_price': entry_price,
             'highest_price': current_price,
             'current_price': current_price,
             'activated': False,
             'trailing_stop_price': 0.0,
+            'activation_percent': activation,
+            'callback_percent': callback,
             'last_update': datetime.now()
         }
 
@@ -86,18 +98,21 @@ class TrailingStopManager:
         # 计算当前盈利百分比
         profit_percent = ((current_price - entry_price) / entry_price) * 100
 
+        activation_percent = float(data.get('activation_percent', self.activation_percent))
+        callback_percent = float(data.get('callback_percent', self.callback_percent))
+
         # 检查是否达到激活阈值
-        if not data['activated'] and profit_percent >= self.activation_percent:
+        if not data['activated'] and profit_percent >= activation_percent:
             data['activated'] = True
             self.logger.info(
                 f"🎯 {symbol} 移动止损已激活: "
-                f"盈利={profit_percent:.2f}% >= {self.activation_percent}%"
+                f"盈利={profit_percent:.2f}% >= {activation_percent}%"
             )
 
         # 如果已激活，更新移动止损价格
         if data['activated']:
             # 移动止损价格 = 最高价 × (1 - 回调百分比)
-            trailing_stop_price = highest_price * (1 - self.callback_percent / 100)
+            trailing_stop_price = highest_price * (1 - callback_percent / 100)
             data['trailing_stop_price'] = trailing_stop_price
 
             # 检查是否触发止损

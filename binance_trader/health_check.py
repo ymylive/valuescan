@@ -94,10 +94,16 @@ def validate_config(cfg) -> CheckResult:
     # Risk limits
     max_pos = getattr(cfg, "MAX_POSITION_PERCENT", None)
     max_total = getattr(cfg, "MAX_TOTAL_POSITION_PERCENT", None)
+    major_total = getattr(cfg, "MAJOR_TOTAL_POSITION_PERCENT", None)
+    alt_total = getattr(cfg, "ALT_TOTAL_POSITION_PERCENT", None)
     if max_pos is not None and max_pos > 20:
         result.warnings.append(f"MAX_POSITION_PERCENT is high ({max_pos}%).")
     if max_total is not None and max_total > 80:
         result.warnings.append(f"MAX_TOTAL_POSITION_PERCENT is high ({max_total}%).")
+    if major_total is not None and major_total > 80:
+        result.warnings.append(f"MAJOR_TOTAL_POSITION_PERCENT is high ({major_total}%).")
+    if alt_total is not None and alt_total > 80:
+        result.warnings.append(f"ALT_TOTAL_POSITION_PERCENT is high ({alt_total}%).")
 
     return result
 

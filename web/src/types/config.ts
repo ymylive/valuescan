@@ -149,6 +149,7 @@ export interface TraderConfig {
   major_coin_max_position_percent: number
   major_coin_stop_loss_percent: number
   major_coin_pyramiding_exit_levels: [number, number][]
+  major_coin_enable_trailing_stop: boolean
   major_coin_trailing_stop_activation: number
   major_coin_trailing_stop_callback: number
 }

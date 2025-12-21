@@ -24,7 +24,7 @@ import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 # Logging
 logging.basicConfig(
@@ -248,6 +248,44 @@ def _pick_browser_path() -> str:
     return ""
 
 
+def _apply_browser_stealth_options(options: Any) -> None:
+    ua = (
+        os.getenv("VALUESCAN_LOGIN_USER_AGENT")
+        or os.getenv("VALUESCAN_BROWSER_USER_AGENT")
+        or ""
+    ).strip()
+    if not ua:
+        ua = (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        )
+    for arg in (
+        f"--user-agent={ua}",
+        "--lang=en-US,en",
+        "--disable-blink-features=AutomationControlled",
+    ):
+        try:
+            options.set_argument(arg)
+        except Exception:
+            pass
+
+
+def _get_login_urls() -> List[str]:
+    env_urls = (os.getenv("VALUESCAN_LOGIN_URLS") or "").strip()
+    if env_urls:
+        urls = [u.strip() for u in env_urls.split(",") if u.strip()]
+        if urls:
+            return urls
+    env_url = (os.getenv("VALUESCAN_LOGIN_URL") or "").strip()
+    if env_url:
+        return [env_url]
+    return [
+        "https://www.valuescan.io/login",
+        "https://www.valuescan.io/#/login",
+    ]
+
+
 def _normalize_login_method(value: str) -> str:
     raw = (value or "").strip().lower()
     if raw in {"api", "http", "http_api", "http-api", "httpapi"}:
@@ -362,6 +400,24 @@ def _get_storage_item(page, key: str) -> Optional[str]:
     return None
 
 
+def _persist_existing_token_from_page(page) -> bool:
+    pre_ls = _extract_storage(page, "localStorage")
+    pre_token = (pre_ls.get("account_token") or _get_storage_item(page, "account_token") or "").strip()
+    if pre_token and (_seconds_until_expiry(pre_token) or 0) > TOKEN_REFRESH_SAFETY_SECONDS:
+        logger.info("Existing account_token found in browser profile; persisting without relogin.")
+        token_payload = dict(pre_ls)
+        token_payload["account_token"] = pre_token
+        token_payload.setdefault("language", "en-US")
+        _atomic_write_json(LOCALSTORAGE_FILE, token_payload)
+        _atomic_write_json(SESSIONSTORAGE_FILE, _extract_storage(page, "sessionStorage"))
+        try:
+            _atomic_write_json(COOKIES_FILE, page.cookies() or [])
+        except Exception:
+            _atomic_write_json(COOKIES_FILE, [])
+        return True
+    return False
+
+
 def _cleanup_stale_browsers() -> None:
     """Kill any stale chromium processes that might block new browser instances."""
     if os.getenv("VALUESCAN_KILL_STALE_BROWSERS", "0").strip() != "1":
@@ -391,23 +447,80 @@ def _safe_page_title(page) -> str:
     return ""
 
 
+def _count_login_inputs(page) -> int:
+    js = """
+    (() => {
+      const roots = [];
+      const seen = new Set();
+      const pushRoot = (root) => {
+        if (root && !seen.has(root)) {
+          seen.add(root);
+          roots.push(root);
+        }
+      };
+      pushRoot(document);
+      try {
+        const iframes = Array.from(document.querySelectorAll('iframe'));
+        for (const f of iframes) {
+          try { pushRoot(f.contentDocument); } catch (e) {}
+        }
+      } catch (e) {}
+      let count = 0;
+      while (roots.length) {
+        const root = roots.pop();
+        try {
+          const inputs = root.querySelectorAll ? root.querySelectorAll('input, textarea') : [];
+          count += inputs.length;
+          const nodes = root.querySelectorAll ? root.querySelectorAll('*') : [];
+          for (const n of nodes) {
+            try {
+              if (n.shadowRoot) {
+                pushRoot(n.shadowRoot);
+              }
+            } catch (e) {}
+          }
+        } catch (e) {}
+      }
+      return count;
+    })()
+    """
+    try:
+        raw = page.run_js(js, as_expr=True)
+        return int(raw or 0)
+    except Exception:
+        return 0
+
+
 def _wait_for_dom_inputs(page, timeout_seconds: int = 40) -> bool:
     """Wait for the SPA to render at least one input element."""
     deadline = time.time() + max(1, int(timeout_seconds))
     while time.time() < deadline:
         try:
             ready = page.run_js("document.readyState", as_expr=True)
-            if isinstance(ready, str) and ready.lower() in ("interactive", "complete"):
-                cnt = page.run_js("document.querySelectorAll('input').length", as_expr=True)
-                try:
-                    if int(cnt or 0) >= 1:
-                        return True
-                except Exception:
-                    pass
         except Exception:
-            pass
+            ready = ""
+        if not ready or (isinstance(ready, str) and ready.lower() in ("interactive", "complete")):
+            if _count_login_inputs(page) >= 1:
+                return True
         time.sleep(1)
     return False
+
+
+def _detect_login_block_reason(page) -> str:
+    try:
+        text = page.run_js("document.body ? document.body.innerText : ''", as_expr=True)
+    except Exception:
+        return ""
+    if not isinstance(text, str):
+        return ""
+    low = text.lower()
+    if "cloudflare" in low or "just a moment" in low or "checking your browser" in low:
+        return "cloudflare_or_bot_check"
+    if "access denied" in low or "forbidden" in low or "blocked" in low:
+        return "access_denied"
+    if "enable javascript" in low or "javascript is required" in low:
+        return "javascript_required"
+    return ""
 
 
 def _try_login_via_js(page, email: str, password: str) -> Dict[str, Any]:
@@ -648,8 +761,10 @@ def login_and_refresh_token(email: str, password: str, headless: bool = True) ->
         _cleanup_stale_browsers()
 
         login_method = _normalize_login_method(LOGIN_METHOD_RAW)
+        http_attempted = False
         if login_method in {"auto", "api"}:
             logger.info("Attempting HTTP API login (method=%s)...", login_method)
+            http_attempted = True
             if _run_http_api_login(email, password):
                 return True
             if login_method == "api":
@@ -668,6 +783,7 @@ def login_and_refresh_token(email: str, password: str, headless: bool = True) ->
         options.set_argument("--disable-dev-shm-usage")
         options.set_argument("--disable-gpu")
         options.set_argument("--window-size", "1920,1080")
+        _apply_browser_stealth_options(options)
 
         # Dedicated user data dir to avoid clobbering an interactive session
         profile_dir = (os.getenv("VALUESCAN_LOGIN_PROFILE_DIR") or "").strip()
@@ -690,33 +806,42 @@ def login_and_refresh_token(email: str, password: str, headless: bool = True) ->
         page = None
         try:
             page = ChromiumPage(addr_or_opts=options)
-            page.get("https://www.valuescan.io/login")
-            time.sleep(5)
 
-            # Wait for SPA to render inputs (headless can be slower)
-            if not _wait_for_dom_inputs(page, timeout_seconds=45):
-                debug_path = _dump_login_debug(page, "no_inputs_rendered")
-                if debug_path:
-                    logger.error("Login page did not render inputs; debug saved to %s", debug_path)
-                else:
-                    logger.error("Login page did not render inputs.")
-                return False
-
-            # If the profile is already authenticated, tokens may already be present.
-            pre_ls = _extract_storage(page, "localStorage")
-            pre_token = (pre_ls.get("account_token") or _get_storage_item(page, "account_token") or "").strip()
-            if pre_token and (_seconds_until_expiry(pre_token) or 0) > TOKEN_REFRESH_SAFETY_SECONDS:
-                logger.info("Existing account_token found in browser profile; persisting without relogin.")
-                token_payload = dict(pre_ls)
-                token_payload["account_token"] = pre_token
-                token_payload.setdefault("language", "en-US")
-                _atomic_write_json(LOCALSTORAGE_FILE, token_payload)
-                _atomic_write_json(SESSIONSTORAGE_FILE, _extract_storage(page, "sessionStorage"))
+            login_urls = _get_login_urls()
+            login_ready = False
+            for idx, login_url in enumerate(login_urls):
                 try:
-                    _atomic_write_json(COOKIES_FILE, page.cookies() or [])
-                except Exception:
-                    _atomic_write_json(COOKIES_FILE, [])
-                return True
+                    page.get(login_url)
+                except Exception as exc:
+                    logger.warning("Failed to open login URL %s: %s", login_url, exc)
+                    continue
+                time.sleep(4 if idx == 0 else 2)
+
+                if _persist_existing_token_from_page(page):
+                    return True
+
+                wait_timeout = 45 if idx == 0 else 25
+                if _wait_for_dom_inputs(page, timeout_seconds=wait_timeout):
+                    login_ready = True
+                    break
+
+                reason = _detect_login_block_reason(page)
+                debug_reason = reason or f"no_inputs_rendered:{login_url}"
+                debug_path = _dump_login_debug(page, debug_reason)
+                if debug_path:
+                    logger.warning("Login inputs not found at %s; debug saved to %s", login_url, debug_path)
+                else:
+                    logger.warning("Login inputs not found at %s", login_url)
+
+            if not login_ready:
+                if not http_attempted:
+                    logger.warning(
+                        "Login page did not render inputs; attempting HTTP API login fallback."
+                    )
+                    if _run_http_api_login(email, password):
+                        return True
+                logger.error("Login page did not render inputs.")
+                return False
 
             # Prefer JS-driven login (more robust when text is wrapped in spans, etc.)
             js_result = _try_login_via_js(page, email, password)

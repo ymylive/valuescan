@@ -1,52 +1,55 @@
 #!/usr/bin/env python3
-"""Verify deployment on VPS."""
+"""验证 VPS 部署状态"""
 
-import os
 import paramiko
+import os
 
-DEFAULT_HOST = "82.158.88.34"
-DEFAULT_USER = "root"
+ssh = paramiko.SSHClient()
+ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+ssh.connect('82.158.88.34', username='root', password=os.environ.get('VALUESCAN_VPS_PASSWORD', 'Qq159741'))
 
-def _exec(ssh, cmd, timeout=30):
-    try:
-        stdin, stdout, stderr = ssh.exec_command(cmd, timeout=timeout)
-        out = stdout.read().decode("utf-8", errors="ignore")
-        err = stderr.read().decode("utf-8", errors="ignore")
-        return (out + ("\n" + err if err else "")).strip()
-    except Exception as exc:
-        return f"[error] {exc}"
+print("=" * 60)
+print("验证 VPS 部署状态")
+print("=" * 60)
 
-def main():
-    host = os.environ.get("VALUESCAN_VPS_HOST", DEFAULT_HOST)
-    user = os.environ.get("VALUESCAN_VPS_USER", DEFAULT_USER)
-    password = os.environ.get("VALUESCAN_VPS_PASSWORD", "")
-    
-    if not password:
-        raise SystemExit("VALUESCAN_VPS_PASSWORD required")
-    
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    
-    print(f"Connecting to {user}@{host}...")
-    ssh.connect(hostname=host, username=user, password=password, timeout=30)
-    
-    print("\n=== Service Status ===")
-    print(_exec(ssh, "systemctl is-active valuescan-api valuescan-trader valuescan-signal --no-pager 2>/dev/null || true"))
-    
-    print("\n=== API Health Check ===")
-    print(_exec(ssh, "curl -s --max-time 5 http://127.0.0.1:5000/api/valuescan/status | head -c 500"))
-    
-    print("\n=== Major Coin Config in config.example.py ===")
-    print(_exec(ssh, "grep -E 'MAJOR_COIN_LEVERAGE|MAJOR_COIN_MAX_POSITION_PERCENT' /root/valuescan/binance_trader/config.example.py | head -10"))
-    
-    print("\n=== Risk Manager Check ===")
-    print(_exec(ssh, "grep -E 'major_coin_max_position_percent|major_coins' /root/valuescan/binance_trader/risk_manager.py | head -10"))
-    
-    print("\n=== Futures Main Check ===")
-    print(_exec(ssh, "grep -E '_get_leverage|MAJOR_COIN_LEVERAGE' /root/valuescan/binance_trader/futures_main.py | head -10"))
-    
-    ssh.close()
-    print("\nVerification complete!")
+# 1. 检查 NOFX 目录
+print("\n1. NOFX 目录结构:")
+stdin, stdout, stderr = ssh.exec_command('ls -la /opt/nofx/web/dist/')
+print(stdout.read().decode())
 
-if __name__ == "__main__":
-    main()
+# 2. 检查 Nginx 配置
+print("\n2. Nginx NOFX 配置:")
+stdin, stdout, stderr = ssh.exec_command('grep -A5 "location.*nofx" /etc/nginx/conf.d/*.conf')
+print(stdout.read().decode())
+
+# 3. 测试 Nginx
+print("\n3. Nginx 配置测试:")
+stdin, stdout, stderr = ssh.exec_command('nginx -t')
+print(stdout.read().decode())
+print(stderr.read().decode())
+
+# 4. 检查服务状态
+print("\n4. ValueScan 服务状态:")
+stdin, stdout, stderr = ssh.exec_command('systemctl status valuescan-api valuescan-monitor valuescan-signal --no-pager | grep -E "(●|Active:)"')
+print(stdout.read().decode())
+
+# 5. 测试 API
+print("\n5. API 测试:")
+stdin, stdout, stderr = ssh.exec_command('curl -s --max-time 5 http://127.0.0.1:5000/api/valuescan/token/status | head -c 300')
+print(stdout.read().decode() or "(无响应)")
+
+# 6. 测试 NOFX 页面
+print("\n6. NOFX 页面测试:")
+stdin, stdout, stderr = ssh.exec_command('curl -s --max-time 5 -I http://127.0.0.1/nofx/ | head -5')
+print(stdout.read().decode())
+
+# 7. 检查 valuescan.env
+print("\n7. 环境变量文件:")
+stdin, stdout, stderr = ssh.exec_command('cat /root/valuescan/config/valuescan.env 2>/dev/null || echo "(文件不存在)"')
+print(stdout.read().decode())
+
+print("\n" + "=" * 60)
+print("验证完成")
+print("=" * 60)
+
+ssh.close()

@@ -311,9 +311,10 @@ export function TraderConfigSection({
 
   const inputClass = "input-modern"
   const selectClass = "input-modern"
-  const labelClass = 'block text-sm font-medium text-neutral-400 mb-1.5'
+  const labelClass = 'block text-sm font-medium text-neutral-400 mb-1.5'    
+  const majorCoinTrailingStopEnabled = config.major_coin_enable_trailing_stop ?? true
 
-  // Convert pyramiding_exit_levels to TakeProfitEditor format (做多)
+  // Convert pyramiding_exit_levels to TakeProfitEditor format (做多)      
   const takeProfitLevels = config.pyramiding_exit_levels?.map(
     ([percent, ratio]) => ({
       percent,
@@ -972,20 +973,34 @@ export function TraderConfigSection({
 
               {/* Major Coin Trailing Stop */}
               <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-4">
-                  <Activity className="w-4 h-4 text-blue-400" />
-                  <span className="text-sm font-medium text-white">
-                    主流币移动止损
-                  </span>
+                <div className="flex items-center justify-between gap-4 mb-4">
+                  <div className="flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-blue-400" />
+                    <span className="text-sm font-medium text-white">
+                      主流币移动止损
+                    </span>
+                  </div>
+                  <Toggle
+                    checked={majorCoinTrailingStopEnabled}
+                    onChange={() =>
+                      updateField(
+                        'major_coin_enable_trailing_stop',
+                        !majorCoinTrailingStopEnabled
+                      )
+                    }
+                  />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div
+                  className={`grid grid-cols-2 gap-4 ${majorCoinTrailingStopEnabled ? '' : 'opacity-50'}`}
+                >
                   <div>
                     <label className={labelClass}>激活阈值 (%)</label>
                     <input
                       type="number"
                       min={0}
                       step={0.1}
-                      value={config.major_coin_trailing_stop_activation || 1}
+                      value={config.major_coin_trailing_stop_activation ?? 1}
+                      disabled={!majorCoinTrailingStopEnabled}
                       onChange={(e) =>
                         updateField(
                           'major_coin_trailing_stop_activation',
@@ -1004,7 +1019,8 @@ export function TraderConfigSection({
                       type="number"
                       min={0}
                       step={0.1}
-                      value={config.major_coin_trailing_stop_callback || 0.8}
+                      value={config.major_coin_trailing_stop_callback ?? 0.8}
+                      disabled={!majorCoinTrailingStopEnabled}
                       onChange={(e) =>
                         updateField(
                           'major_coin_trailing_stop_callback',

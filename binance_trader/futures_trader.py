@@ -220,6 +220,9 @@ class BinanceFuturesTrader:
             self.major_coin_pyramiding_exit_levels = getattr(config, 'MAJOR_COIN_PYRAMIDING_EXIT_LEVELS', [
                 (1.5, 0.3), (2.5, 0.4), (4.0, 1.0)
             ]) or []
+            self.major_coin_enable_trailing_stop = bool(
+                getattr(config, 'MAJOR_COIN_ENABLE_TRAILING_STOP', True)
+            )
             self.major_coin_trailing_stop_activation = float(getattr(config, 'MAJOR_COIN_TRAILING_STOP_ACTIVATION', 1.0) or 1.0)
             self.major_coin_trailing_stop_callback = float(getattr(config, 'MAJOR_COIN_TRAILING_STOP_CALLBACK', 0.8) or 0.8)
 
@@ -270,6 +273,7 @@ class BinanceFuturesTrader:
             self.major_coins = {'BTC', 'ETH', 'BNB', 'SOL', 'XRP'}
             self.major_coin_stop_loss_percent = 1.5
             self.major_coin_pyramiding_exit_levels = [(1.5, 0.3), (2.5, 0.4), (4.0, 1.0)]
+            self.major_coin_enable_trailing_stop = True
             self.major_coin_trailing_stop_activation = 1.0
             self.major_coin_trailing_stop_callback = 0.8
 
@@ -528,6 +532,7 @@ class BinanceFuturesTrader:
                 'is_major': True,
                 'stop_loss_percent': getattr(self, 'major_coin_stop_loss_percent', 1.5),
                 'pyramiding_levels': getattr(self, 'major_coin_pyramiding_exit_levels', []),
+                'enable_trailing_stop': getattr(self, 'major_coin_enable_trailing_stop', True),
                 'trailing_activation': getattr(self, 'major_coin_trailing_stop_activation', 1.0),
                 'trailing_callback': getattr(self, 'major_coin_trailing_stop_callback', 0.8),
             }
@@ -537,6 +542,7 @@ class BinanceFuturesTrader:
                 'is_major': False,
                 'stop_loss_percent': self.risk_manager.stop_loss_percent,
                 'pyramiding_levels': getattr(self, 'pyramiding_exit_levels', []),
+                'enable_trailing_stop': getattr(config, 'ENABLE_TRAILING_STOP', False),
                 'trailing_activation': None,  # 使用默认
                 'trailing_callback': None,
             }
@@ -1649,21 +1655,14 @@ class BinanceFuturesTrader:
 
             side = 'SELL' if raw_quantity > 0 else 'BUY'
             formatted_qty = self.format_quantity(symbol, quantity)
-            
-            # 检测账户持仓模式（单向 vs 双向）
-            # 单向模式：不使用 positionSide，使用 reduceOnly
-            # 双向模式：使用 positionSide='LONG'/'SHORT'
             pos_side = str(getattr(position, 'position_side', '') or '').upper()
             is_hedge_mode = pos_side in {'LONG', 'SHORT'}
-            
-            # 尝试多种下单方式，按优先级降级
             order = None
-            last_error = None
-            
-            # 方式1：单向模式 - 使用 reduceOnly（最常见）
+
             if not is_hedge_mode:
                 try:
-                    order = self._call_api('futures_create_order',
+                    order = self._call_api(
+                        'futures_create_order',
                         symbol=symbol,
                         side=side,
                         type='MARKET',
@@ -1671,13 +1670,12 @@ class BinanceFuturesTrader:
                         reduceOnly=True
                     )
                 except BinanceAPIException as e:
-                    last_error = e
-                    self.logger.warning(f"单向模式平仓失败: {e}")
-            
-            # 方式2：双向模式 - 使用 positionSide
+                    self.logger.warning(f"Close order failed (one-way), retrying: {e}")
+
             if order is None and is_hedge_mode:
                 try:
-                    order = self._call_api('futures_create_order',
+                    order = self._call_api(
+                        'futures_create_order',
                         symbol=symbol,
                         side=side,
                         positionSide=pos_side,
@@ -1685,31 +1683,25 @@ class BinanceFuturesTrader:
                         quantity=formatted_qty
                     )
                 except BinanceAPIException as e:
-                    last_error = e
-                    self.logger.warning(f"双向模式平仓失败: {e}")
-            
-            # 方式3：最简单的市价单（无 reduceOnly，无 positionSide）
+                    self.logger.warning(f"Close order failed (hedge), retrying: {e}")
+
             if order is None:
                 try:
-                    self.logger.warning("尝试最简单的市价平仓...")
-                    order = self._call_api('futures_create_order',
+                    order = self._call_api(
+                        'futures_create_order',
                         symbol=symbol,
                         side=side,
                         type='MARKET',
                         quantity=formatted_qty
                     )
                 except BinanceAPIException as e:
-                    last_error = e
-                    self.logger.error(f"所有平仓方式均失败: {e}")
-                    raise last_error
-
-            # 获取成交价格
-            exit_price = mark_price  # 使用标记价格作为近似值
-
+                    self.logger.error(f"Close order failed: {e}")
+                    raise
             self.logger.info(f"✅ 仓位已平: {symbol}")
             self.logger.info(f"订单 ID: {order.get('orderId')}")
 
             # 计算盈亏
+            exit_price = mark_price  # use mark price as a close proxy
             pnl = 0.0
             if entry_price > 0 and quantity > 0:
                 if raw_quantity > 0:
@@ -1796,26 +1788,44 @@ class BinanceFuturesTrader:
             total_quantity = abs(position.quantity)
 
             side = 'SELL' if raw_quantity > 0 else 'BUY'
-            order_kwargs = {
-                'symbol': symbol,
-                'side': side,
-                'type': 'MARKET',
-                'quantity': close_quantity,
-                'reduceOnly': True,
-            }
             pos_side = str(getattr(position, 'position_side', '') or '').upper()
-            if pos_side in {'LONG', 'SHORT'}:
-                order_kwargs['positionSide'] = pos_side
+            is_hedge_mode = pos_side in {'LONG', 'SHORT'}
+            order = None
 
-            # 市价平仓（降级重试避免参数兼容性问题）
-            try:
-                order = self._call_api('futures_create_order', **order_kwargs)
-            except BinanceAPIException as e:
-                self.logger.warning(f"部分平仓下单失败，降级参数重试: {e}")
-                order_kwargs.pop('reduceOnly', None)
-                order_kwargs.pop('positionSide', None)
-                order = self._call_api('futures_create_order', **order_kwargs)
+            if not is_hedge_mode:
+                try:
+                    order = self._call_api(
+                        'futures_create_order',
+                        symbol=symbol,
+                        side=side,
+                        type='MARKET',
+                        quantity=close_quantity,
+                        reduceOnly=True,
+                    )
+                except BinanceAPIException as e:
+                    self.logger.warning(f"Partial close order failed, retrying: {e}")
 
+            if order is None and is_hedge_mode:
+                try:
+                    order = self._call_api(
+                        'futures_create_order',
+                        symbol=symbol,
+                        side=side,
+                        positionSide=pos_side,
+                        type='MARKET',
+                        quantity=close_quantity,
+                    )
+                except BinanceAPIException as e:
+                    self.logger.warning(f"Partial close order failed, retrying: {e}")
+
+            if order is None:
+                order = self._call_api(
+                    'futures_create_order',
+                    symbol=symbol,
+                    side=side,
+                    type='MARKET',
+                    quantity=close_quantity,
+                )
             self.logger.info(f"✅ 部分平仓成功: {close_quantity} 张合约")
 
             # 计算盈亏

@@ -297,6 +297,21 @@ def _exchange_type_from_exchange_id(exchange_id: str) -> str:
     return exchange_id or "binance"
 
 
+def _normalize_secret(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    v = str(value).strip()
+    return v if v else None
+
+
+def _exchange_template(exchange_type: str, cfg) -> Optional[Dict[str, Any]]:
+    exchange_type = (exchange_type or "").strip().lower()
+    for item in getattr(cfg, "SUPPORTED_EXCHANGES", []) or []:
+        if str(item.get("exchange_type") or "").strip().lower() == exchange_type:
+            return item
+    return None
+
+
 def _get_positions(exchange_type: str) -> Tuple[bool, List[Dict[str, Any]], str]:
     cfg = get_exchange_config()
     exchange_type = (exchange_type or "").strip().lower() or "binance"
@@ -692,15 +707,26 @@ def exchanges():
         if not exchange_type:
             return jsonify({"error": "Missing exchange_type"}), 400
 
+        api_key = _normalize_secret(data.get("api_key"))
+        api_secret = _normalize_secret(data.get("secret_key"))
+        passphrase = _normalize_secret(data.get("passphrase"))
+
+        template = _exchange_template(exchange_type, cfg)
+        if template and (template.get("type") or "").lower() == "cex":
+            if not api_key or not api_secret:
+                return jsonify({"error": "Missing API key/secret"}), 400
+        if exchange_type in {"okx", "bitget"} and not passphrase:
+            return jsonify({"error": "Missing passphrase"}), 400
+
         ok = cfg.update_exchange(
             exchange_type,
             enabled=bool(data.get("enabled", True)),
             testnet=(
                 bool(data.get("testnet", False)) if "testnet" in data else None
             ),
-            api_key=data.get("api_key"),
-            api_secret=data.get("secret_key"),
-            passphrase=data.get("passphrase"),
+            api_key=api_key,
+            api_secret=api_secret,
+            passphrase=passphrase,
         )
         if not ok:
             return jsonify({"error": f"Failed to create exchange '{exchange_type}'"}), 400

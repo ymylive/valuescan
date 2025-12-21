@@ -20,6 +20,9 @@ STARTUP_SIGNAL_MAX_AGE_SECONDS = int(os.getenv("VALUESCAN_STARTUP_SIGNAL_MAX_AGE
 STARTUP_FILTER_SECONDS = int(
     os.getenv("VALUESCAN_STARTUP_FILTER_SECONDS", str(STARTUP_SIGNAL_MAX_AGE_SECONDS))
 )
+SIGNAL_MAX_AGE_SECONDS = int(
+    os.getenv("VALUESCAN_SIGNAL_MAX_AGE_SECONDS", str(STARTUP_SIGNAL_MAX_AGE_SECONDS))
+)
 
 def _get_message_id(item):
     """Best-effort message id extraction (supports multiple ValueScan response shapes)."""
@@ -118,6 +121,30 @@ def _startup_filter_enabled():
     if STARTUP_SIGNAL_MAX_AGE_SECONDS <= 0 or STARTUP_FILTER_SECONDS <= 0:
         return False
     return (time.time() - STARTUP_TIME) <= STARTUP_FILTER_SECONDS
+
+
+def _filter_items_by_age(items, max_age_seconds, seen_ids=None):
+    now_ms = int(time.time() * 1000)
+    cutoff_ms = now_ms - (max_age_seconds * 1000)
+    filtered_items = []
+    skipped_old = 0
+
+    for item in items:
+        ts_ms = _get_message_timestamp_ms(item)
+        if ts_ms and ts_ms < cutoff_ms:
+            skipped_old += 1
+            msg_id = _get_message_id(item)
+            if msg_id and not is_message_processed(msg_id):
+                msg_type = _get_message_type(item)
+                title = item.get("title")
+                symbol = _extract_symbol_from_item(item)
+                mark_message_processed(msg_id, msg_type, symbol, title, ts_ms)
+            if seen_ids is not None and msg_id:
+                seen_ids.add(msg_id)
+            continue
+        filtered_items.append(item)
+
+    return filtered_items, skipped_old
 
 
 def get_beijing_time_str(timestamp_ms, format_str='%Y-%m-%d %H:%M:%S'):
@@ -385,30 +412,32 @@ def process_response_data(response_data, send_to_telegram=False, seen_ids=None, 
     
     items = _extract_message_items(response_data)
     if items:
-        if send_to_telegram and _startup_filter_enabled():
-            now_ms = int(time.time() * 1000)
-            cutoff_ms = now_ms - (STARTUP_SIGNAL_MAX_AGE_SECONDS * 1000)
-            filtered_items = []
-            skipped_old = 0
-            for item in items:
-                ts_ms = _get_message_timestamp_ms(item)
-                if ts_ms and ts_ms < cutoff_ms:
-                    skipped_old += 1
-                    msg_id = _get_message_id(item)
-                    if msg_id and not is_message_processed(msg_id):
-                        msg_type = _get_message_type(item)
-                        title = item.get("title")
-                        symbol = _extract_symbol_from_item(item)
-                        mark_message_processed(msg_id, msg_type, symbol, title, ts_ms)
-                    if seen_ids is not None and msg_id:
-                        seen_ids.add(msg_id)
-                    continue
-                filtered_items.append(item)
-            if skipped_old:
-                logger.info(
-                    f"  启动过滤: 跳过 {skipped_old} 条超过 {STARTUP_SIGNAL_MAX_AGE_SECONDS // 60} 分钟的历史信号"
+        if send_to_telegram:
+            if SIGNAL_MAX_AGE_SECONDS > 0:
+                items, skipped_old = _filter_items_by_age(
+                    items,
+                    SIGNAL_MAX_AGE_SECONDS,
+                    seen_ids=seen_ids,
                 )
-            items = filtered_items
+                if skipped_old:
+                    logger.info(
+                        "  Age filter: skipped %s messages older than %s minutes",
+                        skipped_old,
+                        SIGNAL_MAX_AGE_SECONDS // 60,
+                    )
+            elif _startup_filter_enabled():
+                items, skipped_old = _filter_items_by_age(
+                    items,
+                    STARTUP_SIGNAL_MAX_AGE_SECONDS,
+                    seen_ids=seen_ids,
+                )
+                if skipped_old:
+                    logger.info(
+                        "  Startup filter: skipped %s messages older than %s minutes",
+                        skipped_old,
+                        STARTUP_SIGNAL_MAX_AGE_SECONDS // 60,
+                    )
+
 
         total_count = len(items)
         
