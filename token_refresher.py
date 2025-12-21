@@ -45,6 +45,7 @@ AUTO_RELOGIN = os.getenv("VALUESCAN_AUTO_RELOGIN", "0").strip().lower() in ("1",
 AUTO_RELOGIN_COOLDOWN_S = int(os.getenv("VALUESCAN_AUTO_RELOGIN_COOLDOWN", "900"))
 AUTO_RELOGIN_USE_BROWSER = os.getenv("VALUESCAN_AUTO_RELOGIN_USE_BROWSER", "1").strip().lower() in ("1", "true", "yes")
 LOGIN_METHOD = (os.getenv("VALUESCAN_LOGIN_METHOD") or "auto").strip().lower()
+LOGIN_NO_HEADLESS = os.getenv("VALUESCAN_LOGIN_NO_HEADLESS", "0").strip().lower() in ("1", "true", "yes")
 
 
 def _load_credentials() -> Dict[str, str]:
@@ -127,7 +128,10 @@ def _run_browser_login(email: str, password: str) -> bool:
     env["VALUESCAN_PASSWORD"] = password
     env["VALUESCAN_TOKEN_FILE"] = str(TOKEN_FILE)
     script = Path(__file__).resolve().parent / "signal_monitor" / "token_refresher.py"
-    return _run_login_script(script, env, args=["--once"], timeout_s=240)
+    args = ["--once"]
+    if LOGIN_NO_HEADLESS:
+        args.append("--no-headless")
+    return _run_login_script(script, env, args=args, timeout_s=240)
 
 
 def _run_http_login(email: str, password: str) -> bool:
