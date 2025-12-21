@@ -262,19 +262,41 @@ export function StrategyStudioPage() {
 
   // Activate strategy
   const handleActivateStrategy = async (id: string) => {
-    if (!token) return
+    const authToken = token || localStorage.getItem('auth_token')
+    if (!authToken) {
+      const msg = language === 'zh' ? '请先登录' : 'Please login first'
+      setError(msg)
+      notify.error(msg)
+      return
+    }
     try {
       const response = await fetch(
         `${API_BASE}/strategies/${id}/activate`,
         {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${authToken}` },
         }
       )
-      if (!response.ok) throw new Error('Failed to activate strategy')
+      let errorMsg = ''
+      try {
+        const data = await response.json()
+        if (!response.ok) {
+          errorMsg = data?.error || data?.message || ''
+        }
+      } catch {
+        /* ignore json parse errors */
+      }
+      if (!response.ok) {
+        throw new Error(errorMsg || 'Failed to activate strategy')
+      }
       await fetchStrategies()
+      notify.success(
+        language === 'zh' ? '策略已激活' : 'Strategy activated'
+      )
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error')
+      const msg = err instanceof Error ? err.message : 'Unknown error'
+      setError(msg)
+      notify.error(msg)
     }
   }
 
