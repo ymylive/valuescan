@@ -90,13 +90,21 @@ def _persist_relogin_meta(ls: Dict[str, Any], method: str, success: bool, note: 
     _persist_localstorage(ls)
 
 
-def _run_login_script(script_path: Path, env: Dict[str, str], timeout_s: int = 180) -> bool:
+def _run_login_script(
+    script_path: Path,
+    env: Dict[str, str],
+    args: Optional[list] = None,
+    timeout_s: int = 180,
+) -> bool:
     if not script_path.exists():
         logger.error("Login helper not found: %s", script_path)
         return False
     try:
+        cmd = [sys.executable, str(script_path)]
+        if args:
+            cmd.extend(args)
         proc = subprocess.run(
-            [sys.executable, str(script_path)],
+            cmd,
             env=env,
             capture_output=True,
             text=True,
@@ -119,7 +127,7 @@ def _run_browser_login(email: str, password: str) -> bool:
     env["VALUESCAN_PASSWORD"] = password
     env["VALUESCAN_TOKEN_FILE"] = str(TOKEN_FILE)
     script = Path(__file__).resolve().parent / "signal_monitor" / "token_refresher.py"
-    return _run_login_script(script, env)
+    return _run_login_script(script, env, args=["--once"], timeout_s=240)
 
 
 def _run_http_login(email: str, password: str) -> bool:
