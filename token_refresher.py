@@ -127,7 +127,14 @@ def _run_browser_login(email: str, password: str) -> bool:
     env["VALUESCAN_EMAIL"] = email
     env["VALUESCAN_PASSWORD"] = password
     env["VALUESCAN_TOKEN_FILE"] = str(TOKEN_FILE)
-    script = Path(__file__).resolve().parent / "signal_monitor" / "token_refresher.py"
+    base_dir = Path(__file__).resolve().parent / "signal_monitor"
+    cdp_script = base_dir / "cdp_token_refresher.py"
+    if cdp_script.exists():
+        logger.info("Using CDP token refresher for browser login.")
+        if _run_login_script(cdp_script, env, args=["--once"], timeout_s=180):
+            return True
+        logger.warning("CDP token refresher failed; falling back to Chromium login.")
+    script = base_dir / "token_refresher.py"
     args = ["--once"]
     if LOGIN_NO_HEADLESS:
         args.append("--no-headless")
