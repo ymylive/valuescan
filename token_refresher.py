@@ -19,7 +19,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import requests
 
@@ -46,6 +46,34 @@ AUTO_RELOGIN_COOLDOWN_S = int(os.getenv("VALUESCAN_AUTO_RELOGIN_COOLDOWN", "900"
 AUTO_RELOGIN_USE_BROWSER = os.getenv("VALUESCAN_AUTO_RELOGIN_USE_BROWSER", "1").strip().lower() in ("1", "true", "yes")
 LOGIN_METHOD = (os.getenv("VALUESCAN_LOGIN_METHOD") or "auto").strip().lower()
 LOGIN_NO_HEADLESS = os.getenv("VALUESCAN_LOGIN_NO_HEADLESS", "0").strip().lower() in ("1", "true", "yes")
+SKIP_REFRESH_API = os.getenv("VALUESCAN_SKIP_REFRESH_API", "0").strip().lower() in ("1", "true", "yes")
+
+
+def _build_refresh_urls(primary_url: str) -> List[str]:
+    env_urls = (os.getenv("VALUESCAN_REFRESH_URLS") or "").strip()
+    urls: List[str] = []
+    if env_urls:
+        urls.extend([u.strip() for u in env_urls.split(",") if u.strip()])
+
+    defaults = [
+        primary_url,
+        "https://api.valuescan.io/api/account/refresh",
+        "https://api.valuescan.io/api/auth/refresh",
+        "https://api.valuescan.io/api/token/refresh",
+        "https://api.valuescan.io/api/v1/account/refreshToken",
+        "https://api.valuescan.io/api/v1/account/refresh",
+        "https://api.valuescan.io/api/v1/auth/refresh",
+        "https://api.valuescan.io/api/v1/token/refresh",
+        "https://www.valuescan.io/api/account/refreshToken",
+        "https://www.valuescan.io/api/account/refresh",
+    ]
+    for url in defaults:
+        if url and url not in urls:
+            urls.append(url)
+    return urls
+
+
+REFRESH_URLS = _build_refresh_urls(REFRESH_URL)
 
 
 def _load_credentials() -> Dict[str, str]:
@@ -72,7 +100,9 @@ def _parse_iso(ts: str) -> Optional[datetime]:
         return None
 
 
-def _relogin_on_cooldown(ls: Dict[str, Any]) -> bool:
+def _relogin_on_cooldown(ls: Dict[str, Any], force: bool = False) -> bool:
+    if force:
+        return False
     last = ls.get("last_relogin")
     if not isinstance(last, str) or not last.strip():
         return False
@@ -150,11 +180,11 @@ def _run_http_login(email: str, password: str) -> bool:
     return _run_login_script(script, env, timeout_s=90)
 
 
-def _attempt_relogin(ls: Dict[str, Any], reason: str) -> bool:
+def _attempt_relogin(ls: Dict[str, Any], reason: str, force: bool = False) -> bool:
     if not AUTO_RELOGIN:
         return False
     backup = dict(ls)
-    if _relogin_on_cooldown(ls):
+    if _relogin_on_cooldown(ls, force=force):
         logger.info("Relogin skipped (cooldown).")
         return False
 
@@ -234,6 +264,42 @@ def _seconds_until_expiry(token: str) -> Optional[int]:
     return max(0, exp - now)
 
 
+def _extract_tokens_from_payload(payload: Any) -> Dict[str, str]:
+    if not isinstance(payload, dict):
+        return {}
+
+    token_keys = ["account_token", "token", "access_token", "accessToken", "jwt"]
+    refresh_keys = ["refresh_token", "refreshToken", "refresh"]
+
+    def _pick(dct: Dict[str, Any], keys: List[str]) -> str:
+        for key in keys:
+            val = dct.get(key)
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+        return ""
+
+    def _scan(obj: Any, depth: int) -> Dict[str, str]:
+        if depth <= 0:
+            return {}
+        if isinstance(obj, dict):
+            account_token = _pick(obj, token_keys)
+            refresh_token = _pick(obj, refresh_keys)
+            if account_token or refresh_token:
+                return {"account_token": account_token, "refresh_token": refresh_token}
+            for value in obj.values():
+                found = _scan(value, depth - 1)
+                if found:
+                    return found
+        elif isinstance(obj, list):
+            for value in obj:
+                found = _scan(value, depth - 1)
+                if found:
+                    return found
+        return {}
+
+    return _scan(payload, depth=4)
+
+
 def _load_localstorage(retries: int = 3, delay: float = 0.2) -> Dict[str, Any]:
     for attempt in range(max(1, retries)):
         try:
@@ -269,65 +335,116 @@ def _persist_localstorage(data: Dict[str, Any]) -> bool:
         return False
 
 
-def _refresh(session: requests.Session, refresh_token_value: str, proxies: Optional[Dict[str, str]] = None) -> Optional[Dict[str, str]]:
-    headers = {"Authorization": f"Bearer {refresh_token_value}", "Content-Type": "application/json"}
-    try:
-        resp = session.post(REFRESH_URL, headers=headers, json={}, proxies=proxies, timeout=REQUEST_TIMEOUT_S)
-    except requests.RequestException:
-        logger.warning("Refresh request failed: network error")
+def _refresh(
+    session: requests.Session,
+    refresh_token_value: str,
+    proxies: Optional[Dict[str, str]] = None,
+) -> Optional[Dict[str, str]]:
+    if not refresh_token_value:
         return None
-    if resp.status_code != 200:
-        logger.warning("Refresh request failed: status=%s", resp.status_code)
-        return None
-    try:
-        payload = resp.json()
-    except ValueError:
-        logger.warning("Refresh request failed: non-JSON response")
-        return None
-    if not isinstance(payload, dict) or payload.get("code") != 200:
-        logger.warning("Refresh request failed: invalid payload")
-        return None
-    data = payload.get("data") or {}
-    if not isinstance(data, dict):
-        return None
-    account_token = (data.get("account_token") or data.get("token") or "").strip()
-    refresh_token_new = (data.get("refresh_token") or refresh_token_value or "").strip()
-    if not account_token:
-        return None
-    return {"account_token": account_token, "refresh_token": refresh_token_new}
+
+    base_headers = {"Content-Type": "application/json"}
+    request_modes = [
+        ("bearer", {"Authorization": f"Bearer {refresh_token_value}"}, {}),
+        ("auth", {"Authorization": refresh_token_value}, {}),
+        ("body_refresh_token", {}, {"refresh_token": refresh_token_value}),
+        ("body_refreshToken", {}, {"refreshToken": refresh_token_value}),
+        ("body_token", {}, {"token": refresh_token_value}),
+    ]
+
+    last_error = ""
+    for url in REFRESH_URLS:
+        for label, extra_headers, payload in request_modes:
+            headers = dict(base_headers)
+            headers.update(extra_headers)
+            try:
+                resp = session.post(
+                    url,
+                    headers=headers,
+                    json=payload,
+                    proxies=proxies,
+                    timeout=REQUEST_TIMEOUT_S,
+                )
+            except requests.RequestException:
+                last_error = f"{url} {label} network error"
+                continue
+
+            if resp.status_code in (404, 405):
+                last_error = f"{url} status={resp.status_code}"
+                break
+
+            if resp.status_code >= 500 and "No static resource" in (resp.text or ""):
+                last_error = f"{url} missing endpoint"
+                break
+
+            if resp.status_code != 200:
+                last_error = f"{url} status={resp.status_code}"
+                continue
+
+            try:
+                payload_json = resp.json()
+            except ValueError:
+                last_error = f"{url} non-JSON response"
+                continue
+
+            tokens = _extract_tokens_from_payload(payload_json)
+            account_token = (tokens.get("account_token") or "").strip()
+            if account_token:
+                refresh_token_new = (tokens.get("refresh_token") or refresh_token_value or "").strip()
+                return {"account_token": account_token, "refresh_token": refresh_token_new}
+
+            code = payload_json.get("code") if isinstance(payload_json, dict) else None
+            if code in (4000, 401, 403):
+                last_error = f"{url} code={code}"
+                return None
+
+            last_error = f"{url} invalid payload"
+
+    if last_error:
+        logger.warning("Refresh request failed: %s", last_error)
+    else:
+        logger.warning("Refresh request failed: no endpoints available")
+    return None
 
 
 def main() -> int:
     session = requests.Session()
     proxy = (os.getenv("SOCKS5_PROXY") or os.getenv("VALUESCAN_SOCKS5_PROXY") or os.getenv("VALUESCAN_PROXY") or "").strip()
     proxies = {"http": proxy, "https": proxy} if proxy else None
-    logger.info("Token refresher started. token_file=%s refresh_url=%s", TOKEN_FILE, REFRESH_URL)
+    logger.info("Token refresher started. token_file=%s refresh_urls=%s", TOKEN_FILE, REFRESH_URLS)
 
     while True:
         ls = _load_localstorage()
         refresh_token_value = (ls.get("refresh_token") or "").strip()
         account_token = (ls.get("account_token") or "").strip()
 
+        seconds_left = _seconds_until_expiry(account_token) if account_token else None
+
         if not refresh_token_value:
             logger.warning("Refresh token missing.")
-            _attempt_relogin(ls, "missing_refresh_token")
+            force_relogin = (not account_token) or (seconds_left is not None and seconds_left <= 30)
+            _attempt_relogin(ls, "missing_refresh_token", force=force_relogin)
             time.sleep(CHECK_INTERVAL_S)
             continue
-
-        seconds_left = _seconds_until_expiry(account_token) if account_token else None
         should_refresh = (not account_token) or (seconds_left is not None and seconds_left <= REFRESH_SAFETY_S)
 
         if should_refresh:
-            updated = _refresh(session, refresh_token_value, proxies=proxies)
-            if updated:
-                ls["account_token"] = updated["account_token"]
-                ls["refresh_token"] = updated["refresh_token"]
-                ls["last_refresh"] = datetime.now(timezone.utc).isoformat()
-                if _persist_localstorage(ls):
-                    logger.info("Token refreshed successfully.")
+            if SKIP_REFRESH_API:
+                logger.warning("Refresh API disabled; attempting relogin.")
+                force_relogin = (not account_token) or (seconds_left is not None and seconds_left <= 30)
+                _attempt_relogin(ls, "refresh_skipped", force=force_relogin)
             else:
-                logger.warning("Token refresh failed; attempting relogin.")
-                _attempt_relogin(ls, "refresh_failed")
+                updated = _refresh(session, refresh_token_value, proxies=proxies)
+                if updated:
+                    ls["account_token"] = updated["account_token"]
+                    ls["refresh_token"] = updated["refresh_token"]
+                    ls["last_refresh"] = datetime.now(timezone.utc).isoformat()
+                    if _persist_localstorage(ls):
+                        logger.info("Token refreshed successfully.")
+                else:
+                    logger.warning("Token refresh failed; attempting relogin.")
+                    force_relogin = (not account_token) or (seconds_left is not None and seconds_left <= 30)
+                    _attempt_relogin(ls, "refresh_failed", force=force_relogin)
 
         time.sleep(CHECK_INTERVAL_S)
 

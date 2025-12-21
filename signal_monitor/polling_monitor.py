@@ -20,7 +20,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 import requests
@@ -43,6 +43,7 @@ FAILURE_COOLDOWN = int(os.getenv("VALUESCAN_FAILURE_COOLDOWN", "60"))
 AUTO_RELOGIN = os.getenv("VALUESCAN_AUTO_RELOGIN", "0") == "1"
 AUTO_RELOGIN_COOLDOWN = int(os.getenv("VALUESCAN_AUTO_RELOGIN_COOLDOWN", "1800"))
 AUTO_RELOGIN_USE_BROWSER = os.getenv("VALUESCAN_AUTO_RELOGIN_USE_BROWSER", "0") == "1"
+SKIP_REFRESH_API = os.getenv("VALUESCAN_SKIP_REFRESH_API", "0") in ("1", "true", "True")
 
 WARN_API_URL = os.getenv(
     "VALUESCAN_API_URL", "https://api.valuescan.io/api/account/message/getWarnMessage"
@@ -61,6 +62,33 @@ if AI_API_URL:
     )
 API_URL = WARN_API_URL  # backward compatibility alias
 REFRESH_URL = os.getenv("VALUESCAN_REFRESH_URL", "https://api.valuescan.io/api/account/refreshToken")
+
+
+def _build_refresh_urls(primary_url: str) -> List[str]:
+    env_urls = (os.getenv("VALUESCAN_REFRESH_URLS") or "").strip()
+    urls: List[str] = []
+    if env_urls:
+        urls.extend([u.strip() for u in env_urls.split(",") if u.strip()])
+
+    defaults = [
+        primary_url,
+        "https://api.valuescan.io/api/account/refresh",
+        "https://api.valuescan.io/api/auth/refresh",
+        "https://api.valuescan.io/api/token/refresh",
+        "https://api.valuescan.io/api/v1/account/refreshToken",
+        "https://api.valuescan.io/api/v1/account/refresh",
+        "https://api.valuescan.io/api/v1/auth/refresh",
+        "https://api.valuescan.io/api/v1/token/refresh",
+        "https://www.valuescan.io/api/account/refreshToken",
+        "https://www.valuescan.io/api/account/refresh",
+    ]
+    for url in defaults:
+        if url and url not in urls:
+            urls.append(url)
+    return urls
+
+
+REFRESH_URLS = _build_refresh_urls(REFRESH_URL)
 MOVEMENT_LIST_URL = os.getenv(
     "VALUESCAN_MOVEMENT_LIST_URL", "https://api.valuescan.io/api/getFundsMovementPage"
 )
@@ -278,47 +306,115 @@ def _request_with_proxy_fallback(
     return session.request(method, url, headers=headers, timeout=REQUEST_TIMEOUT, **kwargs)
 
 
+def _extract_tokens_from_payload(payload: Any) -> Dict[str, str]:
+    if not isinstance(payload, dict):
+        return {}
+
+    token_keys = ["account_token", "token", "access_token", "accessToken", "jwt"]
+    refresh_keys = ["refresh_token", "refreshToken", "refresh"]
+
+    def _pick(dct: Dict[str, Any], keys: List[str]) -> str:
+        for key in keys:
+            val = dct.get(key)
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+        return ""
+
+    def _scan(obj: Any, depth: int) -> Dict[str, str]:
+        if depth <= 0:
+            return {}
+        if isinstance(obj, dict):
+            account_token = _pick(obj, token_keys)
+            refresh_token = _pick(obj, refresh_keys)
+            if account_token or refresh_token:
+                return {"account_token": account_token, "refresh_token": refresh_token}
+            for value in obj.values():
+                found = _scan(value, depth - 1)
+                if found:
+                    return found
+        elif isinstance(obj, list):
+            for value in obj:
+                found = _scan(value, depth - 1)
+                if found:
+                    return found
+        return {}
+
+    return _scan(payload, depth=4)
+
+
 def refresh_account_token(
     session: requests.Session,
     refresh_token_value: str,
     proxies: Optional[Dict[str, str]],
 ) -> bool:
+    if SKIP_REFRESH_API:
+        logger.warning("刷新 Token API 已禁用，跳过请求。")
+        return False
     if not refresh_token_value:
         return False
 
-    headers = {"Authorization": f"Bearer {refresh_token_value}", "Content-Type": "application/json"}
-    try:
-        resp = _request_with_proxy_fallback(session, "POST", REFRESH_URL, headers, proxies, json={})
-    except requests.RequestException as exc:
-        logger.warning(f"刷新 Token 请求异常: {exc}")
-        return False
+    base_headers = {"Content-Type": "application/json"}
+    request_modes = [
+        ("bearer", {"Authorization": f"Bearer {refresh_token_value}"}, {}),
+        ("auth", {"Authorization": refresh_token_value}, {}),
+        ("body_refresh_token", {}, {"refresh_token": refresh_token_value}),
+        ("body_refreshToken", {}, {"refreshToken": refresh_token_value}),
+        ("body_token", {}, {"token": refresh_token_value}),
+    ]
 
-    if resp.status_code != 200:
-        logger.warning(f"刷新 Token 失败，状态码 {resp.status_code}")
-        return False
+    last_error = ""
+    for url in REFRESH_URLS:
+        for label, extra_headers, payload in request_modes:
+            headers = dict(base_headers)
+            headers.update(extra_headers)
+            try:
+                resp = _request_with_proxy_fallback(session, "POST", url, headers, proxies, json=payload)
+            except requests.RequestException as exc:
+                last_error = f"{url} {label} error: {exc}"
+                continue
 
-    try:
-        payload = resp.json()
-    except ValueError:
-        logger.warning("刷新 Token 响应无法解析 JSON")
-        return False
+            if resp.status_code in (404, 405):
+                last_error = f"{url} status={resp.status_code}"
+                break
 
-    if payload.get("code") != 200:
-        logger.warning(f"刷新 Token 返回错误: {payload}")
-        return False
+            if resp.status_code >= 500 and "No static resource" in (resp.text or ""):
+                last_error = f"{url} missing endpoint"
+                break
 
-    data = payload.get("data") or {}
-    new_account_token = data.get("account_token") or data.get("token")
-    new_refresh_token = data.get("refresh_token") or refresh_token_value
-    if not new_account_token:
-        logger.warning("刷新 Token 响应缺少 account_token")
-        return False
+            if resp.status_code != 200:
+                last_error = f"{url} status={resp.status_code}"
+                continue
 
-    ls_data = _load_localstorage()
-    ls_data["account_token"] = new_account_token
-    ls_data["refresh_token"] = new_refresh_token
-    ls_data["last_refresh"] = datetime.now(timezone.utc).isoformat()
-    return _persist_localstorage(ls_data)
+            try:
+                payload_json = resp.json()
+            except ValueError:
+                last_error = f"{url} non-JSON response"
+                continue
+
+            tokens = _extract_tokens_from_payload(payload_json)
+            new_account_token = (tokens.get("account_token") or "").strip()
+            new_refresh_token = (tokens.get("refresh_token") or refresh_token_value or "").strip()
+            if new_account_token:
+                ls_data = _load_localstorage()
+                ls_data["account_token"] = new_account_token
+                ls_data["refresh_token"] = new_refresh_token
+                ls_data["last_refresh"] = datetime.now(timezone.utc).isoformat()
+                if _persist_localstorage(ls_data):
+                    logger.info("Token refreshed successfully via %s (%s).", url, label)
+                    return True
+                last_error = f"{url} failed to persist token"
+                continue
+
+            code = payload_json.get("code") if isinstance(payload_json, dict) else None
+            if code in (4000, 401, 403):
+                last_error = f"{url} code={code}"
+                return False
+
+            last_error = f"{url} invalid payload"
+
+    if last_error:
+        logger.warning(f"刷新 Token 失败: {last_error}")
+    return False
 
 
 def _extract_items_from_payload(payload: dict) -> list:

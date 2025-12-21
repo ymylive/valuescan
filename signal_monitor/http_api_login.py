@@ -129,14 +129,13 @@ def _extract_auth_cookie_value(session: requests.Session) -> str:
     return ""
 
 
-def _build_login_attempts(email: str, password: str) -> List[Tuple[str, Dict[str, Any]]]:
-    """
-    Returns a list of (endpoint, json_payload) attempts.
+def _build_login_endpoints() -> List[str]:
+    env_urls = (os.getenv("VALUESCAN_LOGIN_ENDPOINTS") or "").strip()
+    urls: List[str] = []
+    if env_urls:
+        urls.extend([u.strip() for u in env_urls.split(",") if u.strip()])
 
-    ValueScan has used multiple API hosts/paths and multiple credential field names
-    over time; we try a small set of combinations to keep this script resilient.
-    """
-    endpoints = [
+    defaults = [
         # Most reliable based on existing repo scripts
         "https://api.valuescan.io/api/account/login",
         # Newer versioned endpoints observed in the wild
@@ -146,10 +145,16 @@ def _build_login_attempts(email: str, password: str) -> List[Tuple[str, Dict[str
         "https://api.valuescan.io/api/v2/account/login",
         "https://api.valuescan.io/v1/account/login",
         "https://api.valuescan.io/v1/login",
+        "https://api.valuescan.io/api/v1/user/login",
+        "https://api.valuescan.io/api/v1/user/loginByPassword",
+        "https://api.valuescan.io/api/v1/auth/loginByPassword",
+        "https://api.valuescan.io/api/v1/account/loginByPassword",
         # Older/alternate endpoints
         "https://api.valuescan.io/api/login",
         "https://api.valuescan.io/api/user/login",
+        "https://api.valuescan.io/api/user/loginByPassword",
         "https://api.valuescan.io/api/auth/login",
+        "https://api.valuescan.io/api/auth/loginByPassword",
         "https://api.valuescan.io/login",
         "https://www.valuescan.io/api/v1/login",
         "https://www.valuescan.io/api/v1/account/login",
@@ -157,13 +162,33 @@ def _build_login_attempts(email: str, password: str) -> List[Tuple[str, Dict[str
         "https://www.valuescan.io/api/login",
         "https://www.valuescan.io/api/account/login",
     ]
+    for url in defaults:
+        if url and url not in urls:
+            urls.append(url)
+    return urls
+
+
+def _build_login_attempts(email: str, password: str) -> List[Tuple[str, Dict[str, Any]]]:
+    """
+    Returns a list of (endpoint, json_payload) attempts.
+
+    ValueScan has used multiple API hosts/paths and multiple credential field names
+    over time; we try a small set of combinations to keep this script resilient.
+    """
+    endpoints = _build_login_endpoints()
 
     pwd_md5 = hashlib.md5(password.encode("utf-8")).hexdigest()
+    pwd_sha256 = hashlib.sha256(password.encode("utf-8")).hexdigest()
     payloads: List[Dict[str, Any]] = [
         {"account": email, "password": password, "language": "en-US"},
         {"email": email, "password": password, "language": "en-US"},
         {"username": email, "password": password, "language": "en-US"},
         {"account": email, "password": pwd_md5, "language": "en-US"},
+        {"email": email, "password": pwd_md5, "language": "en-US"},
+        {"account": email, "password": pwd_sha256, "language": "en-US"},
+        {"email": email, "password": pwd_sha256, "language": "en-US"},
+        {"account": email, "password": password, "remember": True},
+        {"email": email, "password": password, "remember": True},
     ]
 
     attempts: List[Tuple[str, Dict[str, Any]]] = []
