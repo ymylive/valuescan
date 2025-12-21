@@ -594,21 +594,64 @@ def models():
         return jsonify(items)
 
     data = request.get_json() or {}
-    models_map = data.get("models") or {}
+    models_map = data.get("models")
+    if isinstance(models_map, list):
+        normalized: Dict[str, Dict[str, Any]] = {}
+        for item in models_map:
+            if not isinstance(item, dict):
+                continue
+            key = (
+                item.get("id")
+                or item.get("provider")
+                or item.get("name")
+                or ""
+            )
+            key = str(key).strip().lower()
+            if not key:
+                continue
+            normalized[key] = item
+        models_map = normalized
+    elif isinstance(models_map, dict):
+        pass
+    elif isinstance(data, dict) and data and all(isinstance(v, dict) for v in data.values()):
+        models_map = data
+    else:
+        models_map = {}
     if not isinstance(models_map, dict):
         return jsonify({"error": "models must be an object"}), 400
 
     for model_id, item in models_map.items():
         if not isinstance(item, dict):
             continue
-        name = str(model_id or "").strip().lower()
+        name = (
+            str(item.get("id") or item.get("provider") or model_id or "")
+            .strip()
+            .lower()
+        )
         if not name:
             continue
 
-        enabled = bool(item.get("enabled", True))
+        enabled = item.get("enabled", True)
+        if isinstance(enabled, str):
+            enabled = enabled.strip().lower() not in {"false", "0", "no", "off"}
         api_key = item.get("api_key")
+        if api_key is None:
+            api_key = item.get("apiKey")
         base_url = item.get("custom_api_url")
+        if base_url is None:
+            base_url = item.get("customApiUrl")
+        if base_url is None:
+            base_url = item.get("base_url")
+        if base_url is None:
+            base_url = item.get("baseUrl")
         model_name = item.get("custom_model_name")
+        if model_name is None:
+            model_name = item.get("customModelName")
+        if model_name is None:
+            model_name = item.get("model")
+        if enabled is None:
+            enabled = bool(str(api_key or "").strip())
+        enabled = bool(enabled)
         clear_api_key = (not enabled) or (api_key is not None and not str(api_key).strip())
 
         ok = cfg.update_provider_settings(
