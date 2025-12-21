@@ -36,9 +36,9 @@ logger = logging.getLogger(__name__)
 
 # Paths
 BASE_DIR = Path(__file__).resolve().parent
-LOCALSTORAGE_FILE = BASE_DIR / "valuescan_localstorage.json"
-COOKIES_FILE = BASE_DIR / "valuescan_cookies.json"
-SESSIONSTORAGE_FILE = BASE_DIR / "valuescan_sessionstorage.json"
+LOCALSTORAGE_FILE = Path(os.getenv("VALUESCAN_TOKEN_FILE") or BASE_DIR / "valuescan_localstorage.json")
+COOKIES_FILE = Path(os.getenv("VALUESCAN_COOKIES_FILE") or BASE_DIR / "valuescan_cookies.json")
+SESSIONSTORAGE_FILE = Path(os.getenv("VALUESCAN_SESSIONSTORAGE_FILE") or BASE_DIR / "valuescan_sessionstorage.json")
 CREDENTIALS_FILE = BASE_DIR / "valuescan_credentials.json"
 
 # Timing knobs (seconds)

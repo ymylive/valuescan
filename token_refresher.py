@@ -12,7 +12,10 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
+import subprocess
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,12 +24,153 @@ from typing import Any, Dict, Optional
 import requests
 
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger(__name__)
+
 REFRESH_URL = os.getenv("VALUESCAN_REFRESH_URL", "https://api.valuescan.io/api/account/refreshToken")
 TOKEN_FILE = Path(os.getenv("VALUESCAN_TOKEN_FILE") or Path(__file__).resolve().parent / "signal_monitor" / "valuescan_localstorage.json")
+CREDENTIALS_FILE = Path(
+    os.getenv("VALUESCAN_CREDENTIALS_FILE")
+    or Path(__file__).resolve().parent / "signal_monitor" / "valuescan_credentials.json"
+)
 
 CHECK_INTERVAL_S = int(os.getenv("VALUESCAN_TOKEN_REFRESH_INTERVAL", "30"))
 REFRESH_SAFETY_S = int(os.getenv("VALUESCAN_TOKEN_REFRESH_SAFETY", "120"))
 REQUEST_TIMEOUT_S = int(os.getenv("VALUESCAN_TOKEN_REFRESH_TIMEOUT", "15"))
+AUTO_RELOGIN = os.getenv("VALUESCAN_AUTO_RELOGIN", "0").strip().lower() in ("1", "true", "yes")
+AUTO_RELOGIN_COOLDOWN_S = int(os.getenv("VALUESCAN_AUTO_RELOGIN_COOLDOWN", "900"))
+AUTO_RELOGIN_USE_BROWSER = os.getenv("VALUESCAN_AUTO_RELOGIN_USE_BROWSER", "1").strip().lower() in ("1", "true", "yes")
+LOGIN_METHOD = (os.getenv("VALUESCAN_LOGIN_METHOD") or "auto").strip().lower()
+
+
+def _load_credentials() -> Dict[str, str]:
+    creds = {"email": "", "password": ""}
+    try:
+        if CREDENTIALS_FILE.exists():
+            payload = json.loads(CREDENTIALS_FILE.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                creds["email"] = str(payload.get("email") or "").strip()
+                creds["password"] = str(payload.get("password") or "").strip()
+    except Exception:
+        pass
+    env_email = (os.getenv("VALUESCAN_EMAIL") or "").strip()
+    env_password = (os.getenv("VALUESCAN_PASSWORD") or "").strip()
+    if env_email and env_password:
+        creds = {"email": env_email, "password": env_password}
+    return creds
+
+
+def _parse_iso(ts: str) -> Optional[datetime]:
+    try:
+        return datetime.fromisoformat(ts)
+    except Exception:
+        return None
+
+
+def _relogin_on_cooldown(ls: Dict[str, Any]) -> bool:
+    last = ls.get("last_relogin")
+    if not isinstance(last, str) or not last.strip():
+        return False
+    last_dt = _parse_iso(last)
+    if not last_dt:
+        return False
+    return (datetime.now(timezone.utc) - last_dt).total_seconds() < AUTO_RELOGIN_COOLDOWN_S
+
+
+def _persist_relogin_meta(ls: Dict[str, Any], method: str, success: bool, note: str = "") -> None:
+    ls["last_relogin"] = datetime.now(timezone.utc).isoformat()
+    ls["last_relogin_method"] = method
+    ls["last_relogin_success"] = bool(success)
+    if note:
+        ls["last_relogin_note"] = note[:500]
+    _persist_localstorage(ls)
+
+
+def _run_login_script(script_path: Path, env: Dict[str, str], timeout_s: int = 180) -> bool:
+    if not script_path.exists():
+        logger.error("Login helper not found: %s", script_path)
+        return False
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(script_path)],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+        )
+    except Exception as exc:
+        logger.error("Login helper failed to start: %s", exc)
+        return False
+    if proc.returncode != 0:
+        logger.warning("Login helper exited with code %s", proc.returncode)
+        if proc.stderr:
+            logger.warning("Login stderr: %s", proc.stderr.strip()[-400:])
+        return False
+    return True
+
+
+def _run_browser_login(email: str, password: str) -> bool:
+    env = os.environ.copy()
+    env["VALUESCAN_EMAIL"] = email
+    env["VALUESCAN_PASSWORD"] = password
+    env["VALUESCAN_TOKEN_FILE"] = str(TOKEN_FILE)
+    script = Path(__file__).resolve().parent / "signal_monitor" / "token_refresher.py"
+    return _run_login_script(script, env)
+
+
+def _run_http_login(email: str, password: str) -> bool:
+    env = os.environ.copy()
+    env["VALUESCAN_EMAIL"] = email
+    env["VALUESCAN_PASSWORD"] = password
+    env["VALUESCAN_TOKEN_FILE"] = str(TOKEN_FILE)
+    script = Path(__file__).resolve().parent / "signal_monitor" / "http_api_login.py"
+    return _run_login_script(script, env, timeout_s=90)
+
+
+def _attempt_relogin(ls: Dict[str, Any], reason: str) -> bool:
+    if not AUTO_RELOGIN:
+        return False
+    if _relogin_on_cooldown(ls):
+        logger.info("Relogin skipped (cooldown).")
+        return False
+
+    creds = _load_credentials()
+    if not creds["email"] or not creds["password"]:
+        logger.error("No credentials available for relogin.")
+        _persist_relogin_meta(ls, "none", False, "missing_credentials")
+        return False
+
+    method = "browser" if AUTO_RELOGIN_USE_BROWSER else "http"
+    if LOGIN_METHOD in ("browser", "chromium"):
+        method = "browser"
+    elif LOGIN_METHOD in ("http", "api"):
+        method = "http"
+
+    logger.warning("Relogin triggered (%s). Method=%s", reason, method)
+    ok = False
+    if method == "browser":
+        ok = _run_browser_login(creds["email"], creds["password"])
+        if not ok and LOGIN_METHOD in ("auto", "browser"):
+            logger.warning("Browser relogin failed; trying HTTP login fallback.")
+            ok = _run_http_login(creds["email"], creds["password"])
+    else:
+        ok = _run_http_login(creds["email"], creds["password"])
+        if not ok and LOGIN_METHOD in ("auto", "http"):
+            logger.warning("HTTP relogin failed; trying browser login fallback.")
+            ok = _run_browser_login(creds["email"], creds["password"])
+
+    ls_after = _load_localstorage()
+    token_ok = bool((ls_after.get("account_token") or "").strip())
+    _persist_relogin_meta(ls_after if ls_after else ls, method, ok and token_ok, reason)
+    if ok and token_ok:
+        logger.info("Relogin succeeded.")
+        return True
+    logger.error("Relogin failed.")
+    return False
 
 
 def _b64url_decode(segment: str) -> bytes:
@@ -107,14 +251,18 @@ def _refresh(session: requests.Session, refresh_token_value: str, proxies: Optio
     try:
         resp = session.post(REFRESH_URL, headers=headers, json={}, proxies=proxies, timeout=REQUEST_TIMEOUT_S)
     except requests.RequestException:
+        logger.warning("Refresh request failed: network error")
         return None
     if resp.status_code != 200:
+        logger.warning("Refresh request failed: status=%s", resp.status_code)
         return None
     try:
         payload = resp.json()
     except ValueError:
+        logger.warning("Refresh request failed: non-JSON response")
         return None
     if not isinstance(payload, dict) or payload.get("code") != 200:
+        logger.warning("Refresh request failed: invalid payload")
         return None
     data = payload.get("data") or {}
     if not isinstance(data, dict):
@@ -130,6 +278,7 @@ def main() -> int:
     session = requests.Session()
     proxy = (os.getenv("SOCKS5_PROXY") or os.getenv("VALUESCAN_SOCKS5_PROXY") or os.getenv("VALUESCAN_PROXY") or "").strip()
     proxies = {"http": proxy, "https": proxy} if proxy else None
+    logger.info("Token refresher started. token_file=%s refresh_url=%s", TOKEN_FILE, REFRESH_URL)
 
     while True:
         ls = _load_localstorage()
@@ -137,6 +286,8 @@ def main() -> int:
         account_token = (ls.get("account_token") or "").strip()
 
         if not refresh_token_value:
+            logger.warning("Refresh token missing.")
+            _attempt_relogin(ls, "missing_refresh_token")
             time.sleep(CHECK_INTERVAL_S)
             continue
 
@@ -149,11 +300,14 @@ def main() -> int:
                 ls["account_token"] = updated["account_token"]
                 ls["refresh_token"] = updated["refresh_token"]
                 ls["last_refresh"] = datetime.now(timezone.utc).isoformat()
-                _persist_localstorage(ls)
+                if _persist_localstorage(ls):
+                    logger.info("Token refreshed successfully.")
+            else:
+                logger.warning("Token refresh failed; attempting relogin.")
+                _attempt_relogin(ls, "refresh_failed")
 
         time.sleep(CHECK_INTERVAL_S)
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
