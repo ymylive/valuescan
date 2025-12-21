@@ -134,6 +134,7 @@ def _run_http_login(email: str, password: str) -> bool:
 def _attempt_relogin(ls: Dict[str, Any], reason: str) -> bool:
     if not AUTO_RELOGIN:
         return False
+    backup = dict(ls)
     if _relogin_on_cooldown(ls):
         logger.info("Relogin skipped (cooldown).")
         return False
@@ -170,6 +171,9 @@ def _attempt_relogin(ls: Dict[str, Any], reason: str) -> bool:
         logger.info("Relogin succeeded.")
         return True
     logger.error("Relogin failed.")
+    if backup.get("refresh_token"):
+        logger.warning("Restoring previous tokens after relogin failure.")
+        _persist_localstorage(backup)
     return False
 
 
