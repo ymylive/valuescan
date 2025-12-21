@@ -673,10 +673,6 @@ def models():
         if enabled is None:
             enabled = bool(str(api_key or "").strip())
         enabled = bool(enabled)
-        api_key_str = str(api_key).strip() if api_key is not None else ""
-        if api_key_str and not cfg.validate_api_key_format(name, api_key_str):
-            errors.append(f"Invalid API key for '{name}'")
-            continue
         clear_api_key = (not enabled) or (api_key is not None and not str(api_key).strip())
 
         ok = cfg.update_provider_settings(
