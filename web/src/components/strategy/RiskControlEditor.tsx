@@ -22,6 +22,11 @@ export function RiskControlEditor({
         zh: '同时持有的最大币种数量',
         en: 'Maximum coins held simultaneously',
       },
+      mainstreamMaxPositions: { zh: '主流币持仓上限', en: 'Mainstream Coin Max Positions' },
+      mainstreamMaxPositionsDesc: {
+        zh: '同时持有的主流币(BTC/ETH)最大数量',
+        en: 'Maximum mainstream coins (BTC/ETH) held simultaneously',
+      },
       // Trading leverage (exchange leverage)
       tradingLeverage: {
         zh: '交易杠杆（交易所杠杆）',
@@ -130,6 +135,34 @@ export function RiskControlEditor({
               value={config.max_positions ?? 3}
               onChange={(e) =>
                 updateField('max_positions', parseInt(e.target.value) || 3)
+              }
+              disabled={disabled}
+              min={1}
+              max={10}
+              className="w-32 px-3 py-2 rounded"
+              style={{
+                background: '#1E2329',
+                border: '1px solid #2B3139',
+                color: '#EAECEF',
+              }}
+            />
+          </div>
+
+          <div
+            className="p-4 rounded-lg"
+            style={{ background: '#0B0E11', border: '1px solid #2B3139' }}
+          >
+            <label className="block text-sm mb-1" style={{ color: '#EAECEF' }}>
+              {t('mainstreamMaxPositions')}
+            </label>
+            <p className="text-xs mb-2" style={{ color: '#848E9C' }}>
+              {t('mainstreamMaxPositionsDesc')}
+            </p>
+            <input
+              type="number"
+              value={config.mainstream_max_positions ?? 2}
+              onChange={(e) =>
+                updateField('mainstream_max_positions', parseInt(e.target.value) || 2)
               }
               disabled={disabled}
               min={1}

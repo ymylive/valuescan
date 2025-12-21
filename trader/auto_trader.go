@@ -853,7 +853,7 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *decision.Decision, act
 	}
 
 	// [CODE ENFORCED] Check max positions limit
-	if err := at.enforceMaxPositions(len(positions)); err != nil {
+	if err := at.enforceMaxPositions(positions, decision.Symbol); err != nil {
 		return err
 	}
 
@@ -970,7 +970,7 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *decision.Decision, ac
 	}
 
 	// [CODE ENFORCED] Check max positions limit
-	if err := at.enforceMaxPositions(len(positions)); err != nil {
+	if err := at.enforceMaxPositions(positions, decision.Symbol); err != nil {
 		return err
 	}
 
@@ -1855,18 +1855,42 @@ func (at *AutoTrader) enforceMinPositionSize(positionSizeUSD float64) error {
 }
 
 // enforceMaxPositions checks maximum positions count (CODE ENFORCED)
-func (at *AutoTrader) enforceMaxPositions(currentPositionCount int) error {
+func (at *AutoTrader) enforceMaxPositions(positions []map[string]interface{}, newSymbol string) error {
 	if at.config.StrategyConfig == nil {
 		return nil
 	}
 
+	// 1. Check Total Positions Limit
 	maxPositions := at.config.StrategyConfig.RiskControl.MaxPositions
 	if maxPositions <= 0 {
 		maxPositions = 3 // Default: 3 positions
 	}
 
+	currentPositionCount := len(positions)
 	if currentPositionCount >= maxPositions {
 		return fmt.Errorf("❌ [RISK CONTROL] Already at max positions (%d/%d)", currentPositionCount, maxPositions)
 	}
+
+	// 2. Check Mainstream Positions Limit (BTC/ETH)
+	// Only check if the new symbol is a mainstream coin
+	if isBTCETH(newSymbol) {
+		mainstreamLimit := at.config.StrategyConfig.RiskControl.MainstreamMaxPositions
+		if mainstreamLimit <= 0 {
+			// If not configured, use total max positions (no specific limit)
+			mainstreamLimit = maxPositions
+		}
+
+		currentMainstreamCount := 0
+		for _, pos := range positions {
+			if symbol, ok := pos["symbol"].(string); ok && isBTCETH(symbol) {
+				currentMainstreamCount++
+			}
+		}
+
+		if currentMainstreamCount >= mainstreamLimit {
+			return fmt.Errorf("❌ [RISK CONTROL] Already at max mainstream positions (%d/%d)", currentMainstreamCount, mainstreamLimit)
+		}
+	}
+
 	return nil
 }

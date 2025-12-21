@@ -474,6 +474,8 @@ export interface ExternalDataSource {
 export interface RiskControlConfig {
   // Max number of coins held simultaneously (CODE ENFORCED)
   max_positions: number
+  // Max number of mainstream coins (BTC/ETH) held simultaneously (CODE ENFORCED)
+  mainstream_max_positions: number
 
   // Trading Leverage - exchange leverage for opening positions (AI guided)
   btc_eth_max_leverage: number // BTC/ETH max exchange leverage

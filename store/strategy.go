@@ -157,6 +157,8 @@ type ExternalDataSource struct {
 type RiskControlConfig struct {
 	// Max number of coins held simultaneously (CODE ENFORCED)
 	MaxPositions int `json:"max_positions"`
+	// Max number of mainstream coins (BTC/ETH) held simultaneously (CODE ENFORCED)
+	MainstreamMaxPositions int `json:"mainstream_max_positions"`
 
 	// BTC/ETH exchange leverage for opening positions (AI guided)
 	BTCETHMaxLeverage int `json:"btc_eth_max_leverage"`
@@ -264,6 +266,7 @@ func GetDefaultStrategyConfig(lang string) StrategyConfig {
 		},
 		RiskControl: RiskControlConfig{
 			MaxPositions:                    3,   // Max 3 coins simultaneously (CODE ENFORCED)
+			MainstreamMaxPositions:          2,   // Max 2 mainstream coins simultaneously (CODE ENFORCED)
 			BTCETHMaxLeverage:               5,   // BTC/ETH exchange leverage (AI guided)
 			AltcoinMaxLeverage:              5,   // Altcoin exchange leverage (AI guided)
 			BTCETHMaxPositionValueRatio:     5.0, // BTC/ETH: max position = 5x equity (CODE ENFORCED)
