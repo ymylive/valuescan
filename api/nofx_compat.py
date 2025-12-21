@@ -695,7 +695,21 @@ def models():
             clear_api_key=clear_api_key,
         )
         if not ok:
-            errors.append(f"Failed to update model '{name}'")
+            provider = cfg.get_provider(name)
+            if provider is None:
+                errors.append(f"Failed to update model '{name}'")
+                continue
+            # Allow any API key format for NOFX compatibility.
+            api_key_str = str(api_key).strip() if api_key is not None else ""
+            if not enabled or (api_key is not None and not api_key_str):
+                provider.api_key = ""
+            elif api_key is not None:
+                provider.api_key = api_key_str
+            if model_name is not None and str(model_name).strip():
+                provider.model = str(model_name).strip()
+            if base_url is not None:
+                base_url_str = str(base_url).strip()
+                provider.base_url = base_url_str or None
 
     if errors:
         return jsonify({"error": "; ".join(errors)}), 400
