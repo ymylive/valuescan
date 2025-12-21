@@ -620,6 +620,18 @@ def models():
     if not isinstance(models_map, dict):
         return jsonify({"error": "models must be an object"}), 400
 
+    aliases = {
+        "gpt": "openai",
+        "chatgpt": "openai",
+        "openai-compatible": "openai",
+        "openai_compatible": "openai",
+        "claude": "anthropic",
+        "google": "gemini",
+        "xai": "grok",
+        "moonshot": "kimi",
+    }
+    errors: List[str] = []
+
     for model_id, item in models_map.items():
         if not isinstance(item, dict):
             continue
@@ -629,6 +641,15 @@ def models():
             .lower()
         )
         if not name:
+            continue
+        if "/" in name:
+            name = name.split("/", 1)[0].strip()
+        if ":" in name:
+            name = name.split(":", 1)[0].strip()
+        name = aliases.get(name, name)
+
+        if name not in getattr(cfg, "SUPPORTED_PROVIDERS", []):
+            errors.append(f"Unsupported model '{name}'")
             continue
 
         enabled = item.get("enabled", True)
@@ -652,6 +673,10 @@ def models():
         if enabled is None:
             enabled = bool(str(api_key or "").strip())
         enabled = bool(enabled)
+        api_key_str = str(api_key).strip() if api_key is not None else ""
+        if api_key_str and not cfg.validate_api_key_format(name, api_key_str):
+            errors.append(f"Invalid API key for '{name}'")
+            continue
         clear_api_key = (not enabled) or (api_key is not None and not str(api_key).strip())
 
         ok = cfg.update_provider_settings(
@@ -670,7 +695,10 @@ def models():
             clear_api_key=clear_api_key,
         )
         if not ok:
-            return jsonify({"error": f"Failed to update model '{name}'"}), 400
+            errors.append(f"Failed to update model '{name}'")
+
+    if errors:
+        return jsonify({"error": "; ".join(errors)}), 400
 
     cfg.save()
     return jsonify({"message": "OK"})
