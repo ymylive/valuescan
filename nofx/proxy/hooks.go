@@ -12,9 +12,11 @@ import (
 
 // InitBinanceProxyHooks registers hooks so Binance HTTP clients use the proxy.
 func InitBinanceProxyHooks() {
-	if getBinanceProxyURL() == nil {
+	proxyURL := getBinanceProxyURL()
+	if proxyURL == nil {
 		return
 	}
+	futures.SetWsProxyUrl(proxyURL.String())
 
 	hook.RegisterHook(hook.NEW_BINANCE_TRADER, func(args ...any) any {
 		client, ok := args[1].(*futures.Client)

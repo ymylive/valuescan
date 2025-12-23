@@ -63,6 +63,7 @@ type FuturesTrader struct {
 
 // NewFuturesTrader creates futures trader
 func NewFuturesTrader(apiKey, secretKey string, userId string, testnet bool) *FuturesTrader {
+	futures.UseTestnet = testnet
 	client := futures.NewClient(apiKey, secretKey)
 
 	hookRes := hook.HookExec[hook.NewBinanceTraderResult](hook.NEW_BINANCE_TRADER, userId, client)
@@ -72,7 +73,7 @@ func NewFuturesTrader(apiKey, secretKey string, userId string, testnet bool) *Fu
 
 	if testnet {
 		client.SetApiEndpoint(futures.BaseApiTestnetUrl)
-		logger.Infof("鉁?Using Binance Futures testnet endpoints")
+		logger.Infof("Using Binance Futures testnet endpoints")
 	}
 
 	// Sync time to avoid "Timestamp ahead" error

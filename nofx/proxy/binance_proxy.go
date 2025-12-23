@@ -13,6 +13,16 @@ import (
 
 const binanceProxyEnv = "NOFX_BINANCE_PROXY"
 
+var proxyEnvKeys = []string{
+	binanceProxyEnv,
+	"HTTPS_PROXY",
+	"https_proxy",
+	"HTTP_PROXY",
+	"http_proxy",
+	"ALL_PROXY",
+	"all_proxy",
+}
+
 var (
 	binanceProxyOnce sync.Once
 	binanceProxyURL  *url.URL
@@ -20,22 +30,32 @@ var (
 
 func getBinanceProxyURL() *url.URL {
 	binanceProxyOnce.Do(func() {
-		raw := strings.TrimSpace(os.Getenv(binanceProxyEnv))
+		raw, source := getProxyEnv()
 		if raw == "" {
 			return
 		}
 		proxyURL, err := url.Parse(raw)
 		if err != nil || proxyURL.Scheme == "" || proxyURL.Host == "" {
-			logger.Warnf("Invalid %s value, proxy disabled", binanceProxyEnv)
+			logger.Warnf("Invalid %s value, proxy disabled", source)
 			return
 		}
 		if proxyURL.Scheme != "http" && proxyURL.Scheme != "https" {
-			logger.Warnf("%s must be http or https, proxy disabled", binanceProxyEnv)
+			logger.Warnf("%s must be http or https, proxy disabled", source)
 			return
 		}
 		binanceProxyURL = proxyURL
+		logger.Infof("Binance proxy enabled (%s://%s) via %s", proxyURL.Scheme, proxyURL.Host, source)
 	})
 	return binanceProxyURL
+}
+
+func getProxyEnv() (string, string) {
+	for _, key := range proxyEnvKeys {
+		if raw := strings.TrimSpace(os.Getenv(key)); raw != "" {
+			return raw, key
+		}
+	}
+	return "", ""
 }
 
 // ApplyBinanceProxy updates the HTTP client to use the configured Binance proxy.

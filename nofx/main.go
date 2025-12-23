@@ -26,7 +26,11 @@ import (
 
 func main() {
 	// Load .env environment variables
-	_ = godotenv.Load()
+	if err := godotenv.Load(); err != nil {
+		if exePath, exeErr := os.Executable(); exeErr == nil {
+			_ = godotenv.Load(filepath.Join(filepath.Dir(exePath), ".env"))
+		}
+	}
 
 	// Initialize logger
 	logger.Init(nil)
