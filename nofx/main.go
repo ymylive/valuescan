@@ -11,6 +11,7 @@ import (
 	"nofx/manager"
 	"nofx/market"
 	"nofx/mcp"
+	"nofx/proxy"
 	"nofx/store"
 	"nofx/trader"
 	"os"
@@ -38,6 +39,9 @@ func main() {
 	config.Init()
 	cfg := config.Get()
 	logger.Info("✅ Configuration loaded")
+
+	// Initialize Binance proxy hooks if configured
+	proxy.InitBinanceProxyHooks()
 
 	// Initialize database
 	// Default path is data/data.db to work with Docker volume mount (/app/data)

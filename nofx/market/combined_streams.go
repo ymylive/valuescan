@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"nofx/proxy"
 	"strings"
 	"sync"
 	"time"
@@ -33,6 +34,7 @@ func (c *CombinedStreamsClient) Connect() error {
 	dialer := websocket.Dialer{
 		HandshakeTimeout: 10 * time.Second,
 	}
+	dialer = *proxy.ApplyBinanceProxyToDialer(&dialer)
 
 	// Combined streams use a different endpoint
 	conn, _, err := dialer.Dial("wss://fstream.binance.com/stream", nil)

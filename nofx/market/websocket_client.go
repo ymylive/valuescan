@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"nofx/proxy"
 	"sync"
 	"time"
 
@@ -80,6 +81,7 @@ func (w *WSClient) Connect() error {
 	dialer := websocket.Dialer{
 		HandshakeTimeout: 10 * time.Second,
 	}
+	dialer = *proxy.ApplyBinanceProxyToDialer(&dialer)
 
 	conn, _, err := dialer.Dial("wss://ws-fapi.binance.com/ws-fapi/v1", nil)
 	if err != nil {
