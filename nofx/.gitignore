@@ -83,6 +83,8 @@ lib64/
 parts/
 sdist/
 var/
+!web/src/lib/
+!web/src/lib/**
 wheels/
 pip-wheel-metadata/
 share/python-wheels/
