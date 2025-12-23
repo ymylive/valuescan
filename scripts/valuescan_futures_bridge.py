@@ -9,10 +9,16 @@ FuturesAutoTradingSystem 处理，实现 signal_monitor 与交易模块的进程
 import argparse
 import json
 import logging
+import os
 import socketserver
+import sys
 import threading
 import time
 from typing import Any, Dict, Optional
+
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
 
 from binance_trader.futures_main import FuturesAutoTradingSystem
 from ipc_config import IPC_HOST, IPC_PORT

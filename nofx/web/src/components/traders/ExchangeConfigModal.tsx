@@ -168,7 +168,7 @@ export function ExchangeConfigModal({
 
   // 加载服务器IP（当选择binance时）
   useEffect(() => {
-    if (isBinance && !serverIP) {
+    if (isBinance && !testnet && !serverIP) {
       setLoadingIP(true)
       api
         .getServerIP()
@@ -182,7 +182,7 @@ export function ExchangeConfigModal({
           setLoadingIP(false)
         })
     }
-  }, [currentExchangeType])
+  }, [isBinance, serverIP, testnet])
 
   const handleCopyIP = async (ip: string) => {
     try {
@@ -555,7 +555,7 @@ export function ExchangeConfigModal({
                 {isCex && (
                     <>
                       {/* 币安用户配置提示 (D1 方案) */}
-                      {isBinance && (
+                      {isBinance && !testnet && (
                         <div
                           className="mb-4 p-3 rounded cursor-pointer transition-colors"
                           style={{

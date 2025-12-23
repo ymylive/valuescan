@@ -492,7 +492,7 @@ func (m *PositionSyncManager) createTrader(config *store.TraderFullConfig) (Trad
 	// Use exchange.ExchangeType to determine specific exchange, not exchange.ID (UUID) or exchange.Type (cex/dex)
 	switch exchange.ExchangeType {
 	case "binance":
-		return NewFuturesTrader(exchange.APIKey, exchange.SecretKey, config.Trader.UserID), nil
+		return NewFuturesTrader(exchange.APIKey, exchange.SecretKey, config.Trader.UserID, exchange.Testnet), nil
 
 	case "bybit":
 		return NewBybitTrader(exchange.APIKey, exchange.SecretKey), nil

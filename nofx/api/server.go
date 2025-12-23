@@ -563,7 +563,12 @@ func (s *Server) handleCreateTrader(c *gin.Context) {
 		// Use ExchangeType (e.g., "binance") instead of ID (UUID)
 		switch exchangeCfg.ExchangeType {
 		case "binance":
-			tempTrader = trader.NewFuturesTrader(exchangeCfg.APIKey, exchangeCfg.SecretKey, userID)
+			tempTrader = trader.NewFuturesTrader(
+				exchangeCfg.APIKey,
+				exchangeCfg.SecretKey,
+				userID,
+				exchangeCfg.Testnet,
+			)
 		case "hyperliquid":
 			tempTrader, createErr = trader.NewHyperliquidTrader(
 				exchangeCfg.APIKey, // private key
@@ -1082,7 +1087,12 @@ func (s *Server) handleSyncBalance(c *gin.Context) {
 	// Use ExchangeType (e.g., "binance") instead of ExchangeID (which is now UUID)
 	switch exchangeCfg.ExchangeType {
 	case "binance":
-		tempTrader = trader.NewFuturesTrader(exchangeCfg.APIKey, exchangeCfg.SecretKey, userID)
+		tempTrader = trader.NewFuturesTrader(
+			exchangeCfg.APIKey,
+			exchangeCfg.SecretKey,
+			userID,
+			exchangeCfg.Testnet,
+		)
 	case "hyperliquid":
 		tempTrader, createErr = trader.NewHyperliquidTrader(
 			exchangeCfg.APIKey,
@@ -1233,7 +1243,12 @@ func (s *Server) handleClosePosition(c *gin.Context) {
 	// Use ExchangeType (e.g., "binance") instead of ExchangeID (which is now UUID)
 	switch exchangeCfg.ExchangeType {
 	case "binance":
-		tempTrader = trader.NewFuturesTrader(exchangeCfg.APIKey, exchangeCfg.SecretKey, userID)
+		tempTrader = trader.NewFuturesTrader(
+			exchangeCfg.APIKey,
+			exchangeCfg.SecretKey,
+			userID,
+			exchangeCfg.Testnet,
+		)
 	case "hyperliquid":
 		tempTrader, createErr = trader.NewHyperliquidTrader(
 			exchangeCfg.APIKey,
