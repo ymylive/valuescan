@@ -108,10 +108,11 @@ func (s *Server) handleCreateStrategy(c *gin.Context) {
 	var req struct {
 		Name        string               `json:"name" binding:"required"`
 		Description string               `json:"description"`
-		Config      store.StrategyConfig `json:"config" binding:"required"`
+		Config      store.StrategyConfig `json:"config"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
+		fmt.Printf("CreateStrategy Bind Error: %v\n", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request parameters: " + err.Error()})
 		return
 	}

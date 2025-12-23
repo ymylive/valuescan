@@ -7,11 +7,13 @@ import (
 	"log"
 	"net/http"
 	"nofx/hook"
+	"nofx/netutil"
+	"os"
 	"strconv"
 	"time"
 )
 
-const (
+var (
 	baseURL = "https://fapi.binance.com"
 )
 
@@ -20,8 +22,24 @@ type APIClient struct {
 }
 
 func NewAPIClient() *APIClient {
+	if os.Getenv("BINANCE_USE_TESTNET") == "true" {
+		baseURL = "https://testnet.binancefuture.com"
+		log.Println("⚠️ Using Binance Futures Testnet")
+	}
+
 	client := &http.Client{
 		Timeout: 30 * time.Second,
+	}
+
+	proxyURL := netutil.ResolveBinanceProxyURL()
+	if proxyURL != "" {
+		proxyClient, err := netutil.NewHTTPClientWithProxy(proxyURL, 30*time.Second)
+		if err != nil {
+			log.Printf("Binance proxy disabled: %v", err)
+		} else if proxyClient != nil {
+			client = proxyClient
+			log.Printf("Binance proxy enabled: %s", netutil.SanitizeProxyURL(proxyURL))
+		}
 	}
 
 	hookRes := hook.HookExec[hook.SetHttpClientResult](hook.SET_HTTP_CLIENT, client)

@@ -20,7 +20,7 @@ class PositionInfo:
     """合约持仓信息"""
     def __init__(self, data: Dict):
         self.symbol = data.get('symbol', '')
-        self.position_side = data.get('positionSide', 'LONG')
+        self.position_side = data.get('positionSide', 'BOTH')
         self.quantity = float(data.get('positionAmt', 0))
         self.entry_price = float(data.get('entryPrice', 0))
         self.mark_price = float(data.get('markPrice', 0))
@@ -86,6 +86,9 @@ class BinanceFuturesTrader:
         self.margin_type = margin_type
         self.testnet = testnet
         self.logger = logging.getLogger(__name__)
+        self._config = None
+        self._use_hedge_mode = None
+        self.enable_trailing_stop = False
 
         self.api_timeout = int(api_timeout) if api_timeout else 30
         self.api_retry_count = max(1, int(api_retry_count) if api_retry_count else 1)
@@ -174,6 +177,8 @@ class BinanceFuturesTrader:
         # 初始化 Telegram 通知器
         try:
             import config
+            self._config = config
+            self.enable_trailing_stop = bool(getattr(config, 'ENABLE_TRAILING_STOP', False))
             enabled = getattr(config, 'ENABLE_TRADE_NOTIFICATIONS', False)
             bot_token = getattr(config, 'TELEGRAM_BOT_TOKEN', '')
             chat_id = getattr(config, 'TELEGRAM_CHAT_ID', '')
@@ -243,6 +248,8 @@ class BinanceFuturesTrader:
         except Exception as e:
             self.logger.debug(f"未找到本地 config 模块，将尝试从 signal_monitor 加载: {e}")
             # 不传入 enabled=False，让 TradeNotifier 自己决定是否启用（会尝试从 signal_monitor 加载）
+            self._config = None
+            self.enable_trailing_stop = False
             self.notifier = TradeNotifier(proxy=proxy)
             # 使用默认通知开关
             self.notify_open = True
@@ -279,6 +286,7 @@ class BinanceFuturesTrader:
 
         # 测试连接并同步时间（代理失败时自动切换直连）
         self._init_connectivity()
+        self._use_hedge_mode = self._detect_hedge_mode()
 
         self._safety_last_action_ts: Dict[str, float] = {}
         
@@ -498,6 +506,59 @@ class BinanceFuturesTrader:
             raise last_exc
         raise RuntimeError(f"Binance API call failed: {method_name}")
 
+    def _detect_hedge_mode(self) -> bool:
+        cfg = getattr(self, "_config", None)
+        if cfg is not None:
+            try:
+                return bool(getattr(cfg, "USE_HEDGE_MODE"))
+            except Exception:
+                pass
+        try:
+            result = self._call_read_api('futures_get_position_mode')
+            if isinstance(result, dict):
+                return bool(result.get('dualSidePosition'))
+        except Exception:
+            pass
+        try:
+            positions = self._call_read_api('futures_position_information')
+            for pos in positions or []:
+                side = str(pos.get('positionSide', '')).upper()
+                if side in {'LONG', 'SHORT'}:
+                    return True
+        except Exception:
+            pass
+        return False
+
+    def _ensure_hedge_mode(self) -> bool:
+        if self._use_hedge_mode is None:
+            self._use_hedge_mode = self._detect_hedge_mode()
+        return bool(self._use_hedge_mode)
+
+    def _submit_order_with_mode(self, order_kwargs: Dict, position_side: Optional[str] = None):
+        use_hedge = self._ensure_hedge_mode()
+        payload = dict(order_kwargs)
+        if position_side and use_hedge:
+            payload['positionSide'] = position_side
+        for _ in range(3):
+            try:
+                return self._call_api('futures_create_order', **payload)
+            except BinanceAPIException as exc:
+                if getattr(exc, "code", None) == -1106 and 'reduceOnly' in payload:
+                    payload = dict(payload)
+                    payload.pop('reduceOnly', None)
+                    continue
+                if getattr(exc, "code", None) == -4061 or "position side" in str(exc).lower():
+                    payload = dict(payload)
+                    if 'positionSide' in payload:
+                        payload.pop('positionSide', None)
+                        self._use_hedge_mode = False
+                    elif position_side:
+                        payload['positionSide'] = position_side
+                        self._use_hedge_mode = True
+                    continue
+                raise
+        return self._call_api('futures_create_order', **payload)
+
     def is_major_coin(self, symbol: str) -> bool:
         """
         判断是否是主流币
@@ -542,7 +603,7 @@ class BinanceFuturesTrader:
                 'is_major': False,
                 'stop_loss_percent': self.risk_manager.stop_loss_percent,
                 'pyramiding_levels': getattr(self, 'pyramiding_exit_levels', []),
-                'enable_trailing_stop': getattr(config, 'ENABLE_TRAILING_STOP', False),
+                'enable_trailing_stop': getattr(self, 'enable_trailing_stop', False),
                 'trailing_activation': None,  # 使用默认
                 'trailing_callback': None,
             }
@@ -813,7 +874,6 @@ class BinanceFuturesTrader:
             order_kwargs = {
                 'symbol': symbol,
                 'side': 'SELL',
-                'positionSide': 'LONG',
                 'type': 'TAKE_PROFIT_MARKET',
                 'stopPrice': tp_price,
             }
@@ -835,7 +895,7 @@ class BinanceFuturesTrader:
                 )
 
             try:
-                self._call_api('futures_create_order', **order_kwargs)
+                self._submit_order_with_mode(order_kwargs, position_side='LONG')
                 submitted += 1
             except BinanceAPIException as e:
                 self.logger.error(f"设置止盈{idx+1}失败: {e}")
@@ -889,7 +949,6 @@ class BinanceFuturesTrader:
             order_kwargs = {
                 'symbol': symbol,
                 'side': 'BUY',  # 做空平仓用 BUY
-                'positionSide': 'SHORT',
                 'type': 'TAKE_PROFIT_MARKET',
                 'stopPrice': tp_price,
             }
@@ -911,7 +970,7 @@ class BinanceFuturesTrader:
                 )
 
             try:
-                self._call_api('futures_create_order', **order_kwargs)
+                self._submit_order_with_mode(order_kwargs, position_side='SHORT')
                 submitted += 1
             except BinanceAPIException as e:
                 self.logger.error(f"设置做空止盈{idx+1}失败: {e}")
@@ -1290,27 +1349,17 @@ class BinanceFuturesTrader:
 
                 try:
                     # 先尝试单向模式
-                    try:
-                        self._call_api('futures_create_order',
-                            symbol=binance_symbol,
-                            side='SELL',
-                            type='TAKE_PROFIT_MARKET',
-                            stopPrice=tp1_price,
-                            quantity=tp1_quantity,
-                            reduceOnly=True
-                        )
-                    except BinanceAPIException as e:
-                        if e.code == -4061 or "position side" in str(e).lower():
-                            self._call_api('futures_create_order',
-                                symbol=binance_symbol,
-                                side='SELL',
-                                positionSide='LONG',
-                                type='TAKE_PROFIT_MARKET',
-                                stopPrice=tp1_price,
-                                quantity=tp1_quantity
-                            )
-                        else:
-                            raise
+                    self._submit_order_with_mode(
+                        {
+                            'symbol': binance_symbol,
+                            'side': 'SELL',
+                            'type': 'TAKE_PROFIT_MARKET',
+                            'stopPrice': tp1_price,
+                            'quantity': tp1_quantity,
+                            'reduceOnly': True,
+                        },
+                        position_side='LONG'
+                    )
                     self.logger.info(f"✅ 第一止盈已设于 {tp1_price}")
                 except BinanceAPIException as e:
                     self.logger.error(f"设置第一止盈失败: {e}")
@@ -1321,27 +1370,17 @@ class BinanceFuturesTrader:
 
                 try:
                     # 先尝试单向模式
-                    try:
-                        self._call_api('futures_create_order',
-                            symbol=binance_symbol,
-                            side='SELL',
-                            type='TAKE_PROFIT_MARKET',
-                            stopPrice=tp2_price,
-                            quantity=tp2_quantity,
-                            reduceOnly=True
-                        )
-                    except BinanceAPIException as e:
-                        if e.code == -4061 or "position side" in str(e).lower():
-                            self._call_api('futures_create_order',
-                                symbol=binance_symbol,
-                                side='SELL',
-                                positionSide='LONG',
-                                type='TAKE_PROFIT_MARKET',
-                                stopPrice=tp2_price,
-                                quantity=tp2_quantity
-                            )
-                        else:
-                            raise
+                    self._submit_order_with_mode(
+                        {
+                            'symbol': binance_symbol,
+                            'side': 'SELL',
+                            'type': 'TAKE_PROFIT_MARKET',
+                            'stopPrice': tp2_price,
+                            'quantity': tp2_quantity,
+                            'reduceOnly': True,
+                        },
+                        position_side='LONG'
+                    )
                     self.logger.info(f"✅ 第二止盈已设于 {tp2_price}")
                 except BinanceAPIException as e:
                     self.logger.error(f"设置第二止盈失败: {e}")
@@ -1475,12 +1514,14 @@ class BinanceFuturesTrader:
             for order_attempt in range(max_order_retries):
                 try:
                     self.logger.info(f"🔄 尝试下单 ({order_attempt + 1}/{max_order_retries})...")
-                    order = self._call_api('futures_create_order',
-                        symbol=binance_symbol,
-                        side='SELL',
-                        positionSide='SHORT',
-                        type='MARKET',
-                        quantity=quantity
+                    order = self._submit_order_with_mode(
+                        {
+                            'symbol': binance_symbol,
+                            'side': 'SELL',
+                            'type': 'MARKET',
+                            'quantity': quantity,
+                        },
+                        position_side='SHORT'
                     )
                     order_id = order.get('orderId')
                     self.logger.info(f"✅ 订单已提交，ID: {order_id}")
@@ -1546,13 +1587,15 @@ class BinanceFuturesTrader:
             self.logger.info(f"🛡️  设置止损于 {stop_loss_price} (+{stop_loss_percent}%)")
 
             try:
-                self._call_api('futures_create_order',
-                    symbol=binance_symbol,
-                    side='BUY',
-                    positionSide='SHORT',
-                    type='STOP_MARKET',
-                    stopPrice=stop_loss_price,
-                    closePosition=True
+                self._submit_order_with_mode(
+                    {
+                        'symbol': binance_symbol,
+                        'side': 'BUY',
+                        'type': 'STOP_MARKET',
+                        'stopPrice': stop_loss_price,
+                        'closePosition': True,
+                    },
+                    position_side='SHORT'
                 )
                 self.logger.info(f"✅ 止损已设于 {stop_loss_price}")
             except BinanceAPIException as e:
@@ -1573,13 +1616,15 @@ class BinanceFuturesTrader:
                 self.logger.info(f"🎯 设置止盈于 {take_profit_price} (-{take_profit_percent}%)")
 
                 try:
-                    self._call_api('futures_create_order',
-                        symbol=binance_symbol,
-                        side='BUY',
-                        positionSide='SHORT',
-                        type='TAKE_PROFIT_MARKET',
-                        stopPrice=take_profit_price,
-                        closePosition=True
+                    self._submit_order_with_mode(
+                        {
+                            'symbol': binance_symbol,
+                            'side': 'BUY',
+                            'type': 'TAKE_PROFIT_MARKET',
+                            'stopPrice': take_profit_price,
+                            'closePosition': True,
+                        },
+                        position_side='SHORT'
                     )
                     self.logger.info(f"✅ 止盈已设于 {take_profit_price}")
                 except BinanceAPIException as e:
@@ -1655,48 +1700,17 @@ class BinanceFuturesTrader:
 
             side = 'SELL' if raw_quantity > 0 else 'BUY'
             formatted_qty = self.format_quantity(symbol, quantity)
-            pos_side = str(getattr(position, 'position_side', '') or '').upper()
-            is_hedge_mode = pos_side in {'LONG', 'SHORT'}
-            order = None
-
-            if not is_hedge_mode:
-                try:
-                    order = self._call_api(
-                        'futures_create_order',
-                        symbol=symbol,
-                        side=side,
-                        type='MARKET',
-                        quantity=formatted_qty,
-                        reduceOnly=True
-                    )
-                except BinanceAPIException as e:
-                    self.logger.warning(f"Close order failed (one-way), retrying: {e}")
-
-            if order is None and is_hedge_mode:
-                try:
-                    order = self._call_api(
-                        'futures_create_order',
-                        symbol=symbol,
-                        side=side,
-                        positionSide=pos_side,
-                        type='MARKET',
-                        quantity=formatted_qty
-                    )
-                except BinanceAPIException as e:
-                    self.logger.warning(f"Close order failed (hedge), retrying: {e}")
-
-            if order is None:
-                try:
-                    order = self._call_api(
-                        'futures_create_order',
-                        symbol=symbol,
-                        side=side,
-                        type='MARKET',
-                        quantity=formatted_qty
-                    )
-                except BinanceAPIException as e:
-                    self.logger.error(f"Close order failed: {e}")
-                    raise
+            pos_side = 'LONG' if raw_quantity > 0 else 'SHORT'
+            order = self._submit_order_with_mode(
+                {
+                    'symbol': symbol,
+                    'side': side,
+                    'type': 'MARKET',
+                    'quantity': formatted_qty,
+                    'reduceOnly': True,
+                },
+                position_side=pos_side
+            )
             self.logger.info(f"✅ 仓位已平: {symbol}")
             self.logger.info(f"订单 ID: {order.get('orderId')}")
 
@@ -1788,44 +1802,17 @@ class BinanceFuturesTrader:
             total_quantity = abs(position.quantity)
 
             side = 'SELL' if raw_quantity > 0 else 'BUY'
-            pos_side = str(getattr(position, 'position_side', '') or '').upper()
-            is_hedge_mode = pos_side in {'LONG', 'SHORT'}
-            order = None
-
-            if not is_hedge_mode:
-                try:
-                    order = self._call_api(
-                        'futures_create_order',
-                        symbol=symbol,
-                        side=side,
-                        type='MARKET',
-                        quantity=close_quantity,
-                        reduceOnly=True,
-                    )
-                except BinanceAPIException as e:
-                    self.logger.warning(f"Partial close order failed, retrying: {e}")
-
-            if order is None and is_hedge_mode:
-                try:
-                    order = self._call_api(
-                        'futures_create_order',
-                        symbol=symbol,
-                        side=side,
-                        positionSide=pos_side,
-                        type='MARKET',
-                        quantity=close_quantity,
-                    )
-                except BinanceAPIException as e:
-                    self.logger.warning(f"Partial close order failed, retrying: {e}")
-
-            if order is None:
-                order = self._call_api(
-                    'futures_create_order',
-                    symbol=symbol,
-                    side=side,
-                    type='MARKET',
-                    quantity=close_quantity,
-                )
+            pos_side = 'LONG' if raw_quantity > 0 else 'SHORT'
+            order = self._submit_order_with_mode(
+                {
+                    'symbol': symbol,
+                    'side': side,
+                    'type': 'MARKET',
+                    'quantity': close_quantity,
+                    'reduceOnly': True,
+                },
+                position_side=pos_side
+            )
             self.logger.info(f"✅ 部分平仓成功: {close_quantity} 张合约")
 
             # 计算盈亏

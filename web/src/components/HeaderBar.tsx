@@ -2,10 +2,11 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { withBasePath } from '../lib/appBase'
 import { motion } from 'framer-motion'
-import { Menu, X, ChevronDown } from 'lucide-react'
+import { Menu, X, ChevronDown, Globe, Server as ServerIcon } from 'lucide-react'
 import { t, type Language } from '../i18n/translations'
 import { useSystemConfig } from '../hooks/useSystemConfig'
 import { OFFICIAL_LINKS } from '../constants/branding'
+import { getApiUrl } from '../lib/appBase'
 
 type Page =
   | 'competition'
@@ -33,6 +34,11 @@ interface HeaderBarProps {
   onPageChange?: (page: Page) => void
 }
 
+interface NetworkInfo {
+  public_ip: string
+  is_testnet: boolean
+}
+
 export default function HeaderBar({
   isLoggedIn = false,
   isHomePage = false,
@@ -47,10 +53,39 @@ export default function HeaderBar({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [languageDropdownOpen, setLanguageDropdownOpen] = useState(false)
   const [userDropdownOpen, setUserDropdownOpen] = useState(false)
+  const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const userDropdownRef = useRef<HTMLDivElement>(null)
   const { config: systemConfig } = useSystemConfig()
   const registrationEnabled = systemConfig?.registration_enabled !== false
+
+  // Fetch network info
+  useEffect(() => {
+    fetch(`${getApiUrl()}/network`)
+      .then((res) => res.json())
+      .then((data) => setNetworkInfo(data))
+      .catch((err) => console.error('Failed to fetch network info:', err))
+  }, [])
+
+  const toggleTestnet = async () => {
+    if (!networkInfo) return
+    const newState = !networkInfo.is_testnet
+    try {
+      const res = await fetch(`${getApiUrl()}/network/testnet`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: newState }),
+      })
+      if (res.ok) {
+        setNetworkInfo({ ...networkInfo, is_testnet: newState })
+        alert('Testnet configuration updated. Service restart may be required.')
+      } else {
+        console.error('Failed to toggle testnet')
+      }
+    } catch (err) {
+      console.error('Error toggling testnet:', err)
+    }
+  }
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -600,6 +635,31 @@ export default function HeaderBar({
 
           {/* Right Side - Social Links and User Actions */}
           <div className="flex items-center gap-4">
+            {/* Network Info & Toggle (Desktop) */}
+            {networkInfo && (
+              <div className="flex items-center gap-3 mr-2">
+                <button
+                  onClick={toggleTestnet}
+                  className={`flex items-center px-2 py-1 rounded text-xs font-bold transition-colors ${
+                    networkInfo.is_testnet
+                      ? 'bg-yellow-500/20 text-yellow-500 border border-yellow-500'
+                      : 'bg-gray-700 text-gray-400 border border-gray-600 hover:text-gray-300'
+                  }`}
+                  title="Toggle Testnet Mode"
+                >
+                  {networkInfo.is_testnet ? 'TESTNET' : 'MAINNET'}
+                </button>
+                <div
+                  className="flex items-center gap-1.5 text-xs"
+                  style={{ color: 'var(--brand-light-gray)' }}
+                  title="Server IP"
+                >
+                  <ServerIcon className="w-3.5 h-3.5" />
+                  <span>{networkInfo.public_ip}</span>
+                </div>
+              </div>
+            )}
+
             {/* Social Links - Always visible */}
             <div className="flex items-center gap-1">
               {/* GitHub */}
@@ -1295,6 +1355,29 @@ export default function HeaderBar({
             className="py-3 flex items-center gap-3"
             style={{ borderTop: '1px solid #2B3139' }}
           >
+            {/* Network Info (Mobile) */}
+            {networkInfo && (
+              <div className="flex items-center gap-3 flex-1">
+                 <div
+                  className="flex items-center gap-1.5 text-xs"
+                  style={{ color: 'var(--brand-light-gray)' }}
+                >
+                  <ServerIcon className="w-3.5 h-3.5" />
+                  <span>{networkInfo.public_ip}</span>
+                </div>
+                <button
+                  onClick={toggleTestnet}
+                  className={`px-2 py-0.5 rounded text-xs font-bold ${
+                    networkInfo.is_testnet
+                      ? 'bg-yellow-500/20 text-yellow-500 border border-yellow-500'
+                      : 'bg-gray-700 text-gray-400 border border-gray-600'
+                  }`}
+                >
+                  {networkInfo.is_testnet ? 'TESTNET' : 'MAINNET'}
+                </button>
+              </div>
+            )}
+            
             <a
               href={OFFICIAL_LINKS.github}
               target="_blank"

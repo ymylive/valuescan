@@ -216,8 +216,32 @@ func (s *StrategyStore) initTables() error {
 }
 
 func (s *StrategyStore) initDefaultData() error {
-	// No longer pre-populate strategies - create on demand when user configures
-	return nil
+	var count int
+	if err := s.db.QueryRow(
+		`SELECT COUNT(1) FROM strategies WHERE is_default = 1`,
+	).Scan(&count); err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+
+	configJSON, err := json.Marshal(GetDefaultStrategyConfig("en"))
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(
+		`INSERT INTO strategies (id, user_id, name, description, is_active, is_default, config)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		"default",
+		"system",
+		"Default Strategy",
+		"Built-in default strategy",
+		false,
+		true,
+		string(configJSON),
+	)
+	return err
 }
 
 // GetDefaultStrategyConfig returns the default strategy configuration for the given language

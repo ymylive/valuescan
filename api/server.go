@@ -12,6 +12,7 @@ import (
 	"nofx/crypto"
 	"nofx/logger"
 	"nofx/manager"
+	"nofx/netutil"
 	"nofx/store"
 	"nofx/trader"
 	"strconv"
@@ -103,6 +104,8 @@ func (s *Server) setupRoutes() {
 
 		// System config (no authentication required, for frontend to determine admin mode/registration status)
 		api.GET("/config", s.handleGetSystemConfig)
+		api.GET("/network", s.handleGetNetworkInfo)
+		api.POST("/network/testnet", s.handleToggleTestnet) // Toggle Testnet
 
 		// Crypto related endpoints (no authentication required)
 		api.GET("/crypto/config", s.cryptoHandler.HandleGetCryptoConfig)
@@ -246,8 +249,13 @@ func getPublicIPFromAPI() string {
 		"https://ifconfig.me",
 	}
 
-	client := &http.Client{
-		Timeout: 5 * time.Second,
+	// Use proxy client if configured
+	proxyURL := netutil.ResolveBinanceProxyURL()
+	client, err := netutil.NewHTTPClientWithProxy(proxyURL, 5*time.Second)
+	if err != nil || client == nil {
+		client = &http.Client{
+			Timeout: 5 * time.Second,
+		}
 	}
 
 	for _, service := range services {
@@ -1086,13 +1094,13 @@ func (s *Server) handleSyncBalance(c *gin.Context) {
 
 	// Use ExchangeType (e.g., "binance") instead of ExchangeID (which is now UUID)
 	switch exchangeCfg.ExchangeType {
-		case "binance":
-			tempTrader = trader.NewFuturesTrader(
-				exchangeCfg.APIKey,
-				exchangeCfg.SecretKey,
-				userID,
-				exchangeCfg.Testnet,
-			)
+	case "binance":
+		tempTrader = trader.NewFuturesTrader(
+			exchangeCfg.APIKey,
+			exchangeCfg.SecretKey,
+			userID,
+			exchangeCfg.Testnet,
+		)
 	case "hyperliquid":
 		tempTrader, createErr = trader.NewHyperliquidTrader(
 			exchangeCfg.APIKey,
@@ -1242,13 +1250,13 @@ func (s *Server) handleClosePosition(c *gin.Context) {
 
 	// Use ExchangeType (e.g., "binance") instead of ExchangeID (which is now UUID)
 	switch exchangeCfg.ExchangeType {
-		case "binance":
-			tempTrader = trader.NewFuturesTrader(
-				exchangeCfg.APIKey,
-				exchangeCfg.SecretKey,
-				userID,
-				exchangeCfg.Testnet,
-			)
+	case "binance":
+		tempTrader = trader.NewFuturesTrader(
+			exchangeCfg.APIKey,
+			exchangeCfg.SecretKey,
+			userID,
+			exchangeCfg.Testnet,
+		)
 	case "hyperliquid":
 		tempTrader, createErr = trader.NewHyperliquidTrader(
 			exchangeCfg.APIKey,
@@ -1979,6 +1987,70 @@ func (s *Server) handleStatistics(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, stats)
+}
+
+// handleGetNetworkInfo Get network information (IP and Testnet status)
+func (s *Server) handleGetNetworkInfo(c *gin.Context) {
+	// Get Public IP
+	publicIP := getPublicIPFromAPI()
+	if publicIP == "" {
+		publicIP = getPublicIPFromInterface()
+	}
+
+	// Get Testnet Status
+	isTestnet := os.Getenv("BINANCE_USE_TESTNET") == "true"
+
+	c.JSON(http.StatusOK, gin.H{
+		"public_ip":  publicIP,
+		"is_testnet": isTestnet,
+	})
+}
+
+// handleToggleTestnet Toggle Testnet status
+func (s *Server) handleToggleTestnet(c *gin.Context) {
+	var req struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+
+	// Update .env file if it exists (container images may not mount it).
+	envFile := ".env"
+	newValue := "false"
+	if req.Enabled {
+		newValue = "true"
+	}
+	if content, err := os.ReadFile(envFile); err == nil {
+		lines := strings.Split(string(content), "\n")
+		found := false
+		newLines := make([]string, 0, len(lines))
+		for _, line := range lines {
+			if strings.HasPrefix(strings.TrimSpace(line), "BINANCE_USE_TESTNET=") {
+				newLines = append(newLines, fmt.Sprintf("BINANCE_USE_TESTNET=%s", newValue))
+				found = true
+			} else {
+				newLines = append(newLines, line)
+			}
+		}
+		if !found {
+			newLines = append(newLines, fmt.Sprintf("BINANCE_USE_TESTNET=%s", newValue))
+		}
+		if err := os.WriteFile(envFile, []byte(strings.Join(newLines, "\n")), 0644); err != nil {
+			logger.Warnf("Failed to write .env file: %v", err)
+		}
+	} else {
+		logger.Warnf("No .env file found; applying testnet flag in-memory only")
+	}
+
+	// Update environment variable for current process (partial effect)
+	os.Setenv("BINANCE_USE_TESTNET", newValue)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "Testnet configuration updated. Please restart the backend for full effect.",
+		"is_testnet": req.Enabled,
+	})
 }
 
 // handleCompetition Competition overview (compare all traders)

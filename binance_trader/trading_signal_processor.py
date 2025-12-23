@@ -1,9 +1,9 @@
-"""
-交易信号处理器
+﻿"""
+浜ゆ槗淇″彿澶勭悊鍣?
 
-根据 ValueScan 信号和异动榜单状态决定交易方向：
-- 做多: Alpha(110) 或 FOMO(113) + 在异动榜单上
-- 做空: 看跌信号(112/111/100) + 不在异动榜单上
+鏍规嵁 ValueScan 淇″彿鍜屽紓鍔ㄦ鍗曠姸鎬佸喅瀹氫氦鏄撴柟鍚戯細
+- 鍋氬: Alpha(110) 鎴?FOMO(113) + 鍦ㄥ紓鍔ㄦ鍗曚笂
+- 鍋氱┖: 鐪嬭穼淇″彿(112/111/100) + 涓嶅湪寮傚姩姒滃崟涓?
 """
 
 import logging
@@ -14,13 +14,13 @@ from typing import Optional, Set
 import sys
 from pathlib import Path
 
-# 添加父目录到路径以导入 signal_monitor 模块
+# 娣诲姞鐖剁洰褰曞埌璺緞浠ュ鍏?signal_monitor 妯″潡
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 try:
     from signal_monitor.movement_list_cache import MovementListCache, get_movement_list_cache
 except ImportError:
-    # 如果导入失败，定义一个占位类
+    # 濡傛灉瀵煎叆澶辫触锛屽畾涔変竴涓崰浣嶇被
     class MovementListCache:
         def is_on_movement_list(self, symbol: str) -> bool:
             return False
@@ -33,44 +33,44 @@ except ImportError:
 
 @dataclass
 class TradeSignal:
-    """交易信号"""
-    symbol: str           # 币种符号 (如 "BTC")
+    """浜ゆ槗淇″彿"""
+    symbol: str           # 甯佺绗﹀彿 (濡?"BTC")
     direction: str        # 'LONG' or 'SHORT'
-    signal_type: int      # 原始信号类型 (110/113/112/111/100)
-    predict_type: Optional[int] = None  # Type 100 的 predictType
+    signal_type: int      # 鍘熷淇″彿绫诲瀷 (110/113/112/111/100)
+    predict_type: Optional[int] = None  # Type 100 鐨?predictType
     timestamp: datetime = field(default_factory=datetime.now)
-    on_movement_list: bool = False  # 是否在异动榜单上
-    reason: str = ""      # 信号生成原因
+    on_movement_list: bool = False  # 鏄惁鍦ㄥ紓鍔ㄦ鍗曚笂
+    reason: str = ""      # 淇″彿鐢熸垚鍘熷洜
 
 
 class TradingSignalProcessor:
     """
-    交易信号处理器
+    浜ゆ槗淇″彿澶勭悊鍣?
     
-    做多逻辑: Alpha(110) 或 FOMO(113) + 在异动榜单上
-    做空逻辑: 看跌信号(112/111/100) + 不在异动榜单上
+    鍋氬閫昏緫: Alpha(110) 鎴?FOMO(113) + 鍦ㄥ紓鍔ㄦ鍗曚笂
+    鍋氱┖閫昏緫: 鐪嬭穼淇″彿(112/111/100) + 涓嶅湪寮傚姩姒滃崟涓?
     """
     
-    # 看涨信号类型
+    # 鐪嬫定淇″彿绫诲瀷
     BULLISH_TYPES: Set[int] = {110, 113}  # Alpha, FOMO
     
-    # 看跌信号类型
-    BEARISH_TYPES: Set[int] = {112, 111}  # FOMO加剧, 资金出逃
+    # 鐪嬭穼淇″彿绫诲瀷
+    BEARISH_TYPES: Set[int] = {112, 111}  # FOMO鍔犲墽, 璧勯噾鍑洪€?
     
-    # Type 100 的看跌 predictType
-    BEARISH_PREDICT_TYPES: Set[int] = {7, 24}  # 风险增加, 价格高点
+    # Type 100 鐨勭湅璺?predictType
+    BEARISH_PREDICT_TYPES: Set[int] = {7, 24}  # 椋庨櫓澧炲姞, 浠锋牸楂樼偣
     
     def __init__(self, 
                  movement_cache: Optional[MovementListCache] = None,
                  long_enabled: bool = True,
                  short_enabled: bool = False):
         """
-        初始化处理器
+        鍒濆鍖栧鐞嗗櫒
         
         Args:
-            movement_cache: 异动榜单缓存实例，None 则使用全局单例
-            long_enabled: 是否启用做多
-            short_enabled: 是否启用做空
+            movement_cache: 寮傚姩姒滃崟缂撳瓨瀹炰緥锛孨one 鍒欎娇鐢ㄥ叏灞€鍗曚緥
+            long_enabled: 鏄惁鍚敤鍋氬
+            short_enabled: 鏄惁鍚敤鍋氱┖
         """
         self.movement_cache = movement_cache or get_movement_list_cache()
         self.long_enabled = long_enabled
@@ -80,63 +80,68 @@ class TradingSignalProcessor:
     def process_signal(self, message_type: int, symbol: str, 
                        predict_type: Optional[int] = None) -> Optional[TradeSignal]:
         """
-        处理信号，返回交易信号或 None
+        澶勭悊淇″彿锛岃繑鍥炰氦鏄撲俊鍙锋垨 None
         
         Args:
-            message_type: 信号类型 (110/113/112/111/100)
-            symbol: 币种符号
-            predict_type: Type 100 的 predictType (7=风险增加, 24=价格高点)
+            message_type: 淇″彿绫诲瀷 (110/113/112/111/100)
+            symbol: 甯佺绗﹀彿
+            predict_type: Type 100 鐨?predictType (7=椋庨櫓澧炲姞, 24=浠锋牸楂樼偣)
             
         Returns:
             TradeSignal with direction='LONG' or 'SHORT', or None
         """
         if not symbol:
-            self.logger.warning("收到空符号信号，跳过")
+            self.logger.warning("鏀跺埌绌虹鍙蜂俊鍙凤紝璺宠繃")
             return None
         
-        # 标准化符号
+        # 鏍囧噯鍖栫鍙?
         symbol = self._normalize_symbol(symbol)
         
-        # 检查缓存是否有效
+        # 妫€鏌ョ紦瀛樻槸鍚︽湁鏁?
         cache_expired = self.movement_cache._is_cache_expired()
-        
-        # 如果缓存过期，对于做多信号假设在榜单上（允许开单）
-        # 对于做空信号则跳过（保守策略）
+        is_bullish = message_type in self.BULLISH_TYPES
+        is_bearish = self._is_bearish_signal(message_type, predict_type)
         if cache_expired:
-            is_on_list = True  # 假设在榜单上，允许做多
-            self.logger.warning(
-                f"⚠️ 异动榜单缓存已过期，假设 {symbol} 在榜单上"
-            )
+            if is_bullish:
+                is_on_list = True
+                self.logger.warning(
+                    f"Movement list cache expired; assume {symbol} is on list for LONG signals"
+                )
+            elif is_bearish:
+                is_on_list = False
+                self.logger.warning(
+                    f"Movement list cache expired; assume {symbol} is NOT on list for SHORT signals"
+                )
+            else:
+                is_on_list = False
         else:
             is_on_list = self.movement_cache.is_on_movement_list(symbol)
-        
-        # 记录信号接收日志
+        # 璁板綍淇″彿鎺ユ敹鏃ュ織
         self.logger.info(
-            f"📨 收到信号: type={message_type}, symbol={symbol}, "
-            f"predictType={predict_type}, 在异动榜单={is_on_list}, 缓存过期={cache_expired}"
+            f"馃摠 鏀跺埌淇″彿: type={message_type}, symbol={symbol}, "
+            f"predictType={predict_type}, 鍦ㄥ紓鍔ㄦ鍗?{is_on_list}, 缂撳瓨杩囨湡={cache_expired}"
         )
         
-        # 做多: (Alpha OR FOMO) - 单信号即可开单
-        if message_type in self.BULLISH_TYPES:
+        # 鍋氬: (Alpha OR FOMO) - 鍗曚俊鍙峰嵆鍙紑鍗?
+        if is_bullish:
             return self._process_bullish_signal(
                 message_type, symbol, is_on_list
             )
         
-        # 做空: 看跌信号 AND 不在榜单上
-        is_bearish = self._is_bearish_signal(message_type, predict_type)
+        # 鍋氱┖: 鐪嬭穼淇″彿 AND 涓嶅湪姒滃崟涓?
         if is_bearish:
             return self._process_bearish_signal(
                 message_type, symbol, is_on_list, predict_type
             )
         
-        # 其他信号类型，不处理
-        self.logger.debug(f"信号类型 {message_type} 不在处理范围内")
+        # 鍏朵粬淇″彿绫诲瀷锛屼笉澶勭悊
+        self.logger.debug(f"Signal type {message_type} not handled")
         return None
     
     def _normalize_symbol(self, symbol: str) -> str:
-        """标准化币种符号"""
+        """鏍囧噯鍖栧竵绉嶇鍙?""
         symbol = symbol.upper().strip()
-        # 去除常见后缀
+        # 鍘婚櫎甯歌鍚庣紑
         for suffix in ['/USDT', 'USDT', '/USD', 'USD']:
             if symbol.endswith(suffix):
                 symbol = symbol[:-len(suffix)]
@@ -145,7 +150,7 @@ class TradingSignalProcessor:
     
     def _is_bearish_signal(self, message_type: int, 
                            predict_type: Optional[int]) -> bool:
-        """判断是否为看跌信号"""
+        """鍒ゆ柇鏄惁涓虹湅璺屼俊鍙?""
         if message_type in self.BEARISH_TYPES:
             return True
         if message_type == 100 and predict_type in self.BEARISH_PREDICT_TYPES:
@@ -154,25 +159,25 @@ class TradingSignalProcessor:
     
     def _process_bullish_signal(self, message_type: int, symbol: str,
                                  is_on_list: bool) -> Optional[TradeSignal]:
-        """处理看涨信号"""
+        """澶勭悊鐪嬫定淇″彿"""
         signal_name = "Alpha" if message_type == 110 else "FOMO"
         
         if not is_on_list:
             self.logger.info(
-                f"⏭️ 跳过做多 {symbol}: {signal_name}信号但不在异动榜单上"
+                f"鈴笍 璺宠繃鍋氬 {symbol}: {signal_name}淇″彿浣嗕笉鍦ㄥ紓鍔ㄦ鍗曚笂"
             )
             return None
         
         if not self.long_enabled:
             self.logger.info(
-                f"⏭️ 跳过做多 {symbol}: {signal_name}信号但做多已禁用"
+                f"鈴笍 璺宠繃鍋氬 {symbol}: {signal_name}淇″彿浣嗗仛澶氬凡绂佺敤"
             )
             return None
         
-        # 生成做多信号
-        reason = f"{signal_name}信号 + 在异动榜单上"
+        # 鐢熸垚鍋氬淇″彿
+        reason = f"{signal_name}淇″彿 + 鍦ㄥ紓鍔ㄦ鍗曚笂"
         self.logger.warning(
-            f"🟢 生成做多信号: {symbol} ({reason})"
+            f"馃煝 鐢熸垚鍋氬淇″彿: {symbol} ({reason})"
         )
         
         return TradeSignal(
@@ -186,34 +191,34 @@ class TradingSignalProcessor:
     def _process_bearish_signal(self, message_type: int, symbol: str,
                                  is_on_list: bool,
                                  predict_type: Optional[int]) -> Optional[TradeSignal]:
-        """处理看跌信号"""
-        # 获取信号名称
+        """澶勭悊鐪嬭穼淇″彿"""
+        # 鑾峰彇淇″彿鍚嶇О
         signal_names = {
-            112: "FOMO加剧",
-            111: "资金出逃",
+            112: "FOMO鍔犲墽",
+            111: "璧勯噾鍑洪€?,
         }
         if message_type == 100:
-            predict_names = {7: "风险增加", 24: "价格高点"}
+            predict_names = {7: "椋庨櫓澧炲姞", 24: "浠锋牸楂樼偣"}
             signal_name = predict_names.get(predict_type, f"Type100-{predict_type}")
         else:
             signal_name = signal_names.get(message_type, f"Type{message_type}")
         
         if is_on_list:
             self.logger.info(
-                f"⏭️ 跳过做空 {symbol}: {signal_name}信号但在异动榜单上"
+                f"鈴笍 璺宠繃鍋氱┖ {symbol}: {signal_name}淇″彿浣嗗湪寮傚姩姒滃崟涓?
             )
             return None
         
         if not self.short_enabled:
             self.logger.info(
-                f"⏭️ 跳过做空 {symbol}: {signal_name}信号但做空已禁用"
+                f"鈴笍 璺宠繃鍋氱┖ {symbol}: {signal_name}淇″彿浣嗗仛绌哄凡绂佺敤"
             )
             return None
         
-        # 生成做空信号
-        reason = f"{signal_name}信号 + 不在异动榜单上"
+        # 鐢熸垚鍋氱┖淇″彿
+        reason = f"{signal_name}淇″彿 + 涓嶅湪寮傚姩姒滃崟涓?
         self.logger.warning(
-            f"🔴 生成做空信号: {symbol} ({reason})"
+            f"馃敶 鐢熸垚鍋氱┖淇″彿: {symbol} ({reason})"
         )
         
         return TradeSignal(
@@ -227,16 +232,16 @@ class TradingSignalProcessor:
     
     def update_config(self, long_enabled: bool = None, 
                       short_enabled: bool = None):
-        """更新配置"""
+        """鏇存柊閰嶇疆"""
         if long_enabled is not None:
             self.long_enabled = long_enabled
-            self.logger.info(f"做多策略已{'启用' if long_enabled else '禁用'}")
+            self.logger.info(f"鍋氬绛栫暐宸瞷'鍚敤' if long_enabled else '绂佺敤'}")
         if short_enabled is not None:
             self.short_enabled = short_enabled
-            self.logger.info(f"做空策略已{'启用' if short_enabled else '禁用'}")
+            self.logger.info(f"鍋氱┖绛栫暐宸瞷'鍚敤' if short_enabled else '绂佺敤'}")
 
 
-# 全局单例
+# 鍏ㄥ眬鍗曚緥
 _processor_instance: Optional[TradingSignalProcessor] = None
 
 
@@ -245,14 +250,14 @@ def get_trading_signal_processor(
     short_enabled: bool = False
 ) -> TradingSignalProcessor:
     """
-    获取全局交易信号处理器实例（单例模式）
+    鑾峰彇鍏ㄥ眬浜ゆ槗淇″彿澶勭悊鍣ㄥ疄渚嬶紙鍗曚緥妯″紡锛?
     
     Args:
-        long_enabled: 是否启用做多
-        short_enabled: 是否启用做空
+        long_enabled: 鏄惁鍚敤鍋氬
+        short_enabled: 鏄惁鍚敤鍋氱┖
         
     Returns:
-        TradingSignalProcessor: 处理器实例
+        TradingSignalProcessor: 澶勭悊鍣ㄥ疄渚?
     """
     global _processor_instance
     if _processor_instance is None:
@@ -264,14 +269,14 @@ def get_trading_signal_processor(
 
 
 if __name__ == "__main__":
-    # 测试代码
+    # 娴嬭瘯浠ｇ爜
     import logging
     logging.basicConfig(level=logging.INFO)
     
-    print("测试交易信号处理器")
+    print("娴嬭瘯浜ゆ槗淇″彿澶勭悊鍣?)
     print("=" * 60)
     
-    # 创建 mock 缓存
+    # 鍒涘缓 mock 缂撳瓨
     class MockMovementListCache:
         def __init__(self, symbols_on_list=None):
             self.symbols = set(s.upper() for s in (symbols_on_list or []))
@@ -282,27 +287,27 @@ if __name__ == "__main__":
         def _is_cache_expired(self) -> bool:
             return False
     
-    # 测试做多
-    print("\n测试做多信号:")
+    # 娴嬭瘯鍋氬
+    print("\n娴嬭瘯鍋氬淇″彿:")
     cache = MockMovementListCache(symbols_on_list=['BTC', 'ETH'])
     processor = TradingSignalProcessor(cache, long_enabled=True, short_enabled=False)
     
-    # BTC 在榜单上，应该生成做多信号
+    # BTC 鍦ㄦ鍗曚笂锛屽簲璇ョ敓鎴愬仛澶氫俊鍙?
     signal = processor.process_signal(110, 'BTC')
-    print(f"  BTC Alpha信号: {signal}")
+    print(f"  BTC Alpha淇″彿: {signal}")
     
-    # XRP 不在榜单上，不应该生成信号
+    # XRP 涓嶅湪姒滃崟涓婏紝涓嶅簲璇ョ敓鎴愪俊鍙?
     signal = processor.process_signal(113, 'XRP')
-    print(f"  XRP FOMO信号: {signal}")
+    print(f"  XRP FOMO淇″彿: {signal}")
     
-    # 测试做空
-    print("\n测试做空信号:")
+    # 娴嬭瘯鍋氱┖
+    print("\n娴嬭瘯鍋氱┖淇″彿:")
     processor = TradingSignalProcessor(cache, long_enabled=False, short_enabled=True)
     
-    # XRP 不在榜单上，应该生成做空信号
+    # XRP 涓嶅湪姒滃崟涓婏紝搴旇鐢熸垚鍋氱┖淇″彿
     signal = processor.process_signal(112, 'XRP')
-    print(f"  XRP FOMO加剧信号: {signal}")
+    print(f"  XRP FOMO鍔犲墽淇″彿: {signal}")
     
-    # BTC 在榜单上，不应该生成做空信号
+    # BTC 鍦ㄦ鍗曚笂锛屼笉搴旇鐢熸垚鍋氱┖淇″彿
     signal = processor.process_signal(111, 'BTC')
-    print(f"  BTC 资金出逃信号: {signal}")
+    print(f"  BTC 璧勯噾鍑洪€冧俊鍙? {signal}")

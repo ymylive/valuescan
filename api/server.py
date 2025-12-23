@@ -444,24 +444,29 @@ except ImportError as e:
 
 # 币安客户端
 _binance_client = None
+_binance_client_mode = None
 _public_tickers_cache = {
     'ts': 0.0,
     'data': None,
     'error': None,
 }
 
-def get_binance_client():
-    """获取币安客户端（支持代理）"""
+def get_binance_client(use_testnet: Optional[bool] = None):
+    """获取币安客户端（支持代理/测试网）"""
     global _binance_client
-    if _binance_client:
-        return _binance_client
+    global _binance_client_mode
     try:
         from binance.client import Client
         config = parse_config(TRADER_CONFIG)
         api_key = config.get('binance_api_key', '')
         api_secret = config.get('binance_api_secret', '')
         proxy = config.get('socks5_proxy', '')
-        
+        if use_testnet is None:
+            use_testnet = bool(config.get('use_testnet', False))
+
+        if _binance_client and _binance_client_mode == use_testnet:
+            return _binance_client
+
         if api_key and api_secret:
             requests_params = {}
             if proxy and proxy.startswith('socks5://'):
@@ -469,7 +474,11 @@ def get_binance_client():
                     'http': proxy,
                     'https': proxy
                 }
-            _binance_client = Client(api_key, api_secret, requests_params=requests_params)
+            client = Client(api_key, api_secret, requests_params=requests_params)
+            if use_testnet:
+                client.FUTURES_URL = 'https://testnet.binancefuture.com/fapi'
+            _binance_client = client
+            _binance_client_mode = use_testnet
             return _binance_client
     except Exception as e:
         print(f"Binance client error: {e}")
@@ -1365,7 +1374,18 @@ def save_config():
             if saved['signal']:
                 service_targets.append(('signal', 'valuescan-signal'))
             if saved['trader']:
-                service_targets.append(('trader', 'valuescan-trader'))
+                trader_auto_enabled = None
+                try:
+                    trader_auto_enabled = data.get('trader', {}).get('auto_trading_enabled')
+                except Exception:
+                    trader_auto_enabled = None
+                if trader_auto_enabled is None:
+                    try:
+                        trader_auto_enabled = parse_config(TRADER_CONFIG).get('auto_trading_enabled')
+                    except Exception:
+                        trader_auto_enabled = None
+                if trader_auto_enabled is not False:
+                    service_targets.append(('trader', 'valuescan-trader'))
             if saved['copytrade']:
                 service_targets.append(('copytrade', 'valuescan-copytrade'))
 

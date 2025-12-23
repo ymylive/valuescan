@@ -136,3 +136,28 @@ PR_DESCRIPTION.md
 web/nofx_dist/
 external/
 
+
+# Local runtime overrides
+config/valuescan.env
+signal_monitor/valuescan_credentials.json
+signal_monitor/chrome-debug-profile/
+telegram_copytrade/config.py
+web/nofx_root_dist/
+
+# NOFX local/runtime artifacts
+nofx/.env
+nofx/data/
+nofx/node_modules/
+nofx/nofx
+nofx/web/node_modules/
+nofx/web/dist/
+
+# Include NOFX source, but keep runtime outputs ignored
+!nofx/
+!nofx/**
+nofx/.env
+nofx/data/
+nofx/node_modules/
+nofx/nofx
+nofx/web/node_modules/
+nofx/web/dist/

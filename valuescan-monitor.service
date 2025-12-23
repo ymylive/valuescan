@@ -17,8 +17,7 @@ SyslogIdentifier=valuescan-monitor
 # Environment
 Environment=PYTHONUNBUFFERED=1
 Environment=DISPLAY=:99
-Environment=VALUESCAN_EMAIL=ymy_live@outlook.com
-Environment=VALUESCAN_PASSWORD=Qq159741.
+EnvironmentFile=-/root/valuescan/config/valuescan.env
 Environment=VALUESCAN_AUTO_RELOGIN=1
 Environment=VALUESCAN_AUTO_RELOGIN_COOLDOWN=1800
 

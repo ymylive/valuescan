@@ -9,6 +9,9 @@ of those endpoints so the NOFX web UI can run against this repository.
 from __future__ import annotations
 
 import json
+import os
+import re
+import socket
 import threading
 import time
 import uuid
@@ -35,6 +38,34 @@ nofx_bp = Blueprint("nofx_compat", __name__)
 
 BASE_DIR = Path(__file__).parent.parent
 STATE_PATH = BASE_DIR / "nofx_state.json"
+
+_DECISION_LOOP_ENABLED = (
+    os.getenv("NOFX_DECISION_LOOP", "1").strip().lower() not in {"0", "false", "no", "off"}
+)
+_DECISION_KEEP_LIMIT = int(os.getenv("NOFX_DECISION_KEEP_LIMIT", "200") or "200")
+_DECISION_WORKER_LOCK_PATH = Path(
+    os.getenv("NOFX_DECISION_WORKER_LOCK", "/tmp/valuescan_nofx_decision.lock")
+)
+_DECISION_WORKER_STARTED = False
+_DECISION_WORKER_GUARD = threading.Lock()
+_DECISION_SCHEDULE: Dict[str, float] = {}
+_DECISION_TAG_RE = re.compile(r"(?s)<decision>\s*(.*?)\s*</decision>")
+_REASON_TAG_RE = re.compile(r"(?s)<reasoning>\s*(.*?)\s*</reasoning>")
+_CODE_FENCE_RE = re.compile(r"^```(?:json)?\s*|```$", re.IGNORECASE)
+_DEFAULT_LLM_BASE_URLS = {
+    "openai": "https://api.openai.com/v1",
+    "deepseek": "https://api.deepseek.com/v1",
+    "qwen": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "grok": "https://api.x.ai/v1",
+    "kimi": "https://api.moonshot.cn/v1",
+}
+_DEFAULT_LLM_MODELS = {
+    "openai": "gpt-4o-mini",
+    "deepseek": "deepseek-chat",
+    "qwen": "qwen-plus",
+    "grok": "grok-3-latest",
+    "kimi": "moonshot-v1-8k",
+}
 
 
 def _now_iso() -> str:
@@ -283,8 +314,24 @@ class _StateStore:
             return []
         return [x for x in items if isinstance(x, dict)]
 
+    def append_decision(self, trader_id: str, record: Dict[str, Any]) -> None:
+        payload = self.load()
+        decisions = payload.setdefault("decisions", {})
+        if not isinstance(decisions, dict):
+            payload["decisions"] = {}
+            decisions = payload["decisions"]
+        items = decisions.get(trader_id)
+        if not isinstance(items, list):
+            items = []
+        items.append(record)
+        if _DECISION_KEEP_LIMIT > 0 and len(items) > _DECISION_KEEP_LIMIT:
+            items = items[-_DECISION_KEEP_LIMIT :]
+        decisions[trader_id] = items
+        self.save(payload)
+
 
 _store = _StateStore(STATE_PATH)
+_ensure_decision_worker()
 
 
 def _resolve_trader_id() -> str:
@@ -312,6 +359,404 @@ def _exchange_template(exchange_type: str, cfg) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _is_port_open(host: str, port: int, timeout: float = 0.5) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except Exception:
+        return False
+
+
+def _resolve_socks5_proxy() -> str:
+    for key in ("SOCKS5_PROXY", "VALUESCAN_SOCKS5_PROXY"):
+        value = (os.getenv(key) or "").strip()
+        if value.startswith("socks5://"):
+            return value
+    for port in (1080, 10808):
+        if _is_port_open("127.0.0.1", port):
+            return f"socks5://127.0.0.1:{port}"
+    return ""
+
+
+def _pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except Exception:
+        return False
+
+
+def _acquire_worker_lock() -> bool:
+    path = _DECISION_WORKER_LOCK_PATH
+    try:
+        fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        try:
+            os.write(fd, str(os.getpid()).encode("utf-8"))
+        finally:
+            os.close(fd)
+        return True
+    except FileExistsError:
+        try:
+            pid_text = path.read_text(encoding="utf-8", errors="ignore").strip()
+            pid = int(pid_text) if pid_text else 0
+        except Exception:
+            pid = 0
+        if pid and _pid_alive(pid):
+            return False
+        try:
+            path.unlink()
+        except Exception:
+            return False
+        return _acquire_worker_lock()
+    except Exception:
+        return False
+
+
+def _normalize_provider_name(value: str) -> str:
+    name = (value or "").strip().lower()
+    aliases = {
+        "chatgpt": "openai",
+        "gpt": "openai",
+        "openai-compatible": "openai",
+        "openai_compatible": "openai",
+        "anthropic": "claude",
+        "google": "gemini",
+        "moonshot": "kimi",
+        "xai": "grok",
+    }
+    return aliases.get(name, name)
+
+
+def _select_llm_provider(trader: TraderState):
+    cfg = get_llm_config()
+    preferred = _normalize_provider_name(trader.ai_model)
+    if preferred:
+        try:
+            provider = cfg.get_provider(preferred)
+            if provider and str(getattr(provider, "api_key", "") or "").strip():
+                return provider
+        except Exception:
+            pass
+    try:
+        conf = cfg.get_config()
+        providers = conf.providers if conf else []
+    except Exception:
+        providers = []
+    for provider in providers:
+        if str(getattr(provider, "api_key", "") or "").strip():
+            return provider
+    return None
+
+
+def _build_requests_proxies() -> Optional[Dict[str, str]]:
+    proxy = _resolve_socks5_proxy()
+    if not proxy:
+        return None
+    return {"http": proxy, "https": proxy}
+
+
+def _call_llm(provider, system_prompt: str, user_prompt: str) -> Tuple[str, str]:
+    try:
+        import requests
+    except Exception as exc:
+        return "", f"requests not available: {exc}"
+
+    name = _normalize_provider_name(str(getattr(provider, "name", "") or ""))
+    api_key = str(getattr(provider, "api_key", "") or "").strip()
+    base_url = str(getattr(provider, "base_url", "") or "").strip()
+    model = str(getattr(provider, "model", "") or "").strip()
+
+    if not api_key:
+        return "", "missing api_key"
+    if not base_url:
+        base_url = _DEFAULT_LLM_BASE_URLS.get(name, "")
+    if not model:
+        model = _DEFAULT_LLM_MODELS.get(name, "")
+    if not base_url or not model:
+        return "", f"unsupported provider '{name}'"
+
+    url = base_url.rstrip("/") + "/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": model,
+        "temperature": 0.2,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+    }
+    try:
+        resp = requests.post(
+            url,
+            json=payload,
+            headers=headers,
+            timeout=40,
+            proxies=_build_requests_proxies(),
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        content = (
+            data.get("choices", [{}])[0]
+            .get("message", {})
+            .get("content", "")
+        )
+        return str(content or "").strip(), ""
+    except Exception as exc:
+        return "", str(exc)
+
+
+def _strip_code_fences(text: str) -> str:
+    return _CODE_FENCE_RE.sub("", (text or "").strip()).strip()
+
+
+def _parse_decision_response(text: str) -> Tuple[List[Dict[str, Any]], str, str]:
+    if not text:
+        return [], "", "empty ai response"
+    reasoning = ""
+    match = _REASON_TAG_RE.search(text)
+    if match:
+        reasoning = (match.group(1) or "").strip()
+    raw = ""
+    match = _DECISION_TAG_RE.search(text)
+    if match:
+        raw = match.group(1)
+    if not raw:
+        raw = text
+    raw = _strip_code_fences(raw)
+    raw = raw.strip()
+    if not raw:
+        return [], reasoning, "empty decision content"
+    try:
+        parsed = json.loads(raw)
+    except Exception as exc:
+        return [], reasoning, f"invalid decision json: {exc}"
+    if isinstance(parsed, dict):
+        parsed = [parsed]
+    if not isinstance(parsed, list):
+        return [], reasoning, "decision json must be array"
+    out = [item for item in parsed if isinstance(item, dict)]
+    return out, reasoning, ""
+
+
+def _build_decision_actions(
+    raw_decisions: List[Dict[str, Any]],
+    default_symbol: str,
+) -> List[Dict[str, Any]]:
+    actions: List[Dict[str, Any]] = []
+    now_iso = _now_iso()
+    for item in raw_decisions:
+        action = str(item.get("action") or item.get("decision") or "hold").strip()
+        symbol = str(item.get("symbol") or default_symbol).strip() or default_symbol
+        leverage = int(float(item.get("leverage") or 0) or 0)
+        price = float(item.get("price") or item.get("entry_price") or 0.0)
+        stop_loss = item.get("stop_loss") or item.get("stop_loss_pct")
+        take_profit = item.get("take_profit") or item.get("take_profit_pct")
+        confidence = item.get("confidence")
+        reasoning = item.get("reasoning")
+        actions.append(
+            {
+                "action": action,
+                "symbol": symbol,
+                "quantity": float(item.get("quantity") or 0.0),
+                "leverage": leverage,
+                "price": price,
+                "stop_loss": float(stop_loss) if stop_loss is not None else None,
+                "take_profit": float(take_profit) if take_profit is not None else None,
+                "confidence": float(confidence) if confidence is not None else None,
+                "reasoning": str(reasoning or "").strip() or None,
+                "order_id": 0,
+                "timestamp": now_iso,
+                "success": True,
+                "error": None,
+            }
+        )
+    if actions:
+        return actions
+    return [
+        {
+            "action": "hold",
+            "symbol": default_symbol,
+            "quantity": 0.0,
+            "leverage": 0,
+            "price": 0.0,
+            "stop_loss": None,
+            "take_profit": None,
+            "confidence": 50,
+            "reasoning": "No actionable decision from AI.",
+            "order_id": 0,
+            "timestamp": now_iso,
+            "success": False,
+            "error": "empty decision list",
+        }
+    ]
+
+
+def _build_account_snapshot(exchange_type: str) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    balance_ok, balance, _balance_err = _get_balance(exchange_type)
+    pos_ok, positions, _pos_err = _get_positions(exchange_type)
+    wallet_balance = 0.0
+    available_balance = 0.0
+    unrealized = 0.0
+    if balance_ok and isinstance(balance, dict):
+        try:
+            wallet_balance = float(balance.get("total_wallet_balance") or 0.0)
+        except Exception:
+            wallet_balance = 0.0
+        try:
+            available_balance = float(balance.get("available_balance") or 0.0)
+        except Exception:
+            available_balance = 0.0
+    if pos_ok and isinstance(positions, list):
+        for p in positions:
+            try:
+                unrealized += float(p.get("unrealized_pnl") or 0.0)
+            except Exception:
+                continue
+    snapshot = {
+        "total_balance": wallet_balance,
+        "available_balance": available_balance or wallet_balance,
+        "total_unrealized_profit": unrealized,
+        "position_count": len(positions) if pos_ok else 0,
+        "margin_used_pct": 0.0,
+    }
+    return snapshot, positions if pos_ok else []
+
+
+def _generate_decision_record(trader: TraderState) -> Dict[str, Any]:
+    exchange_type = _exchange_type_from_exchange_id(trader.exchange_id)
+    snapshot, positions = _build_account_snapshot(exchange_type)
+    candidate_coins = ["BTCUSDT", "ETHUSDT"]
+    system_prompt = trader.system_prompt_template.strip() or (
+        "You are a crypto futures trading AI. "
+        "Return <reasoning> and <decision> JSON array."
+    )
+    user_prompt = (
+        "Account snapshot:\n"
+        f"{json.dumps(snapshot, ensure_ascii=True)}\n\n"
+        "Positions:\n"
+        f"{json.dumps(positions, ensure_ascii=True)}\n\n"
+        "Candidates:\n"
+        f"{json.dumps(candidate_coins, ensure_ascii=True)}\n\n"
+        "Respond with:\n"
+        "<reasoning>...</reasoning>\n"
+        "<decision>[{\"action\":\"hold\",\"symbol\":\"BTCUSDT\",\"confidence\":50}]</decision>"
+    )
+
+    provider = _select_llm_provider(trader)
+    ai_response = ""
+    ai_error = ""
+    if provider:
+        ai_response, ai_error = _call_llm(provider, system_prompt, user_prompt)
+    else:
+        ai_error = "no llm provider configured"
+
+    raw_decisions, reasoning, parse_error = _parse_decision_response(ai_response)
+    if not raw_decisions and ai_error:
+        reasoning = reasoning or "AI call failed."
+    decisions = _build_decision_actions(raw_decisions, candidate_coins[0])
+    decision_json = (
+        json.dumps(raw_decisions, ensure_ascii=True) if raw_decisions else ""
+    )
+    if not decision_json:
+        decision_json = json.dumps(decisions, ensure_ascii=True)
+
+    error_message = ai_error or parse_error
+    success = not bool(error_message)
+    execution_log = []
+    if ai_error:
+        execution_log.append(f"AI call error: {ai_error}")
+    if parse_error:
+        execution_log.append(f"Decision parse error: {parse_error}")
+    if not execution_log:
+        execution_log.append("AI decision recorded.")
+
+    cycle_number = int(trader.call_count or 0) + 1
+    return {
+        "timestamp": _now_iso(),
+        "cycle_number": cycle_number,
+        "input_prompt": user_prompt,
+        "cot_trace": reasoning,
+        "decision_json": decision_json,
+        "account_state": snapshot,
+        "positions": positions,
+        "candidate_coins": candidate_coins,
+        "decisions": decisions,
+        "execution_log": execution_log,
+        "success": success,
+        "error_message": error_message or None,
+    }
+
+
+def _decision_worker() -> None:
+    while True:
+        try:
+            now = time.time()
+            traders = _store.list_traders()
+            for trader in traders:
+                if not trader.is_running:
+                    continue
+                interval = max(1, int(trader.scan_interval_minutes or 5)) * 60
+                last_run = _DECISION_SCHEDULE.get(trader.trader_id, 0.0)
+                if now - last_run < interval:
+                    continue
+                _DECISION_SCHEDULE[trader.trader_id] = now
+                record = _generate_decision_record(trader)
+                _store.append_decision(trader.trader_id, record)
+                trader.call_count = int(trader.call_count or 0) + 1
+                _store.upsert_trader(trader)
+        except Exception:
+            pass
+        time.sleep(5)
+
+
+def _ensure_decision_worker() -> None:
+    global _DECISION_WORKER_STARTED
+    if not _DECISION_LOOP_ENABLED:
+        return
+    with _DECISION_WORKER_GUARD:
+        if _DECISION_WORKER_STARTED:
+            return
+        if not _acquire_worker_lock():
+            return
+        thread = threading.Thread(target=_decision_worker, daemon=True)
+        thread.start()
+        _DECISION_WORKER_STARTED = True
+
+
+def _build_binance_futures_client(ex) -> Tuple[Optional[Any], str]:
+    try:
+        from binance.client import Client
+    except Exception:
+        return None, "python-binance not installed"
+
+    try:
+        requests_params = None
+        proxy = _resolve_socks5_proxy()
+        if proxy:
+            requests_params = {
+                "proxies": {
+                    "http": proxy,
+                    "https": proxy,
+                }
+            }
+        client = Client(
+            str(ex.api_key).strip(),
+            str(ex.api_secret).strip(),
+            requests_params=requests_params,
+            testnet=bool(getattr(ex, "testnet", False)),
+        )
+        if getattr(ex, "testnet", False):
+            client.FUTURES_URL = "https://testnet.binancefuture.com/fapi"
+        return client, ""
+    except Exception as e:
+        return None, str(e)
+
+
 def _get_positions(exchange_type: str) -> Tuple[bool, List[Dict[str, Any]], str]:
     cfg = get_exchange_config()
     exchange_type = (exchange_type or "").strip().lower() or "binance"
@@ -323,17 +768,10 @@ def _get_positions(exchange_type: str) -> Tuple[bool, List[Dict[str, Any]], str]
         if not (ex.api_key or "").strip() or not (ex.api_secret or "").strip():
             return False, [], "Missing Binance API key/secret"
 
+        client, err = _build_binance_futures_client(ex)
+        if not client:
+            return False, [], err
         try:
-            from binance.client import Client
-        except Exception:
-            return False, [], "python-binance not installed"
-
-        try:
-            client = Client(
-                str(ex.api_key).strip(),
-                str(ex.api_secret).strip(),
-                testnet=bool(ex.testnet),
-            )
             raw_positions = client.futures_position_information()
         except Exception as e:
             return False, [], str(e)
@@ -428,6 +866,44 @@ def _get_positions(exchange_type: str) -> Tuple[bool, List[Dict[str, Any]], str]
             }
         )
     return True, positions, ""
+
+
+def _get_balance(exchange_type: str) -> Tuple[bool, Dict[str, float], str]:
+    cfg = get_exchange_config()
+    exchange_type = (exchange_type or "").strip().lower() or "binance"
+
+    if exchange_type == "binance":
+        ex = cfg.get_exchange("binance")
+        if not ex or not ex.enabled:
+            return False, {}, "Binance not enabled"
+        if not (ex.api_key or "").strip() or not (ex.api_secret or "").strip():
+            return False, {}, "Missing Binance API key/secret"
+
+        client, err = _build_binance_futures_client(ex)
+        if not client:
+            return False, {}, err
+        try:
+            account = client.futures_account()
+        except Exception as e:
+            return False, {}, str(e)
+
+        def _f(key: str) -> float:
+            try:
+                return float(account.get(key, 0) or 0)
+            except Exception:
+                return 0.0
+
+        total_wallet = _f("totalWalletBalance")
+        available = _f("availableBalance")
+        unrealized = _f("totalUnrealizedProfit")
+        return True, {
+            "total_wallet_balance": total_wallet,
+            "available_balance": available,
+            "total_unrealized_profit": unrealized,
+            "total_equity": total_wallet + unrealized,
+        }, ""
+
+    return False, {}, f"Balance not supported for {exchange_type}"
 
 
 # ---------------------------------------------------------------------------
@@ -988,6 +1464,7 @@ def trader_start(trader_id: str):
     trader.is_running = True
     trader.start_time = trader.start_time or _now_iso()
     _store.upsert_trader(trader)
+    _ensure_decision_worker()
     return jsonify({"message": "Started"})
 
 
@@ -1140,8 +1617,14 @@ def account():
         return jsonify({"error": "Not found"}), 404
 
     exchange_type = _exchange_type_from_exchange_id(trader.exchange_id)
+    balance_ok, balance, _balance_err = _get_balance(exchange_type)
     ok, pos, _err = _get_positions(exchange_type)
     unrealized = sum(float(p.get("unrealized_pnl") or 0.0) for p in pos) if ok else 0.0
+    if balance_ok and (not ok or abs(unrealized) < 1e-9):
+        try:
+            unrealized = float(balance.get("total_unrealized_profit") or 0.0)
+        except Exception:
+            unrealized = 0.0
     position_count = len(pos) if ok else 0
 
     realized_total = 0.0
@@ -1153,20 +1636,56 @@ def account():
         except Exception:
             realized_total = 0.0
 
-    total_pnl = realized_total + unrealized
-    total_equity = float(trader.initial_balance) + total_pnl
-    total_pnl_pct = (total_pnl / trader.initial_balance) * 100 if trader.initial_balance else 0.0
+    initial_balance = float(trader.initial_balance or 0.0)
+    effective_initial_balance = initial_balance
+    wallet_balance = 0.0
+    available_balance = 0.0
 
-    wallet_balance = float(trader.initial_balance) + realized_total
+    if balance_ok:
+        try:
+            wallet_balance = float(balance.get("total_wallet_balance") or 0.0)
+        except Exception:
+            wallet_balance = 0.0
+        try:
+            available_balance = float(balance.get("available_balance") or 0.0)
+        except Exception:
+            available_balance = 0.0
+        if available_balance <= 0:
+            available_balance = wallet_balance
+
+        cfg = get_exchange_config()
+        ex = cfg.get_exchange(exchange_type) if cfg else None
+        is_testnet = bool(getattr(ex, "testnet", False)) if ex else False
+        if (
+            is_testnet
+            and wallet_balance > 0
+            and (initial_balance <= 0 or abs(initial_balance - 1000.0) < 1e-6)
+        ):
+            effective_initial_balance = wallet_balance
+
+    if balance_ok and wallet_balance > 0:
+        total_equity = wallet_balance + unrealized
+        total_pnl = total_equity - effective_initial_balance
+    else:
+        total_pnl = realized_total + unrealized
+        total_equity = initial_balance + total_pnl
+        wallet_balance = initial_balance + realized_total
+        available_balance = wallet_balance
+
+    total_pnl_pct = (
+        (total_pnl / effective_initial_balance) * 100
+        if effective_initial_balance
+        else 0.0
+    )
     return jsonify(
         {
             "total_equity": total_equity,
             "wallet_balance": wallet_balance,
             "unrealized_profit": unrealized,
-            "available_balance": wallet_balance,
+            "available_balance": available_balance,
             "total_pnl": total_pnl,
             "total_pnl_pct": total_pnl_pct,
-            "initial_balance": float(trader.initial_balance),
+            "initial_balance": float(effective_initial_balance),
             "daily_pnl": 0.0,
             "position_count": position_count,
             "margin_used": 0.0,

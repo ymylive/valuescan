@@ -18,6 +18,8 @@ Uploads:
 - simulation/api_routes.py
 - signal_monitor/database.py
 - web/dist (to /root/valuescan/web/dist and optionally /opt/valuescan/web/dist)
+- web/nofx_dist (to /root/valuescan/web/nofx_dist)
+- web/nofx_root_dist (to /opt/nofx/web/dist when present)
 
 Restarts:
 - valuescan-api
@@ -154,6 +156,31 @@ def _sftp_read_text(sftp: paramiko.SFTPClient, remote_path: str) -> str:
         return ""
 
 
+def _read_remote_auto_trading_enabled(
+    sftp: paramiko.SFTPClient,
+    project_root: str,
+) -> Optional[bool]:
+    config_path = f"{project_root}/binance_trader/config.py"
+    content = _sftp_read_text(sftp, config_path)
+    if not content:
+        return None
+    for line in content.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("AUTO_TRADING_ENABLED"):
+            parts = line.split("=", 1)
+            if len(parts) != 2:
+                return None
+            value = parts[1].strip().split("#", 1)[0].strip()
+            if value.lower() == "true":
+                return True
+            if value.lower() == "false":
+                return False
+            return None
+    return None
+
+
 def _sftp_write_text(sftp: paramiko.SFTPClient, remote_path: str, content: str) -> None:
     with sftp.open(remote_path, "wb") as fh:
         fh.write(content.encode("utf-8"))
@@ -220,8 +247,10 @@ def _ensure_locations_in_ssl_server(conf_text: str, *, server_name: str) -> tupl
         if "listen 443" not in block:
             continue
 
-        need_nofx = "location ^~ /nofx/" not in block and "location = /nofx" not in block
-        need_socket = "location /socket.io/" not in block
+        nofx_pattern = re.compile(r"\blocation\s+(?:\^~\s+|=\s+)?/nofx/?\s*\{")
+        socket_pattern = re.compile(r"\blocation\s+(?:\^~\s+|=\s+)?/socket\.io/\s*\{")
+        need_nofx = not nofx_pattern.search(block)
+        need_socket = not socket_pattern.search(block)
         if not (need_nofx or need_socket):
             continue
 
@@ -351,10 +380,13 @@ def _sync_tree(
 def _install_requirements(ssh: paramiko.SSHClient, project_root: str) -> str:
     cmd = (
         f"cd {project_root} && "
-        "(python3 -m pip install -r requirements.txt "
-        "|| python3.9 -m pip install -r requirements.txt "
-        "|| pip3 install -r requirements.txt "
-        "|| pip install -r requirements.txt)"
+        "if [ -f requirements.txt ]; then "
+        "if command -v python3 >/dev/null 2>&1; then python3 -m pip install -r requirements.txt; "
+        "elif command -v python3.9 >/dev/null 2>&1; then python3.9 -m pip install -r requirements.txt; "
+        "elif command -v pip3 >/dev/null 2>&1; then pip3 install -r requirements.txt; "
+        "elif command -v pip >/dev/null 2>&1; then pip install -r requirements.txt; "
+        "else echo 'pip not found; skip requirements install.'; fi; "
+        "else echo 'requirements.txt not found; skip requirements install.'; fi"
     )
     return _exec(ssh, cmd, timeout=900)
 
@@ -636,6 +668,23 @@ def main() -> None:
         else:
             print("NOFX dist not found (web/nofx_dist). Skip upload.")
 
+        nofx_root_remote = "/opt/nofx/web/dist"
+        try:
+            nofx_root_exists = _exec(
+                ssh, f"test -d {nofx_root_remote} && echo OK || echo NO", timeout=30
+            ).strip() == "OK"
+        except Exception:
+            nofx_root_exists = False
+
+        local_nofx_root_dist = Path("web/nofx_root_dist")
+        if nofx_root_exists:
+            if local_nofx_root_dist.exists():
+                print("Uploading NOFX root dist...")
+                _sync_dist(ssh, sftp, local_nofx_root_dist, nofx_root_remote)
+                print(f"  OK {local_nofx_root_dist} -> {nofx_root_remote}")
+            else:
+                print("NOFX root dist not found (web/nofx_root_dist). Skip upload.")
+
         # Mirror dist to /opt tree if present (some deployments use nginx/static there).
         mirror_exists = True
         try:
@@ -674,21 +723,32 @@ def main() -> None:
         print("Restarting services...")
         print(_exec(ssh, "systemctl daemon-reload 2>/dev/null || true", timeout=30))
         # Note: valuescan-monitor is the signal monitor service, valuescan-trader may not exist as separate service
-        print(_exec(
-            ssh,
-            "systemctl restart valuescan-api valuescan-signal valuescan-trader valuescan-monitor "
-            "valuescan-token-refresher valuescan-copytrade proxy-checker 2>/dev/null || true",
-            timeout=60,
-        ))
+        service_units = [
+            "valuescan-api",
+            "valuescan-signal",
+            "valuescan-monitor",
+            "valuescan-token-refresher",
+            "valuescan-copytrade",
+            "proxy-checker",
+        ]
+        auto_trading_enabled = _read_remote_auto_trading_enabled(sftp, project_root)
+        if auto_trading_enabled is False:
+            print("Auto trading disabled in remote config; skip valuescan-trader restart.")
+        else:
+            service_units.append("valuescan-trader")
+
+        restart_cmd = (
+            "systemctl restart " + " ".join(service_units) + " 2>/dev/null || true"
+        )
+        print(_exec(ssh, restart_cmd, timeout=60))
         time.sleep(2)
 
         print("Verifying...")
-        print(_exec(
-            ssh,
-            "systemctl is-active valuescan-api valuescan-signal valuescan-trader valuescan-monitor "
-            "valuescan-token-refresher valuescan-copytrade proxy-checker --no-pager 2>/dev/null || true",
-            timeout=30,
-        ))
+        verify_cmd = (
+            "systemctl is-active " + " ".join(service_units) +
+            " --no-pager 2>/dev/null || true"
+        )
+        print(_exec(ssh, verify_cmd, timeout=30))
         print(_exec(ssh, "curl -s --max-time 5 http://127.0.0.1:5000/api/tickers?limit=3 | head -c 300", timeout=30))
         print(_exec(ssh, "curl -s --max-time 5 http://127.0.0.1:5000/api/simulation/traders | head -c 300", timeout=30))
         print(_exec(ssh, "curl -s --max-time 5 http://127.0.0.1:5000/api/db/status | head -c 300", timeout=30))

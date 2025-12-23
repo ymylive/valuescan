@@ -3,21 +3,24 @@ Binance 合约自动化交易配置文件示例
 复制此文件为 config.py 并填入你的实际配置
 """
 
+import os
+
 # ============ Binance API 配置 ============
 # 从币安官网获取: https://www.binance.com/en/my/settings/api-management
 # ⚠️ 重要：合约交易需要启用 "Enable Futures" 权限
-BINANCE_API_KEY = "your_api_key_here"
-BINANCE_API_SECRET = "your_api_secret_here"
+BINANCE_API_KEY = os.getenv("BINANCE_API_KEY", "your_api_key_here")
+BINANCE_API_SECRET = os.getenv("BINANCE_API_SECRET", "your_api_secret_here")
 
 # 是否使用测试网（强烈建议先用测试网验证策略）
 # 合约测试网: https://testnet.binancefuture.com/
-USE_TESTNET = True
+# 优先读取环境变量 BINANCE_USE_TESTNET (true/false)
+USE_TESTNET = os.getenv("BINANCE_USE_TESTNET", "true").lower() == "true"
 
 # SOCKS5 代理配置（可选）
 # 格式: socks5://用户名:密码@主机:端口
 # 例如: socks5://user:pass@proxy.example.com:1080
-# 留空或 None 表示不使用代理
-SOCKS5_PROXY = None  # 示例: "socks5://user:pass@proxy.example.com:1080"
+# 优先读取环境变量 SOCKS5_PROXY 或 VALUESCAN_SOCKS5_PROXY
+SOCKS5_PROXY = os.getenv("SOCKS5_PROXY") or os.getenv("VALUESCAN_SOCKS5_PROXY") or None
 
 # 是否自动使用本地 SOCKS5 代理（例如 proxy-checker/xray 提供的 127.0.0.1:1080）
 # 当 SOCKS5_PROXY 未配置时，如果检测到本地代理端口可用，则自动启用。

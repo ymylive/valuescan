@@ -15,8 +15,7 @@ StandardError=journal
 SyslogIdentifier=valuescan-signal
 
 Environment=PYTHONUNBUFFERED=1
-Environment=VALUESCAN_EMAIL=ymy_live@outlook.com
-Environment=VALUESCAN_PASSWORD=Qq159741.
+EnvironmentFile=-/root/valuescan/config/valuescan.env
 Environment=VALUESCAN_AUTO_RELOGIN=1
 Environment=VALUESCAN_AUTO_RELOGIN_COOLDOWN=1800
 
@@ -24,4 +23,3 @@ LimitNOFILE=65536
 
 [Install]
 WantedBy=multi-user.target
-

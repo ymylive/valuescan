@@ -117,19 +117,32 @@ export function ExchangeConfigModal({
     ? allExchanges?.find((e) => e.id === editingExchangeId)
     : null
 
+  // Get the current exchange type (from existing account or selected template)
+  const currentExchangeType = editingExchangeId
+    ? selectedExchange?.exchange_type
+    : selectedExchangeType
+  const normalizedExchangeType = (currentExchangeType || '').toLowerCase()
+  const exchangeTypeKey = normalizedExchangeType.replace(/[-_]?futures?$/i, '')
+  const isBinance = exchangeTypeKey === 'binance'
+  const isBybit = exchangeTypeKey === 'bybit'
+  const isOkx = exchangeTypeKey === 'okx'
+  const isBitget = exchangeTypeKey === 'bitget'
+  const isAster = exchangeTypeKey === 'aster'
+  const isHyperliquid = exchangeTypeKey === 'hyperliquid'
+  const isLighter = exchangeTypeKey === 'lighter'
+  const isCex = isBinance || isBybit || isOkx || isBitget
+
   // Get the exchange template for displaying UI fields
   const selectedTemplate = editingExchangeId
     ? SUPPORTED_EXCHANGE_TEMPLATES.find(
+        (t) => t.exchange_type === exchangeTypeKey
+      ) ||
+      SUPPORTED_EXCHANGE_TEMPLATES.find(
         (t) => t.exchange_type === selectedExchange?.exchange_type
       )
     : SUPPORTED_EXCHANGE_TEMPLATES.find(
         (t) => t.exchange_type === selectedExchangeType
       )
-
-  // Get the current exchange type (from existing account or selected template)
-  const currentExchangeType = editingExchangeId
-    ? selectedExchange?.exchange_type
-    : selectedExchangeType
 
   // 交易所注册链接配置
   const exchangeRegistrationLinks: Record<
@@ -186,7 +199,7 @@ export function ExchangeConfigModal({
 
   // 加载服务器IP（当选择binance时）
   useEffect(() => {
-    if (currentExchangeType === 'binance' && !serverIP) {
+    if (isBinance && !serverIP) {
       setLoadingIP(true)
       api
         .getServerIP()
@@ -310,7 +323,7 @@ export function ExchangeConfigModal({
     setIsSaving(true)
     try {
       // 根据交易所类型验证不同字段
-      if (currentExchangeType === 'binance') {
+      if (isBinance) {
         if (!apiKey.trim() || !secretKey.trim()) return
         await onSave(
           exchangeId,
@@ -321,7 +334,7 @@ export function ExchangeConfigModal({
           '',
           testnet
         )
-      } else if (currentExchangeType === 'okx') {
+      } else if (isOkx) {
         if (!apiKey.trim() || !secretKey.trim() || !passphrase.trim()) return
         await onSave(
           exchangeId,
@@ -332,7 +345,7 @@ export function ExchangeConfigModal({
           passphrase.trim(),
           testnet
         )
-      } else if (currentExchangeType === 'bitget') {
+      } else if (isBitget) {
         if (!apiKey.trim() || !secretKey.trim() || !passphrase.trim()) return
         await onSave(
           exchangeId,
@@ -343,7 +356,7 @@ export function ExchangeConfigModal({
           passphrase.trim(),
           testnet
         )
-      } else if (currentExchangeType === 'hyperliquid') {
+      } else if (isHyperliquid) {
         if (!apiKey.trim() || !hyperliquidWalletAddr.trim()) return // 验证私钥和钱包地址
         await onSave(
           exchangeId,
@@ -355,7 +368,7 @@ export function ExchangeConfigModal({
           testnet,
           hyperliquidWalletAddr.trim()
         )
-      } else if (currentExchangeType === 'aster') {
+      } else if (isAster) {
         if (!asterUser.trim() || !asterSigner.trim() || !asterPrivateKey.trim())
           return
         await onSave(
@@ -371,7 +384,7 @@ export function ExchangeConfigModal({
           asterSigner.trim(),
           asterPrivateKey.trim()
         )
-      } else if (currentExchangeType === 'lighter') {
+      } else if (isLighter) {
         if (!lighterWalletAddr.trim() || !lighterApiKeyPrivateKey.trim()) return
         await onSave(
           exchangeId,
@@ -427,7 +440,7 @@ export function ExchangeConfigModal({
               : t('addExchange', language)}
           </h3>
           <div className="flex items-center gap-2">
-            {currentExchangeType === 'binance' && (
+            {isBinance && (
               <button
                 type="button"
                 onClick={() => setShowGuide(true)}
@@ -584,7 +597,7 @@ export function ExchangeConfigModal({
                 {/* 注册链接 */}
                 <a
                   href={
-                    exchangeRegistrationLinks[currentExchangeType || '']?.url ||
+                    exchangeRegistrationLinks[exchangeTypeKey || '']?.url ||
                     '#'
                   }
                   target="_blank"
@@ -605,7 +618,7 @@ export function ExchangeConfigModal({
                         ? '还没有交易所账号？点击注册'
                         : 'No exchange account? Register here'}
                     </span>
-                    {exchangeRegistrationLinks[currentExchangeType || '']
+                    {exchangeRegistrationLinks[exchangeTypeKey || '']
                       ?.hasReferral && (
                       <span
                         className="text-xs px-1.5 py-0.5 rounded"
@@ -629,13 +642,10 @@ export function ExchangeConfigModal({
             {selectedTemplate && (
               <>
                 {/* Binance/Bybit/OKX/Bitget 的输入字段 */}
-                {(currentExchangeType === 'binance' ||
-                  currentExchangeType === 'bybit' ||
-                  currentExchangeType === 'okx' ||
-                  currentExchangeType === 'bitget') && (
+                {isCex && (
                   <>
                     {/* 币安用户配置提示 (D1 方案) */}
-                    {currentExchangeType === 'binance' && (
+                    {isBinance && (
                       <div
                         className="mb-4 p-3 rounded cursor-pointer transition-colors"
                         style={{
@@ -775,8 +785,7 @@ export function ExchangeConfigModal({
                       />
                     </div>
 
-                    {(currentExchangeType === 'okx' ||
-                      currentExchangeType === 'bitget') && (
+                    {(isOkx || isBitget) && (
                       <div>
                         <label
                           className="block text-sm font-semibold mb-2"     
@@ -801,7 +810,7 @@ export function ExchangeConfigModal({
                     )}
 
                     {/* Binance Testnet */}
-                    {currentExchangeType === 'binance' && (
+                    {isBinance && (
                       <div
                         className="flex items-center justify-between p-3 rounded mb-4"
                         style={{
@@ -835,7 +844,7 @@ export function ExchangeConfigModal({
                     )}
 
                     {/* Binance 白名单IP提示 */}
-                    {currentExchangeType === 'binance' && (
+                    {isBinance && (
                       <div
                         className="p-4 rounded"
                         style={{
@@ -892,7 +901,7 @@ export function ExchangeConfigModal({
                 )}
 
                 {/* Aster 交易所的字段 */}
-                {currentExchangeType === 'aster' && (
+                {isAster && (
                   <>
                     {/* API Pro 代理钱包说明 banner */}
                     <div
@@ -1031,7 +1040,7 @@ export function ExchangeConfigModal({
                 )}
 
                 {/* Hyperliquid 交易所的字段 */}
-                {currentExchangeType === 'hyperliquid' && (
+                {isHyperliquid && (
                   <>
                     {/* 安全提示 banner */}
                     <div
@@ -1167,7 +1176,7 @@ export function ExchangeConfigModal({
                 )}
 
                 {/* LIGHTER 特定配置 */}
-                {currentExchangeType === 'lighter' && (
+                {isLighter && (
                   <>
                     {/* Info banner */}
                     <div
@@ -1342,35 +1351,35 @@ export function ExchangeConfigModal({
                 isSaving ||
                 !selectedTemplate ||
                 !accountName.trim() ||
-                (currentExchangeType === 'binance' &&
+                (isBinance &&
                   (!apiKey.trim() || !secretKey.trim())) ||
-                (currentExchangeType === 'okx' &&
+                (isOkx &&
                   (!apiKey.trim() ||
                     !secretKey.trim() ||
                     !passphrase.trim())) ||
-                (currentExchangeType === 'bitget' &&
+                (isBitget &&
                   (!apiKey.trim() ||
                     !secretKey.trim() ||
                     !passphrase.trim())) ||
-                (currentExchangeType === 'hyperliquid' &&
+                (isHyperliquid &&
                   (!apiKey.trim() || !hyperliquidWalletAddr.trim())) || // 验证私钥和钱包地址
-                (currentExchangeType === 'aster' &&
+                (isAster &&
                   (!asterUser.trim() ||
                     !asterSigner.trim() ||
                     !asterPrivateKey.trim())) ||
-                (currentExchangeType === 'lighter' &&
+                (isLighter &&
                   (!lighterWalletAddr.trim() ||
                     !lighterApiKeyPrivateKey.trim())) ||
-                (currentExchangeType === 'bybit' &&
+                (isBybit &&
                   (!apiKey.trim() || !secretKey.trim())) ||
                 (selectedTemplate?.type === 'cex' &&
-                  currentExchangeType !== 'hyperliquid' &&
-                  currentExchangeType !== 'aster' &&
-                  currentExchangeType !== 'lighter' &&
-                  currentExchangeType !== 'binance' &&
-                  currentExchangeType !== 'bybit' &&
-                  currentExchangeType !== 'okx' &&
-                  currentExchangeType !== 'bitget' &&
+                  exchangeTypeKey !== 'hyperliquid' &&
+                  exchangeTypeKey !== 'aster' &&
+                  exchangeTypeKey !== 'lighter' &&
+                  exchangeTypeKey !== 'binance' &&
+                  exchangeTypeKey !== 'bybit' &&
+                  exchangeTypeKey !== 'okx' &&
+                  exchangeTypeKey !== 'bitget' &&
                   (!apiKey.trim() || !secretKey.trim()))
               }
               className="flex-1 px-4 py-2 rounded text-sm font-semibold disabled:opacity-50"

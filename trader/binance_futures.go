@@ -7,12 +7,19 @@ import (
 	"fmt"
 	"nofx/hook"
 	"nofx/logger"
+	"nofx/netutil"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/adshao/go-binance/v2/futures"
+)
+
+const (
+	binanceFuturesBaseURL        = "https://fapi.binance.com"
+	binanceFuturesTestnetBaseURL = "https://testnet.binancefuture.com"
 )
 
 // getBrOrderID generates unique order ID (for futures contracts)
@@ -64,9 +71,23 @@ type FuturesTrader struct {
 // NewFuturesTrader creates futures trader
 func NewFuturesTrader(apiKey, secretKey string, userId string, testnet bool) *FuturesTrader {
 	client := futures.NewClient(apiKey, secretKey)
-	if testnet {
-		futures.UseTestnet = true
+	effectiveTestnet := testnet || strings.ToLower(os.Getenv("BINANCE_USE_TESTNET")) == "true"
+	if effectiveTestnet {
+		client.BaseURL = binanceFuturesTestnetBaseURL
 		logger.Infof("🧪 Using Binance Futures TESTNET")
+	} else {
+		client.BaseURL = binanceFuturesBaseURL
+	}
+
+	proxyURL := netutil.ResolveBinanceProxyURL()
+	if proxyURL != "" {
+		proxyClient, err := netutil.NewHTTPClientWithProxy(proxyURL, 0)
+		if err != nil {
+			logger.Warnf("Binance proxy disabled: %v", err)
+		} else if proxyClient != nil {
+			client.HTTPClient = proxyClient
+			logger.Infof("Binance proxy enabled: %s", netutil.SanitizeProxyURL(proxyURL))
+		}
 	}
 
 	hookRes := hook.HookExec[hook.NewBinanceTraderResult](hook.NEW_BINANCE_TRADER, userId, client)

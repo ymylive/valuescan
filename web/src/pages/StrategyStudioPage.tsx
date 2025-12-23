@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useLanguage } from '../contexts/LanguageContext'
 import {
@@ -54,6 +54,7 @@ export function StrategyStudioPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [hasChanges, setHasChanges] = useState(false)
+  const selectedStrategyRef = useRef<Strategy | null>(null)
 
   // AI Models for test run
   const [aiModels, setAiModels] = useState<AIModel[]>([])
@@ -122,6 +123,10 @@ export function StrategyStudioPage() {
     }
   }, [token, selectedModelId])
 
+  useEffect(() => {
+    selectedStrategyRef.current = selectedStrategy
+  }, [selectedStrategy])
+
   // Fetch strategies
   const fetchStrategies = useCallback(async () => {
     if (!token) return
@@ -131,17 +136,23 @@ export function StrategyStudioPage() {
       })
       if (!response.ok) throw new Error('Failed to fetch strategies')
       const data = await response.json()
-      setStrategies(data.strategies || [])
+      const nextStrategies = data.strategies || []
+      setStrategies(nextStrategies)
 
-      // Select active or first strategy
-      const active = data.strategies?.find((s: Strategy) => s.is_active)
-      if (active) {
-        setSelectedStrategy(active)
-        setEditingConfig(active.config)
-      } else if (data.strategies?.length > 0) {
-        setSelectedStrategy(data.strategies[0])
-        setEditingConfig(data.strategies[0].config)
+      const current = selectedStrategyRef.current
+      let nextSelected: Strategy | null = null
+      if (current) {
+        nextSelected =
+          nextStrategies.find((s: Strategy) => s.id === current.id) || null
       }
+      if (!nextSelected) {
+        nextSelected =
+          nextStrategies.find((s: Strategy) => s.is_active) ||
+          nextStrategies[0] ||
+          null
+      }
+      setSelectedStrategy(nextSelected)
+      setEditingConfig(nextSelected ? nextSelected.config : null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
