@@ -1411,8 +1411,13 @@ func extractDecisions(response string) ([]Decision, error) {
 		jsonPart = strings.TrimSpace(match[1])
 		logger.Infof("✓ Extracted JSON using <decision> tag")
 	} else {
+		// For Gemini and other models that don't use <decision> tag,
+		// try to find JSON directly in the response
 		jsonPart = s
 		logger.Infof("⚠️  <decision> tag not found, searching JSON in full text")
+		
+		// Extra step for Gemini: look for JSON after any remaining "Reasoning:" or similar prefixes
+		jsonPart = extractJSONFromGeminiResponse(jsonPart)
 	}
 
 	jsonPart = fixMissingQuotes(jsonPart)
@@ -1607,6 +1612,49 @@ func removeThinkingContent(s string) string {
 
 func compactArrayOpen(s string) string {
 	return reArrayOpenSpace.ReplaceAllString(strings.TrimSpace(s), "[{")
+}
+
+// extractJSONFromGeminiResponse handles Gemini-specific response formats
+// Gemini often outputs reasoning content without proper tags, followed by JSON
+func extractJSONFromGeminiResponse(s string) string {
+	// If already starts with JSON array or code fence, return as-is
+	trimmed := strings.TrimSpace(s)
+	if strings.HasPrefix(trimmed, "[") || strings.HasPrefix(trimmed, "```") {
+		return s
+	}
+
+	// Look for common patterns where Gemini puts reasoning before JSON
+	// Pattern 1: "Reasoning:" or "**Reasoning:**" followed by content, then JSON
+	patterns := []string{
+		"```json", "```\n[", "```\r\n[", // Code fence patterns
+		"\n[{", "\r\n[{",                // JSON array after newline
+	}
+
+	for _, pattern := range patterns {
+		if idx := strings.Index(s, pattern); idx > 0 {
+			// Found JSON start, extract from there
+			result := strings.TrimSpace(s[idx:])
+			logger.Infof("🔧 [Gemini] Extracted JSON starting at pattern '%s' (offset %d)", 
+				strings.ReplaceAll(pattern, "\n", "\\n"), idx)
+			return result
+		}
+	}
+
+	// Pattern 2: Look for standalone JSON array pattern [{ anywhere in the text
+	if idx := strings.Index(s, "[{"); idx > 0 {
+		// Check if this looks like a valid JSON start (not inside a string)
+		before := s[:idx]
+		// Count quotes to see if we're inside a string
+		quoteCount := strings.Count(before, "\"") - strings.Count(before, "\\\"")
+		if quoteCount%2 == 0 {
+			// Not inside a string, extract from here
+			result := strings.TrimSpace(s[idx:])
+			logger.Infof("🔧 [Gemini] Extracted JSON array starting at offset %d", idx)
+			return result
+		}
+	}
+
+	return s
 }
 
 // ============================================================================
