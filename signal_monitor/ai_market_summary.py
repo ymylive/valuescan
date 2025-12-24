@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """
-AI 市场总结模块
+AI 市场宏观分析模块
 
 功能：
-1. 收集 ValueScan 信号数据
-2. 使用 AI 分析市场机会
-3. 生成市场总结报告
-4. 每小时发送到 Telegram
+1. 收集 BTC/ETH OHLCV K线数据
+2. 收集 NOFX 量化数据（netflow, oi, price）
+3. 收集 OI 排行数据
+4. 收集加密货币新闻
+5. 收集 ValueScan 信号数据
+6. 使用 AI 综合分析市场宏观走向
+7. 生成专业市场分析报告
+8. 定时发送到 Telegram
 """
-
-from __future__ import annotations
 
 import json
 import logging
@@ -17,7 +19,7 @@ import os
 import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
@@ -43,8 +45,14 @@ SIGNAL_LOOKBACK_HOURS = float(os.getenv("VALUESCAN_SIGNAL_LOOKBACK_HOURS", "1"))
 NOFX_API_BASE = os.getenv("NOFX_API_BASE", "http://nofxaios.com:30006").strip()
 NOFX_API_AUTH = os.getenv("NOFX_API_AUTH", "cm_568c67eae410d912c54c").strip()
 
+# Binance Futures API
+BINANCE_FUTURES_BASE = "https://fapi.binance.com"
+
 # 加密新闻 API（可选）
 CRYPTO_NEWS_API_KEY = os.getenv("CRYPTO_NEWS_API_KEY", "").strip()
+
+# 主要分析币种
+MAJOR_COINS = ["BTC", "ETH"]
 
 # 上次总结时间
 _last_summary_time: float = 0.0
@@ -169,6 +177,110 @@ def _collect_movement_data() -> Dict[str, Any]:
         return {"alpha_coins": [], "fomo_coins": []}
 
 
+def _fetch_binance_klines(symbol: str, interval: str = "1h", limit: int = 24) -> List[Dict[str, Any]]:
+    """
+    从 Binance Futures API 获取 K 线数据
+    
+    Args:
+        symbol: 币种符号（如 BTCUSDT）
+        interval: K线周期（1m, 5m, 15m, 1h, 4h, 1d）
+        limit: 获取数量
+    
+    Returns:
+        K线数据列表
+    """
+    if not symbol.endswith("USDT"):
+        symbol = f"{symbol}USDT"
+    
+    url = f"{BINANCE_FUTURES_BASE}/fapi/v1/klines"
+    params = {
+        "symbol": symbol.upper(),
+        "interval": interval,
+        "limit": limit,
+    }
+    
+    try:
+        resp = requests.get(url, params=params, timeout=15)
+        if resp.status_code == 200:
+            data = resp.json()
+            klines = []
+            for k in data:
+                klines.append({
+                    "open_time": k[0],
+                    "open": float(k[1]),
+                    "high": float(k[2]),
+                    "low": float(k[3]),
+                    "close": float(k[4]),
+                    "volume": float(k[5]),
+                    "close_time": k[6],
+                    "quote_volume": float(k[7]),
+                    "trades": int(k[8]),
+                })
+            return klines
+        else:
+            logger.debug("Binance API 返回 %d: %s", resp.status_code, symbol)
+            return []
+    except Exception as e:
+        logger.debug("Binance API 请求失败 (%s): %s", symbol, e)
+        return []
+
+
+def _analyze_klines(klines: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    分析 K 线数据，计算技术指标
+    
+    Returns:
+        包含趋势、波动率等分析结果
+    """
+    if not klines or len(klines) < 2:
+        return {}
+    
+    closes = [k["close"] for k in klines]
+    highs = [k["high"] for k in klines]
+    lows = [k["low"] for k in klines]
+    volumes = [k["volume"] for k in klines]
+    
+    # 价格变化
+    latest_close = closes[-1]
+    first_close = closes[0]
+    price_change_pct = ((latest_close - first_close) / first_close) * 100
+    
+    # 最高最低价
+    period_high = max(highs)
+    period_low = min(lows)
+    price_range_pct = ((period_high - period_low) / period_low) * 100
+    
+    # 平均成交量
+    avg_volume = sum(volumes) / len(volumes)
+    latest_volume = volumes[-1]
+    volume_ratio = latest_volume / avg_volume if avg_volume > 0 else 1
+    
+    # 简单趋势判断（基于收盘价）
+    up_candles = sum(1 for i in range(1, len(closes)) if closes[i] > closes[i-1])
+    down_candles = len(closes) - 1 - up_candles
+    
+    # MA5 和 MA10
+    ma5 = sum(closes[-5:]) / 5 if len(closes) >= 5 else latest_close
+    ma10 = sum(closes[-10:]) / 10 if len(closes) >= 10 else latest_close
+    
+    trend = "bullish" if ma5 > ma10 and price_change_pct > 0 else "bearish" if ma5 < ma10 and price_change_pct < 0 else "neutral"
+    
+    return {
+        "latest_price": latest_close,
+        "price_change_pct": round(price_change_pct, 2),
+        "period_high": period_high,
+        "period_low": period_low,
+        "price_range_pct": round(price_range_pct, 2),
+        "avg_volume": avg_volume,
+        "volume_ratio": round(volume_ratio, 2),
+        "up_candles": up_candles,
+        "down_candles": down_candles,
+        "ma5": round(ma5, 2),
+        "ma10": round(ma10, 2),
+        "trend": trend,
+    }
+
+
 def _fetch_nofx_coin_data(symbol: str) -> Optional[Dict[str, Any]]:
     """
     从 NOFX API 获取单个币种的量化数据
@@ -194,6 +306,70 @@ def _fetch_nofx_coin_data(symbol: str) -> Optional[Dict[str, Any]]:
     except Exception as e:
         logger.debug("NOFX API 请求失败 (%s): %s", symbol, e)
         return None
+
+
+def _fetch_oi_ranking(limit: int = 20, duration: str = "1h") -> List[Dict[str, Any]]:
+    """
+    从 NOFX API 获取 OI 排行数据
+    
+    Args:
+        limit: 获取数量
+        duration: 时间周期（1h, 4h, 24h）
+    
+    Returns:
+        OI 排行列表
+    """
+    if not NOFX_API_BASE or not NOFX_API_AUTH:
+        return []
+    
+    url = f"{NOFX_API_BASE}/api/oi/top-ranking?limit={limit}&duration={duration}&auth={NOFX_API_AUTH}"
+    
+    try:
+        resp = requests.get(url, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            return data.get("data", []) if isinstance(data, dict) else data if isinstance(data, list) else []
+        else:
+            logger.debug("NOFX OI Ranking API 返回 %d", resp.status_code)
+            return []
+    except Exception as e:
+        logger.debug("NOFX OI Ranking API 请求失败: %s", e)
+        return []
+
+
+def _collect_major_coin_data() -> Dict[str, Dict[str, Any]]:
+    """
+    收集 BTC 和 ETH 的综合数据
+    
+    Returns:
+        包含 K线分析、量化数据的字典
+    """
+    result = {}
+    
+    for symbol in MAJOR_COINS:
+        logger.info(f"收集 {symbol} 数据...")
+        coin_data = {
+            "symbol": symbol,
+            "klines_1h": {},
+            "klines_4h": {},
+            "klines_1d": {},
+            "quant": {},
+        }
+        
+        # 获取不同周期的 K 线数据
+        for interval, key in [("1h", "klines_1h"), ("4h", "klines_4h"), ("1d", "klines_1d")]:
+            klines = _fetch_binance_klines(symbol, interval, limit=24)
+            if klines:
+                coin_data[key] = _analyze_klines(klines)
+        
+        # 获取 NOFX 量化数据
+        quant = _fetch_nofx_coin_data(symbol)
+        if quant:
+            coin_data["quant"] = quant
+        
+        result[symbol] = coin_data
+    
+    return result
 
 
 def _collect_quantitative_data(symbols: List[str]) -> Dict[str, Any]:
@@ -306,114 +482,167 @@ def _fetch_crypto_news() -> List[Dict[str, Any]]:
     return news
 
 
-def _build_ai_prompt(
+def _build_macro_analysis_prompt(
+    major_coin_data: Dict[str, Dict[str, Any]],
+    oi_ranking: List[Dict[str, Any]],
     signals: Dict[str, Any], 
-    movements: Dict[str, Any],
-    quant_data: Optional[Dict[str, Any]] = None,
     news: Optional[List[Dict[str, Any]]] = None
 ) -> str:
-    """构建 AI 分析的 Prompt"""
+    """
+    构建专业的宏观市场分析 Prompt
+    
+    专注于 BTC/ETH 分析，综合 K线、量化数据、OI排行、新闻和 ValueScan 信号
+    """
     
     now = datetime.now(BEIJING_TZ)
     
-    # 统计各类信号
+    prompt = f"""你是一位顶级加密货币宏观分析师，拥有丰富的技术分析和链上数据分析经验。
+请根据以下多维度数据，对加密货币市场进行专业的宏观分析。
+
+**分析时间**: {now.strftime('%Y-%m-%d %H:%M')} (北京时间)
+
+================================================================================
+                              📊 BTC/ETH 核心数据分析
+================================================================================
+"""
+    
+    # BTC 和 ETH 详细数据
+    for symbol in MAJOR_COINS:
+        data = major_coin_data.get(symbol, {})
+        prompt += f"\n### {symbol} 数据\n"
+        
+        # K 线分析
+        for tf, key in [("1小时", "klines_1h"), ("4小时", "klines_4h"), ("日线", "klines_1d")]:
+            kl = data.get(key, {})
+            if kl:
+                trend_emoji = "🟢" if kl.get("trend") == "bullish" else "🔴" if kl.get("trend") == "bearish" else "⚪"
+                prompt += f"**{tf}周期**: {trend_emoji} 趋势={kl.get('trend', 'N/A')}, "
+                prompt += f"价格={kl.get('latest_price', 0):.2f}, 涨跌={kl.get('price_change_pct', 0):.2f}%, "
+                prompt += f"波动率={kl.get('price_range_pct', 0):.2f}%, 成交量比={kl.get('volume_ratio', 1):.2f}x, "
+                prompt += f"MA5={kl.get('ma5', 0):.2f}, MA10={kl.get('ma10', 0):.2f}\n"
+        
+        # NOFX 量化数据
+        quant = data.get("quant", {})
+        if quant:
+            price_data = quant.get("price", {})
+            netflow = quant.get("netflow", {})
+            oi = quant.get("oi", {})
+            
+            prompt += f"\n**量化指标 (NOFX)**:\n"
+            
+            if price_data:
+                prompt += f"  - 24h价格变化: {price_data.get('change_24h', 0):.2f}%\n"
+            
+            if netflow:
+                nf_1h = netflow.get("netflow_1h", 0)
+                nf_4h = netflow.get("netflow_4h", 0)
+                nf_24h = netflow.get("netflow_24h", 0)
+                nf_emoji = "📈" if nf_1h > 0 else "📉"
+                prompt += f"  - 资金净流入: {nf_emoji} 1h=${nf_1h/1e6:.2f}M, 4h=${nf_4h/1e6:.2f}M, 24h=${nf_24h/1e6:.2f}M\n"
+            
+            if oi:
+                oi_change_1h = oi.get("oi_change_1h", 0)
+                oi_change_4h = oi.get("oi_change_4h", 0)
+                oi_value = oi.get("oi_value", 0)
+                oi_emoji = "⬆️" if oi_change_1h > 0 else "⬇️"
+                prompt += f"  - 持仓量(OI): {oi_emoji} 变化1h={oi_change_1h:.2f}%, 4h={oi_change_4h:.2f}%, 总OI=${oi_value/1e9:.2f}B\n"
+    
+    # OI 排行数据
+    if oi_ranking and isinstance(oi_ranking, list) and len(oi_ranking) > 0:
+        prompt += f"""
+================================================================================
+                              📈 OI 排行榜 Top 10 (1h变化)
+================================================================================
+"""
+        for i, item in enumerate(oi_ranking[:10], 1):
+            if not isinstance(item, dict):
+                continue
+            sym = item.get("symbol", "N/A")
+            oi_change = item.get("oi_change", item.get("change", 0)) or 0
+            oi_value = item.get("oi_value", item.get("value", 0)) or 0
+            emoji = "🔥" if oi_change > 5 else "📊"
+            prompt += f"{i}. {emoji} {sym}: OI变化={oi_change:.2f}%, OI值=${oi_value/1e6:.1f}M\n"
+    
+    # ValueScan 信号统计
     bullish_count = len(signals.get("bullish", []))
     bearish_count = len(signals.get("bearish", []))
-    arbitrage_count = len(signals.get("arbitrage", []))
     
-    # 提取热门币种
+    prompt += f"""
+================================================================================
+                              🎯 ValueScan 信号数据
+================================================================================
+- 看涨信号: {bullish_count} 条
+- 看跌信号: {bearish_count} 条
+- 信号比: {bullish_count}:{bearish_count} ({"偏多" if bullish_count > bearish_count else "偏空" if bearish_count > bullish_count else "平衡"})
+"""
+    
+    # 热门信号币种
     symbol_counts: Dict[str, int] = {}
-    for category in ["bullish", "bearish", "arbitrage", "whale", "other"]:
+    for category in ["bullish", "bearish"]:
         for sig in signals.get(category, []):
             sym = sig.get("symbol", "")
             if sym:
                 symbol_counts[sym] = symbol_counts.get(sym, 0) + 1
     
     hot_symbols = sorted(symbol_counts.items(), key=lambda x: -x[1])[:10]
+    if hot_symbols:
+        prompt += f"- 热门信号币种: {', '.join([f'{sym}({cnt})' for sym, cnt in hot_symbols])}\n"
     
-    prompt = f"""你是一个专业的加密货币市场分析师。请根据以下 ValueScan 信号数据，生成一份简洁的市场总结报告。
-
-**当前时间**: {now.strftime('%Y-%m-%d %H:%M')} (北京时间)
-**数据时间范围**: 最近 {signals.get('lookback_hours', 1)} 小时
-**信号总数**: {signals.get('total_count', 0)}
-
-## 信号统计
-- 看涨信号: {bullish_count} 条
-- 看跌信号: {bearish_count} 条
-- 套利机会: {arbitrage_count} 条
-
-## 热门币种
-{', '.join([f"{sym}({cnt}次)" for sym, cnt in hot_symbols]) if hot_symbols else '暂无'}
-
-## Alpha 币种（Binance 官方推荐）
-{', '.join(movements.get('alpha_coins', [])[:10]) if movements.get('alpha_coins') else '暂无'}
-
-## FOMO 热度币种
-{', '.join(movements.get('fomo_coins', [])[:10]) if movements.get('fomo_coins') else '暂无'}
-
-## 看涨信号详情（前5条）
-"""
-    
-    for sig in signals.get("bullish", [])[:5]:
-        prompt += f"- {sig.get('symbol', 'N/A')}: {sig.get('content', '')[:100]}\n"
-    
-    prompt += "\n## 看跌信号详情（前5条）\n"
-    for sig in signals.get("bearish", [])[:5]:
-        prompt += f"- {sig.get('symbol', 'N/A')}: {sig.get('content', '')[:100]}\n"
-    
-    # 添加量化数据
-    if quant_data and quant_data.get("coins"):
-        prompt += "\n## 量化数据分析（NOFX API）\n"
-        summary = quant_data.get("summary", {})
-        
-        if summary.get("bullish_netflow"):
-            prompt += f"**资金净流入（看涨）**: {', '.join(summary['bullish_netflow'])}\n"
-        if summary.get("bearish_netflow"):
-            prompt += f"**资金净流出（看跌）**: {', '.join(summary['bearish_netflow'])}\n"
-        if summary.get("high_oi_change"):
-            prompt += f"**OI大幅变化**: {', '.join(summary['high_oi_change'])}\n"
-        
-        prompt += "\n币种详情:\n"
-        for coin in quant_data.get("coins", [])[:5]:
-            sym = coin.get("symbol", "")
-            price = coin.get("price", {})
-            netflow = coin.get("netflow", {})
-            oi = coin.get("oi", {})
-            
-            price_change = price.get("change_24h", 0)
-            nf_1h = netflow.get("netflow_1h", 0)
-            oi_change = oi.get("oi_change_1h", 0)
-            
-            prompt += f"- {sym}: 24h涨跌 {price_change:.2f}%, 1h净流入 ${nf_1h/1e6:.2f}M, OI变化 {oi_change:.2f}%\n"
-    
-    # 添加新闻数据
+    # 新闻数据
     if news:
-        prompt += "\n## 市场新闻与趋势\n"
+        prompt += f"""
+================================================================================
+                              📰 市场新闻与趋势
+================================================================================
+"""
         for item in news[:5]:
             if item.get("coins"):
-                # CoinGecko 趋势
                 coins = item.get("coins", [])
-                trending = ", ".join([f"{c.get('symbol', '')}({c.get('name', '')})" for c in coins[:5]])
-                prompt += f"**{item.get('title', '')}**: {trending}\n"
+                trending = ", ".join([f"{c.get('symbol', '')}" for c in coins[:5]])
+                prompt += f"- 热门趋势: {trending}\n"
             else:
-                prompt += f"- [{item.get('source', '')}] {item.get('title', '')[:80]}\n"
+                prompt += f"- [{item.get('source', '')}] {item.get('title', '')[:60]}\n"
     
     prompt += """
----
+================================================================================
+                              🎯 分析要求
+================================================================================
 
-请生成一份简洁的市场总结报告，包括：
-1. **市场整体情绪**（看涨/看跌/震荡）- 综合信号、资金流向和新闻判断
-2. **值得关注的看涨币种**（2-3个，结合资金流入和信号说明理由）
-3. **值得关注的看跌币种**（2-3个，结合资金流出和信号说明理由）
-4. **套利机会**（如有）
-5. **市场热点**（根据新闻趋势总结）
+请基于以上所有数据，生成一份专业的加密货币宏观市场分析报告，必须包含以下内容：
+
+1. **宏观市场走向判断**
+   - 综合 BTC/ETH 的技术面（K线趋势、MA）和资金面（净流入、OI变化）
+   - 给出未来 24-48 小时可能的市场走向（看涨/看跌/震荡）
+   - 提供信心指数（1-10分）
+
+2. **BTC 专项分析**
+   - 当前趋势强度
+   - 关键支撑/阻力位
+   - 资金流向解读
+
+3. **ETH 专项分析**
+   - 当前趋势强度
+   - 与 BTC 的联动关系
+   - ETH/BTC 汇率走势判断
+
+4. **套利机会识别**
+   - 基于 OI 排行和信号数据识别潜在套利机会
+   - 列出 2-3 个值得关注的山寨币
+
+5. **市场情绪总结**
+   - 综合所有数据判断当前市场情绪（贪婪/恐惧/中性）
+   - 大户动向解读
+
 6. **风险提示**
+   - 当前市场主要风险点
+   - 需要警惕的信号
 
 要求：
-- 使用中文
-- 简洁明了，适合 Telegram 发送
+- 使用中文，专业但易懂
+- 适合 Telegram 发送
 - 使用 emoji 增加可读性
-- 总长度控制在 600 字以内
+- 观点明确，有理有据
+- 总长度控制在 800 字以内
 """
     
     return prompt
@@ -482,13 +711,13 @@ def _send_summary_to_telegram(summary: str) -> bool:
 
 def generate_market_summary(force: bool = False) -> Optional[str]:
     """
-    生成市场总结
+    生成专业的宏观市场分析报告
     
     Args:
         force: 是否强制生成（忽略时间间隔）
     
     Returns:
-        生成的总结文本，失败返回 None
+        生成的分析文本，失败返回 None
     """
     global _last_summary_time
     
@@ -505,58 +734,47 @@ def generate_market_summary(force: bool = False) -> Optional[str]:
         logger.debug("距离上次总结时间不足，跳过")
         return None
     
-    logger.info("开始生成 AI 市场总结...")
+    logger.info("开始生成 AI 宏观市场分析...")
     
-    # 收集数据
+    # 1. 收集 BTC/ETH 核心数据（K线 + 量化数据）
+    logger.info("收集 BTC/ETH 核心数据...")
+    major_coin_data = _collect_major_coin_data()
+    
+    # 2. 获取 OI 排行数据
+    logger.info("获取 OI 排行数据...")
+    oi_ranking = _fetch_oi_ranking(limit=20, duration="1h")
+    
+    # 3. 收集 ValueScan 信号数据
     lookback = config.get("lookback_hours", 1)
+    logger.info(f"收集最近 {lookback} 小时信号数据...")
     signals = _collect_recent_signals(lookback)
-    movements = _collect_movement_data()
     
-    # 提取热门币种用于量化数据查询
-    hot_symbols = ["BTC", "ETH"]  # 始终包含主流币
-    for category in ["bullish", "bearish", "arbitrage", "whale"]:
-        for sig in signals.get(category, []):
-            sym = sig.get("symbol", "")
-            if sym and sym.upper() not in [s.upper() for s in hot_symbols]:
-                hot_symbols.append(sym.upper())
-    
-    # 添加 Alpha 和 FOMO 币种
-    for sym in movements.get("alpha_coins", [])[:5]:
-        if sym and sym.upper() not in [s.upper() for s in hot_symbols]:
-            hot_symbols.append(sym.upper())
-    for sym in movements.get("fomo_coins", [])[:5]:
-        if sym and sym.upper() not in [s.upper() for s in hot_symbols]:
-            hot_symbols.append(sym.upper())
-    
-    # 收集量化数据
-    logger.info("获取量化数据...")
-    quant_data = _collect_quantitative_data(hot_symbols[:10])
-    
-    # 获取新闻数据
-    logger.info("获取新闻数据...")
+    # 4. 获取新闻数据
+    logger.info("获取市场新闻...")
     news = _fetch_crypto_news()
     
-    if signals.get("total_count", 0) == 0 and not quant_data.get("coins") and not news:
+    # 检查是否有足够数据
+    if not major_coin_data and not oi_ranking and signals.get("total_count", 0) == 0:
         logger.info("没有足够的数据，跳过总结")
         return None
     
-    # 构建 prompt
-    prompt = _build_ai_prompt(signals, movements, quant_data, news)
+    # 构建专业宏观分析 prompt
+    prompt = _build_macro_analysis_prompt(major_coin_data, oi_ranking, signals, news)
     
     # 调用 AI
     summary = _call_ai_api(prompt, config)
     if not summary:
-        logger.error("AI 生成总结失败")
+        logger.error("AI 生成分析失败")
         return None
     
-    logger.info("AI 市场总结生成成功")
+    logger.info("AI 宏观市场分析生成成功")
     _last_summary_time = now
     
     # 发送到 Telegram
     if _send_summary_to_telegram(summary):
-        logger.info("市场总结已发送到 Telegram")
+        logger.info("市场分析已发送到 Telegram")
     else:
-        logger.warning("市场总结发送到 Telegram 失败")
+        logger.warning("市场分析发送到 Telegram 失败")
     
     return summary
 
