@@ -688,6 +688,15 @@ def main():
     except Exception as exc:
         logger.warning(f"导入异动榜单缓存失败: {exc}")
 
+    # 导入 AI 市场总结模块
+    ai_summary_check = None
+    try:
+        from ai_market_summary import check_and_generate_summary
+        ai_summary_check = check_and_generate_summary
+        logger.info("✅ AI 市场总结模块已加载")
+    except Exception as exc:
+        logger.warning(f"导入 AI 市场总结模块失败: {exc}")
+
     proxy_url, proxies = _load_signal_config_proxies()
     if proxy_url:
         logger.info(f"🌐 使用代理: {proxy_url}")
@@ -695,9 +704,18 @@ def main():
     session = _make_session()
     consecutive_failures = 0
     last_movement_update = 0.0  # 上次更新异动榜单的时间
+    last_ai_summary_check = 0.0  # 上次检查 AI 总结的时间
 
     while True:
         try:
+            # 定期检查 AI 市场总结（每5分钟检查一次是否需要生成）
+            if ai_summary_check and (time.time() - last_ai_summary_check) >= 300:
+                try:
+                    ai_summary_check()
+                    last_ai_summary_check = time.time()
+                except Exception as exc:
+                    logger.warning(f"AI 市场总结检查失败: {exc}")
+
             # Proactively refresh token when it is close to expiring (browser-based).
             refresh_if_needed(headless=True)
             account_token, refresh_token_value = get_tokens()

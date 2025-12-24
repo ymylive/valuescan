@@ -70,7 +70,9 @@ def main() -> int:
     sftp = ssh.open_sftp()
 
     files_to_upload = [
+        ("token_refresher.py", "/root/valuescan/token_refresher.py"),
         ("signal_monitor/token_refresher.py", "/root/valuescan/signal_monitor/token_refresher.py"),
+        ("signal_monitor/cdp_token_refresher.py", "/root/valuescan/signal_monitor/cdp_token_refresher.py"),
         ("signal_monitor/start_with_chrome.py", "/root/valuescan/signal_monitor/start_with_chrome.py"),
         ("valuescan-token-refresher.service", "/etc/systemd/system/valuescan-token-refresher.service"),
         ("api/server.py", "/root/valuescan/api/server.py"),

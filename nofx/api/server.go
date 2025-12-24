@@ -410,6 +410,7 @@ type SafeModelConfig struct {
 	Enabled         bool   `json:"enabled"`
 	CustomAPIURL    string `json:"customApiUrl"`    // Custom API URL (usually not sensitive)
 	CustomModelName string `json:"customModelName"` // Custom model name (not sensitive)
+	UseFileUpload   bool   `json:"useFileUpload"`   // Send data as file to bypass length limits
 }
 
 type ExchangeConfig struct {
@@ -443,6 +444,7 @@ type UpdateModelConfigRequest struct {
 		APIKey          string `json:"api_key"`
 		CustomAPIURL    string `json:"custom_api_url"`
 		CustomModelName string `json:"custom_model_name"`
+		UseFileUpload   bool   `json:"use_file_upload"`
 	} `json:"models"`
 }
 
@@ -1368,6 +1370,7 @@ func (s *Server) handleGetModelConfigs(c *gin.Context) {
 			Enabled:         model.Enabled,
 			CustomAPIURL:    model.CustomAPIURL,
 			CustomModelName: model.CustomModelName,
+			UseFileUpload:   model.UseFileUpload,
 		}
 	}
 
@@ -1440,6 +1443,10 @@ func (s *Server) handleUpdateModelConfigs(c *gin.Context) {
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to update model %s: %v", modelID, err)})
 			return
+		}
+		// Update use_file_upload setting separately
+		if err := s.store.AIModel().UpdateUseFileUpload(userID, modelID, modelData.UseFileUpload); err != nil {
+			logger.Warnf("⚠️ Failed to update use_file_upload for model %s: %v", modelID, err)
 		}
 	}
 

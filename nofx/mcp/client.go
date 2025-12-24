@@ -35,15 +35,16 @@ var (
 
 // Client AI API configuration
 type Client struct {
-	Provider   string
-	APIKey     string
-	BaseURL    string
-	Model      string
-	UseFullURL bool // Whether to use full URL (without appending /chat/completions)
-	MaxTokens  int  // Maximum tokens for AI response
+	Provider      string
+	APIKey        string
+	BaseURL       string
+	Model         string
+	UseFullURL    bool // Whether to use full URL (without appending /chat/completions)
+	MaxTokens     int  // Maximum tokens for AI response
+	UseFileUpload bool // Send data as file attachment to bypass length limits
 
 	httpClient *http.Client
-	logger     Logger // Logger (replaceable)
+	logger     Logger  // Logger (replaceable)
 	config     *Config // Config object (stores all configurations)
 
 	// hooks are used to implement dynamic dispatch (polymorphism)
@@ -133,10 +134,24 @@ func (client *Client) SetTimeout(timeout time.Duration) {
 	client.httpClient.Timeout = timeout
 }
 
+// SetUseFileUpload enables file upload mode to bypass length limits
+// When enabled, long content will be converted to file attachment format
+func (client *Client) SetUseFileUpload(useFileUpload bool) {
+	client.UseFileUpload = useFileUpload
+	if useFileUpload {
+		client.logger.Infof("📎 [%s] File upload mode enabled", client.String())
+	}
+}
+
 // CallWithMessages template method - fixed retry flow (cannot be overridden)
 func (client *Client) CallWithMessages(systemPrompt, userPrompt string) (string, error) {
 	if client.APIKey == "" {
 		return "", fmt.Errorf("AI API key not set, please call SetAPIKey first")
+	}
+
+	// If file upload mode is enabled, use file upload for long content
+	if client.UseFileUpload {
+		return client.callWithFileUploadRetry(systemPrompt, userPrompt)
 	}
 
 	// Fixed retry flow
@@ -174,13 +189,50 @@ func (client *Client) CallWithMessages(systemPrompt, userPrompt string) (string,
 	return "", fmt.Errorf("still failed after %d retries: %w", maxRetries, lastErr)
 }
 
+// callWithFileUploadRetry uses file upload mode with retry logic
+func (client *Client) callWithFileUploadRetry(systemPrompt, userPrompt string) (string, error) {
+	var lastErr error
+	maxRetries := client.config.MaxRetries
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		if attempt > 1 {
+			client.logger.Warnf("⚠️  AI API (file upload) call failed, retrying (%d/%d)...", attempt, maxRetries)
+		}
+
+		result, err := client.CallWithFileUpload(systemPrompt, userPrompt)
+		if err == nil {
+			if attempt > 1 {
+				client.logger.Infof("✓ AI API (file upload) retry succeeded")
+			}
+			return result, nil
+		}
+
+		lastErr = err
+		if !client.hooks.isRetryableError(err) {
+			return "", err
+		}
+
+		if attempt < maxRetries {
+			waitTime := client.config.RetryWaitBase * time.Duration(attempt)
+			client.logger.Infof("⏳ Waiting %v before retry...", waitTime)
+			time.Sleep(waitTime)
+		}
+	}
+
+	return "", fmt.Errorf("still failed after %d retries (file upload mode): %w", maxRetries, lastErr)
+}
+
 func (client *Client) setAuthHeader(reqHeader http.Header) {
 	reqHeader.Set("Authorization", fmt.Sprintf("Bearer %s", client.APIKey))
 }
 
+// MaxUserPromptSize is the maximum size of user prompt to avoid API length limits
+// Most APIs have ~100KB limit for request body
+const MaxUserPromptSize = 80000 // 80KB, leave room for system prompt and JSON overhead
+
 func (client *Client) buildMCPRequestBody(systemPrompt, userPrompt string) map[string]any {
 	// Build messages array
-	messages := []map[string]string{}
+	var messages []any
 
 	// If system prompt exists, add system message
 	if systemPrompt != "" {
@@ -189,10 +241,29 @@ func (client *Client) buildMCPRequestBody(systemPrompt, userPrompt string) map[s
 			"content": systemPrompt,
 		})
 	}
+
+	// Truncate user prompt if it's too long to avoid API length limits
+	// Note: This only applies when NOT using file upload mode
+	// File upload mode handles long content via the Files API
+	finalUserPrompt := userPrompt
+	if !client.UseFileUpload && len(userPrompt) > MaxUserPromptSize {
+		// Smart truncation: keep the beginning (context) and end (recent data)
+		keepStart := MaxUserPromptSize * 2 / 3 // 2/3 from start
+		keepEnd := MaxUserPromptSize / 3       // 1/3 from end
+		
+		truncationNote := fmt.Sprintf("\n\n[... 内容已截断，原始长度 %d 字符，保留前 %d 和后 %d 字符 ...]\n\n", 
+			len(userPrompt), keepStart, keepEnd)
+		
+		finalUserPrompt = userPrompt[:keepStart] + truncationNote + userPrompt[len(userPrompt)-keepEnd:]
+		
+		client.logger.Warnf("⚠️ [%s] User prompt truncated: %d -> %d chars (API length limit)", 
+			client.String(), len(userPrompt), len(finalUserPrompt))
+	}
+
 	// Add user message
 	messages = append(messages, map[string]string{
 		"role":    "user",
-		"content": userPrompt,
+		"content": finalUserPrompt,
 	})
 
 	// Build request body

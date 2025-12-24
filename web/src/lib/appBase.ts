@@ -1,5 +1,9 @@
 export const APP_BASE = import.meta.env.BASE_URL || '/'
 
+export function getApiUrl(): string {
+  return import.meta.env.VITE_API_URL || ''
+}
+
 export function withBasePath(path: string): string {
   if (!path) {
     return APP_BASE

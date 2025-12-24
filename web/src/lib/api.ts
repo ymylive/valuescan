@@ -838,6 +838,25 @@ export const api = {
     return result.data
   },
 
+  // AI Market Summary Config
+  async getAISummaryConfig(): Promise<any> {
+    const result = await httpClient.get<any>(`${API_BASE}/valuescan/ai-summary/config`)
+    if (!result.success) throw new Error('获取 AI 总结配置失败')
+    return result.data?.config || {}
+  },
+
+  async saveAISummaryConfig(config: any): Promise<any> {
+    const result = await httpClient.post<any>(`${API_BASE}/valuescan/ai-summary/config`, { config })
+    if (!result.success) throw new Error('保存 AI 总结配置失败')
+    return result.data
+  },
+
+  async triggerAISummary(): Promise<any> {
+    const result = await httpClient.post<any>(`${API_BASE}/valuescan/ai-summary/trigger`, {})
+    if (!result.success) throw new Error('触发 AI 总结失败')
+    return result.data
+  },
+
   async getValueScanSignals(
     limit: number = 10
   ): Promise<{ signals: any[]; error?: string }> {

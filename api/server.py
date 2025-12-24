@@ -1676,6 +1676,95 @@ def valuescan_save_coinpool_config():
         }
     )
 
+
+# AI Market Summary Config
+AI_SUMMARY_CONFIG_FILE = BASE_DIR / 'signal_monitor' / 'ai_summary_config.json'
+
+
+def _default_ai_summary_config():
+    return {
+        "enabled": False,
+        "interval_hours": 1.0,
+        "api_key": "",
+        "api_url": "https://api.openai.com/v1/chat/completions",
+        "model": "gpt-4o-mini",
+        "lookback_hours": 1.0,
+    }
+
+
+@app.route('/api/valuescan/ai-summary/config', methods=['GET'])
+def valuescan_get_ai_summary_config():
+    """Get AI market summary configuration."""
+    defaults = _default_ai_summary_config()
+    current = {}
+    if AI_SUMMARY_CONFIG_FILE.exists():
+        try:
+            current = json.loads(AI_SUMMARY_CONFIG_FILE.read_text(encoding='utf-8'))
+        except Exception:
+            pass
+    if not isinstance(current, dict):
+        current = {}
+    return jsonify({"config": {**defaults, **current}})
+
+
+@app.route('/api/valuescan/ai-summary/config', methods=['POST'])
+def valuescan_save_ai_summary_config():
+    """Save AI market summary configuration."""
+    payload = request.json or {}
+    raw_cfg = payload.get("config", payload)
+    if not isinstance(raw_cfg, dict):
+        return jsonify({"success": False, "error": "Invalid config"}), 400
+
+    defaults = _default_ai_summary_config()
+    
+    def _as_bool(val):
+        if isinstance(val, bool):
+            return val
+        if isinstance(val, str):
+            return val.strip().lower() in ("1", "true", "yes", "on")
+        return bool(val)
+    
+    def _as_float(val, default):
+        try:
+            return float(val)
+        except Exception:
+            return default
+    
+    normalized = {
+        "enabled": _as_bool(raw_cfg.get("enabled", defaults["enabled"])),
+        "interval_hours": max(0.5, _as_float(raw_cfg.get("interval_hours"), defaults["interval_hours"])),
+        "api_key": str(raw_cfg.get("api_key", defaults["api_key"])).strip(),
+        "api_url": str(raw_cfg.get("api_url", defaults["api_url"])).strip() or defaults["api_url"],
+        "model": str(raw_cfg.get("model", defaults["model"])).strip() or defaults["model"],
+        "lookback_hours": max(0.5, _as_float(raw_cfg.get("lookback_hours"), defaults["lookback_hours"])),
+    }
+    
+    try:
+        AI_SUMMARY_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        AI_SUMMARY_CONFIG_FILE.write_text(json.dumps(normalized, ensure_ascii=False, indent=2), encoding='utf-8')
+    except Exception as exc:
+        return jsonify({"success": False, "error": str(exc)}), 500
+    
+    return jsonify({"success": True, "config": normalized})
+
+
+@app.route('/api/valuescan/ai-summary/trigger', methods=['POST'])
+def valuescan_trigger_ai_summary():
+    """Manually trigger AI market summary generation."""
+    try:
+        import sys
+        sys.path.insert(0, str(BASE_DIR / 'signal_monitor'))
+        from ai_market_summary import generate_market_summary
+        
+        summary = generate_market_summary(force=True)
+        if summary:
+            return jsonify({"success": True, "summary": summary})
+        else:
+            return jsonify({"success": False, "error": "Failed to generate summary"})
+    except Exception as exc:
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
 @app.route('/api/valuescan/login', methods=['POST'])
 def valuescan_do_login():
     """执行 valuescan 登录"""

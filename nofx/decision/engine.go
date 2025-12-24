@@ -836,6 +836,13 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 		sb.WriteString("Note: The above personalized strategy is a supplement to the basic rules and cannot violate the basic risk control principles.\n")
 	}
 
+	// 9. CRITICAL: Final format reminder (helps models like Gemini follow format)
+	sb.WriteString("\n# ⚠️ CRITICAL OUTPUT REMINDER\n\n")
+	sb.WriteString("You MUST end your response with a valid JSON decision array inside <decision> tags.\n")
+	sb.WriteString("Even if you recommend waiting/holding, you MUST output JSON like:\n")
+	sb.WriteString("```\n<decision>\n[{\"symbol\": \"ALL\", \"action\": \"wait\", \"reasoning\": \"your reasoning here\"}]\n</decision>\n```\n")
+	sb.WriteString("**WITHOUT the JSON decision array, your analysis is USELESS and will be discarded.**\n")
+
 	return sb.String()
 }
 
@@ -1414,7 +1421,13 @@ func extractDecisions(response string) ([]Decision, error) {
 		// For Gemini and other models that don't use <decision> tag,
 		// try to find JSON directly in the response
 		jsonPart = s
-		logger.Infof("⚠️  <decision> tag not found, searching JSON in full text")
+		
+		// Debug: log first 300 chars of response to understand format
+		debugPreview := s
+		if len(debugPreview) > 300 {
+			debugPreview = debugPreview[:300] + "..."
+		}
+		logger.Infof("⚠️  <decision> tag not found, response preview: %s", debugPreview)
 		
 		// Extra step for Gemini: look for JSON after any remaining "Reasoning:" or similar prefixes
 		jsonPart = extractJSONFromGeminiResponse(jsonPart)
@@ -1454,9 +1467,23 @@ func extractDecisions(response string) ([]Decision, error) {
 		return decisions, nil
 	}
 
-	jsonContent := strings.TrimSpace(reJSONArray.FindString(jsonPart))
+	// Find ALL JSON arrays and use the LAST one (models often output reasoning first, then JSON at end)
+	allMatches := reJSONArray.FindAllString(jsonPart, -1)
+	var jsonContent string
+	if len(allMatches) > 0 {
+		// Use the LAST JSON array found (final decision)
+		jsonContent = strings.TrimSpace(allMatches[len(allMatches)-1])
+		if len(allMatches) > 1 {
+			logger.Infof("🔧 Found %d JSON arrays, using the LAST one (final decision)", len(allMatches))
+		}
+	}
 	if jsonContent == "" {
-		logger.Infof("⚠️  [SafeFallback] AI didn't output JSON decision, entering safe wait mode")
+		// Log the actual content for debugging
+		debugContent := jsonPart
+		if len(debugContent) > 500 {
+			debugContent = debugContent[:500] + "..."
+		}
+		logger.Infof("⚠️  [SafeFallback] AI didn't output JSON decision. Content preview: %s", debugContent)
 
 		cotSummary := jsonPart
 		if len(cotSummary) > 240 {

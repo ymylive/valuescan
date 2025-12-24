@@ -73,6 +73,7 @@ export function SettingsPage() {
   const [config, setConfig] = useState<AllConfig | null>(null)
   const [keepaliveConfig, setKeepaliveConfig] =
     useState<KeepaliveConfig | null>(null)
+  const [_aiSummaryConfig, setAiSummaryConfig] = useState<any>(null)
   const [configLoading, setConfigLoading] = useState(false)
   const [saveLoading, setSaveLoading] = useState(false)
   const [activeConfigSection, setActiveConfigSection] = useState<
@@ -167,13 +168,30 @@ export function SettingsPage() {
   const loadConfig = async () => {
     setConfigLoading(true)
     try {
-      const [configData, keepaliveData] = await Promise.all([
+      const [configData, keepaliveData, aiSummaryData] = await Promise.all([
         api.getConfig(),
         api.getKeepaliveConfig().catch(() => null),
+        api.getAISummaryConfig().catch(() => null),
       ])
       setConfig(configData)
       if (keepaliveData?.config) {
         setKeepaliveConfig(keepaliveData.config)
+      }
+      if (aiSummaryData) {
+        setAiSummaryConfig(aiSummaryData)
+        // Merge AI summary config into signal config for UI display
+        setConfig((prev: any) => ({
+          ...prev,
+          signal: {
+            ...(prev?.signal || {}),
+            ai_summary_enabled: aiSummaryData.enabled,
+            ai_summary_api_key: aiSummaryData.api_key,
+            ai_summary_api_url: aiSummaryData.api_url,
+            ai_summary_model: aiSummaryData.model,
+            ai_summary_interval_hours: aiSummaryData.interval_hours,
+            ai_summary_lookback_hours: aiSummaryData.lookback_hours,
+          },
+        }))
       }
       setFieldErrors({})
       setUnsavedChanges(false)
@@ -201,6 +219,25 @@ export function SettingsPage() {
           setUnsavedChanges(false)
         } else {
           toast.error(result.errors?.join(', ') || '保存失败')
+        }
+
+        // Also save AI summary config if in signal section
+        if (activeConfigSection === 'signal' && config?.signal) {
+          const signalConfig = config.signal
+          const aiConfig = {
+            enabled: signalConfig.ai_summary_enabled || false,
+            api_key: signalConfig.ai_summary_api_key || '',
+            api_url: signalConfig.ai_summary_api_url || 'https://api.openai.com/v1/chat/completions',
+            model: signalConfig.ai_summary_model || 'gpt-4o-mini',
+            interval_hours: signalConfig.ai_summary_interval_hours || 1,
+            lookback_hours: signalConfig.ai_summary_lookback_hours || 1,
+          }
+          try {
+            await api.saveAISummaryConfig(aiConfig)
+            setAiSummaryConfig(aiConfig)
+          } catch (aiErr) {
+            console.error('保存 AI 总结配置失败:', aiErr)
+          }
         }
       }
       // Save keepalive config

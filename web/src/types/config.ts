@@ -46,6 +46,14 @@ export interface SignalMonitorConfig {
   log_file: string
   log_max_size: number
   log_backup_count: number
+
+  // AI Market Summary
+  ai_summary_enabled: boolean
+  ai_summary_interval_hours: number
+  ai_summary_api_key: string
+  ai_summary_api_url: string
+  ai_summary_model: string
+  ai_summary_lookback_hours: number
 }
 
 // ==================== Trader Config ====================

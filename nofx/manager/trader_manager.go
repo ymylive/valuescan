@@ -707,6 +707,9 @@ func (tm *TraderManager) addTraderFromStore(traderCfg *store.Trader, aiModelCfg 
 		traderConfig.CustomAPIKey = aiModelCfg.APIKey
 	}
 
+	// Set file upload mode if enabled
+	traderConfig.UseFileUpload = aiModelCfg.UseFileUpload
+
 	// Create trader instance
 	at, err := trader.NewAutoTrader(traderConfig, st, traderCfg.UserID)
 	if err != nil {

@@ -138,7 +138,8 @@ def _filter_items_by_age(items, max_age_seconds, seen_ids=None):
                 msg_type = _get_message_type(item)
                 title = item.get("title")
                 symbol = _extract_symbol_from_item(item)
-                mark_message_processed(msg_id, msg_type, symbol, title, ts_ms)
+                content = item.get("content") or item.get("message") or title
+                mark_message_processed(msg_id, msg_type, symbol, title, ts_ms, content)
             if seen_ids is not None and msg_id:
                 seen_ids.add(msg_id)
             continue
@@ -363,7 +364,8 @@ def process_message_item(item, idx=None, send_to_telegram=False, signal_callback
         if telegram_result and telegram_result.get("success"):
             # 发送成功后记录到数据库
             if msg_id:
-                if mark_message_processed(msg_id, msg_type, symbol, title, created_time):
+                content_str = item.get('content') or item.get('message') or title
+                if mark_message_processed(msg_id, msg_type, symbol, title, created_time, content_str):
                     logger.info(f"✅ 消息 ID {msg_id} 已记录到数据库")
                     _invoke_callback()
                     # 检查并发送融合信号
@@ -382,7 +384,8 @@ def process_message_item(item, idx=None, send_to_telegram=False, signal_callback
     else:
         # 即使不发送 Telegram，也记录到数据库（避免下次重复处理）
         if msg_id:
-            if mark_message_processed(msg_id, msg_type, symbol, title, created_time):
+            content_str = item.get('content') or item.get('message') or title
+            if mark_message_processed(msg_id, msg_type, symbol, title, created_time, content_str):
                 logger.info(f"✅ 消息 ID {msg_id} 已记录到数据库（未发送 TG）")
                 _invoke_callback()
                 return True  # 记录成功

@@ -48,6 +48,20 @@ LOGIN_METHOD = (os.getenv("VALUESCAN_LOGIN_METHOD") or "auto").strip().lower()
 LOGIN_NO_HEADLESS = os.getenv("VALUESCAN_LOGIN_NO_HEADLESS", "0").strip().lower() in ("1", "true", "yes")
 SKIP_REFRESH_API = os.getenv("VALUESCAN_SKIP_REFRESH_API", "0").strip().lower() in ("1", "true", "yes")
 
+REFRESH_WINDOW_START_HOUR = int(os.getenv("VALUESCAN_REFRESH_WINDOW_START", "0"))
+REFRESH_WINDOW_END_HOUR = int(os.getenv("VALUESCAN_REFRESH_WINDOW_END", "6"))
+REFRESH_URGENT_THRESHOLD_S = int(os.getenv("VALUESCAN_REFRESH_URGENT_THRESHOLD", "1800"))
+
+
+def _is_refresh_window() -> bool:
+    """Check if current time is within the preferred refresh window (default: 0:00-6:00)."""
+    now = datetime.now()
+    hour = now.hour
+    if REFRESH_WINDOW_START_HOUR <= REFRESH_WINDOW_END_HOUR:
+        return REFRESH_WINDOW_START_HOUR <= hour < REFRESH_WINDOW_END_HOUR
+    else:
+        return hour >= REFRESH_WINDOW_START_HOUR or hour < REFRESH_WINDOW_END_HOUR
+
 
 def _build_refresh_urls(primary_url: str) -> List[str]:
     env_urls = (os.getenv("VALUESCAN_REFRESH_URLS") or "").strip()
@@ -426,7 +440,17 @@ def main() -> int:
             _attempt_relogin(ls, "missing_refresh_token", force=force_relogin)
             time.sleep(CHECK_INTERVAL_S)
             continue
-        should_refresh = (not account_token) or (seconds_left is not None and seconds_left <= REFRESH_SAFETY_S)
+        is_token_unavailable = (not account_token) or (seconds_left is None) or (seconds_left <= 0)
+        is_urgent = seconds_left is not None and seconds_left <= REFRESH_URGENT_THRESHOLD_S
+        in_window = _is_refresh_window()
+        
+        # 刷新条件：1) token不可用时必须刷新 2) 在凌晨窗口内且快过期时预防性刷新
+        # 注意：去除了 is_near_expiry 强制刷新逻辑，让服务器决定 token 是否过期
+        should_refresh = is_token_unavailable or (is_urgent and in_window)
+        
+        if not should_refresh and not in_window and seconds_left is not None:
+            hours_left = seconds_left / 3600
+            logger.debug("Token expires in %.1f hours, waiting for refresh window (0:00-6:00)", hours_left)
 
         if should_refresh:
             if SKIP_REFRESH_API:

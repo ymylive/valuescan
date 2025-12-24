@@ -47,6 +47,20 @@ TOKEN_REFRESH_SAFETY_SECONDS = int(os.getenv("VALUESCAN_TOKEN_REFRESH_SAFETY_SEC
 LOGIN_RETRY_COOLDOWN_SECONDS = int(os.getenv("VALUESCAN_LOGIN_RETRY_COOLDOWN_SECONDS", "60"))
 BROWSER_STARTUP_TIMEOUT = int(os.getenv("VALUESCAN_BROWSER_STARTUP_TIMEOUT", "30"))
 
+REFRESH_WINDOW_START_HOUR = int(os.getenv("VALUESCAN_REFRESH_WINDOW_START", "0"))
+REFRESH_WINDOW_END_HOUR = int(os.getenv("VALUESCAN_REFRESH_WINDOW_END", "6"))
+REFRESH_URGENT_THRESHOLD_SECONDS = int(os.getenv("VALUESCAN_REFRESH_URGENT_THRESHOLD", "1800"))
+
+
+def _is_refresh_window() -> bool:
+    """Check if current time is within the preferred refresh window (default: 0:00-6:00)."""
+    now = datetime.now()
+    hour = now.hour
+    if REFRESH_WINDOW_START_HOUR <= REFRESH_WINDOW_END_HOUR:
+        return REFRESH_WINDOW_START_HOUR <= hour < REFRESH_WINDOW_END_HOUR
+    else:
+        return hour >= REFRESH_WINDOW_START_HOUR or hour < REFRESH_WINDOW_END_HOUR
+
 
 def _atomic_write_json(path: Path, payload: Dict[str, Any]) -> None:
     """Atomic write to avoid half-written JSON."""
@@ -127,6 +141,10 @@ def get_token_status() -> Tuple[bool, Optional[int], Optional[datetime]]:
     """
     Get current token status.
     Returns: (is_valid, seconds_remaining, expiry_datetime)
+    
+    注意：is_valid 只检查 token 是否存在且未完全过期（seconds_left > 0）
+    不再基于 TOKEN_REFRESH_SAFETY_SECONDS 强制判断过期
+    真正的过期应由服务器返回 401/4000 来判定
     """
     data = _load_json(LOCALSTORAGE_FILE)
     token = (data.get("account_token") or "").strip()
@@ -140,7 +158,9 @@ def get_token_status() -> Tuple[bool, Optional[int], Optional[datetime]]:
     exp = _jwt_expiry_seconds(token)
     expiry_dt = datetime.fromtimestamp(exp, tz=timezone.utc) if exp else None
     
-    is_valid = seconds_left > TOKEN_REFRESH_SAFETY_SECONDS
+    # 只有 token 完全过期（seconds_left <= 0）才判定为无效
+    # 不再基于安全缓冲时间强制判断过期，让服务器来决定
+    is_valid = seconds_left > 0
     return is_valid, seconds_left, expiry_dt
 
 
@@ -302,8 +322,8 @@ def cdp_refresh_token(email: str, password: str) -> bool:
                 return None
             current_url = page_target.get("url", "")
             try:
-                ws = websocket.create_connection(ws_url, timeout=30)
-                ws.settimeout(15)
+                ws = websocket.create_connection(ws_url, timeout=10)
+                ws.settimeout(5)
                 return ws, ws_url, current_url
             except Exception as exc:
                 logger.warning("Failed to connect websocket: %s", exc)
@@ -366,7 +386,7 @@ def cdp_refresh_token(email: str, password: str) -> bool:
                         continue
                     return None
 
-                deadline = time.time() + 20
+                deadline = time.time() + 10
                 while time.time() < deadline:
                     try:
                         data = ws.recv()
@@ -390,7 +410,7 @@ def cdp_refresh_token(email: str, password: str) -> bool:
         if "login" not in current_url.lower():
             logger.info("Navigating to login page...")
             cdp("Page.navigate", {"url": "https://www.valuescan.io/login"})
-            _wait_for_dom_ready(timeout_seconds=40)
+            _wait_for_dom_ready(timeout_seconds=15)
             time.sleep(2)
         
         # Check if already logged in (redirected)
@@ -433,7 +453,7 @@ def cdp_refresh_token(email: str, password: str) -> bool:
         
         # Fill email
         logger.info("Filling email...")
-        _wait_for_dom_ready(timeout_seconds=20)
+        _wait_for_dom_ready(timeout_seconds=10)
         email_json = json.dumps(email or "")
         js_email = f"""(() => {{
             const EMAIL = {email_json};
@@ -529,30 +549,48 @@ def cdp_refresh_token(email: str, password: str) -> bool:
                     logger.info("Redirected to: %s", url)
                     break
         
-        time.sleep(3)
+        time.sleep(2)
         
-        # Get localStorage/sessionStorage
+        # Get localStorage/sessionStorage with retry
         logger.info("Getting localStorage...")
-        r = cdp("Runtime.evaluate", {"expression": "JSON.stringify(localStorage)"})
         ls_data = {}
-        if r:
-            ls_str = r.get("result", {}).get("result", {}).get("value", "{}")
-            try:
-                ls_data = json.loads(ls_str)
-            except Exception:
-                ls_data = {}
-        logger.info("LocalStorage keys: %s", list(ls_data.keys()))
-
-        r = cdp("Runtime.evaluate", {"expression": "JSON.stringify(sessionStorage)"})
         ss_data = {}
-        if r:
-            ss_str = r.get("result", {}).get("result", {}).get("value", "{}")
+        
+        for attempt in range(3):
             try:
-                ss_data = json.loads(ss_str)
-            except Exception:
-                ss_data = {}
-        if ss_data:
-            logger.info("SessionStorage keys: %s", list(ss_data.keys()))
+                # Try to reconnect if needed
+                if attempt > 0:
+                    logger.info("Retry %d: reconnecting...", attempt)
+                    if not _reconnect():
+                        continue
+                    time.sleep(1)
+                
+                r = cdp("Runtime.evaluate", {"expression": "JSON.stringify(localStorage)"}, retries=2)
+                if r:
+                    ls_str = r.get("result", {}).get("result", {}).get("value", "{}")
+                    try:
+                        ls_data = json.loads(ls_str)
+                    except Exception:
+                        ls_data = {}
+                
+                if ls_data:
+                    logger.info("LocalStorage keys: %s", list(ls_data.keys()))
+                    break
+            except Exception as e:
+                logger.warning("Attempt %d failed: %s", attempt, e)
+                time.sleep(1)
+
+        # Try sessionStorage if localStorage failed
+        if not ls_data:
+            r = cdp("Runtime.evaluate", {"expression": "JSON.stringify(sessionStorage)"}, retries=2)
+            if r:
+                ss_str = r.get("result", {}).get("result", {}).get("value", "{}")
+                try:
+                    ss_data = json.loads(ss_str)
+                except Exception:
+                    ss_data = {}
+            if ss_data:
+                logger.info("SessionStorage keys: %s", list(ss_data.keys()))
 
         token = _pick_token_from_storage(ls_data) or _pick_token_from_storage(ss_data)
         if token:
@@ -561,7 +599,10 @@ def cdp_refresh_token(email: str, password: str) -> bool:
             if "account_token" not in ls_data:
                 ls_data["account_token"] = token
             _atomic_write_json(LOCALSTORAGE_FILE, ls_data)
-            ws.close()
+            try:
+                ws.close()
+            except Exception:
+                pass
             return True
         logger.error("No token found in storage")
         
@@ -579,17 +620,33 @@ def refresh_if_needed(force: bool = False) -> bool:
     """
     Check token status and refresh if needed.
     Uses saved credentials from file or environment.
+    
+    刷新策略：
+    1. token 完全不可用（不存在或已过期）时必须刷新
+    2. 在凌晨窗口(0:00-6:00)内且 token 快过期时预防性刷新
+    3. 不再基于时间强制判断过期，让服务器来决定
     """
     is_valid, seconds_left, expiry = get_token_status()
     
-    if is_valid and not force:
+    is_token_unavailable = (seconds_left is None) or (seconds_left <= 0)
+    is_urgent = seconds_left is not None and seconds_left <= REFRESH_URGENT_THRESHOLD_SECONDS
+    in_window = _is_refresh_window()
+    
+    # 刷新条件：1) token不可用时必须刷新 2) 在凌晨窗口内且快过期时预防性刷新
+    # 注意：去除了 is_near_expiry 强制刷新逻辑，让服务器决定 token 是否过期
+    needs_refresh = force or is_token_unavailable or (is_urgent and in_window)
+    
+    if not needs_refresh:
+        if not in_window and seconds_left is not None:
+            hours_left = seconds_left / 3600
+            logger.debug("Token expires in %.1f hours, waiting for refresh window (0:00-6:00)", hours_left)
         logger.info("Token valid, expires in %.1f hours", (seconds_left or 0) / 3600)
         return True
     
-    if seconds_left is not None:
-        logger.info("Token expiring in %d seconds, refreshing...", seconds_left)
-    else:
-        logger.info("Token missing or invalid, refreshing...")
+    if is_token_unavailable:
+        logger.info("Token missing or expired, refreshing...")
+    elif in_window and is_urgent:
+        logger.info("In refresh window, token expiring in %d seconds, refreshing...", seconds_left or 0)
     
     # Get credentials
     creds = load_credentials()
@@ -621,8 +678,21 @@ def run_cdp_refresh_loop(interval_hours: float = TOKEN_REFRESH_INTERVAL_HOURS) -
         try:
             is_valid, seconds_left, expiry = get_token_status()
             
-            if is_valid:
-                logger.info("Token valid until %s", expiry.isoformat() if expiry else "unknown")
+            # 判断是否真正需要刷新（遵循凌晨窗口限制）
+            is_token_unavailable = (seconds_left is None) or (seconds_left <= 0)
+            is_urgent = seconds_left is not None and seconds_left <= REFRESH_URGENT_THRESHOLD_SECONDS
+            in_window = _is_refresh_window()
+            
+            # 只有 token 不可用、或在凌晨窗口内且快过期时才刷新
+            # 去除了 is_near_expiry 强制刷新逻辑，让服务器决定 token 是否过期
+            should_refresh = is_token_unavailable or (is_urgent and in_window)
+            
+            if not should_refresh:
+                if expiry:
+                    logger.info("Token valid until %s", expiry.isoformat())
+                if not in_window and seconds_left is not None:
+                    hours_left = seconds_left / 3600
+                    logger.debug("Token expires in %.1f hours, waiting for refresh window (0:00-6:00)", hours_left)
                 # Calculate sleep time
                 sleep_seconds = interval_hours * 3600
                 if seconds_left is not None:
@@ -632,8 +702,11 @@ def run_cdp_refresh_loop(interval_hours: float = TOKEN_REFRESH_INTERVAL_HOURS) -
                         max(60, seconds_left - TOKEN_REFRESH_SAFETY_SECONDS)
                     )
             else:
-                # Token invalid, try to refresh
-                logger.info("Token invalid or expiring, refreshing...")
+                # Token invalid or in refresh window, try to refresh
+                if is_token_unavailable:
+                    logger.info("Token missing or expired, refreshing...")
+                else:
+                    logger.info("Token expiring in %d seconds, refreshing...", seconds_left or 0)
                 success = refresh_if_needed(force=True)
                 
                 if success:

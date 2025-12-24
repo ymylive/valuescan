@@ -54,9 +54,17 @@ class MessageDatabase:
                     symbol TEXT,
                     title TEXT,
                     processed_time INTEGER,
-                    created_time INTEGER
+                    created_time INTEGER,
+                    content TEXT
                 )
             ''')
+            
+            # 添加 content 列（如果不存在）
+            try:
+                self.cursor.execute('ALTER TABLE processed_messages ADD COLUMN content TEXT')
+                self.conn.commit()
+            except sqlite3.OperationalError:
+                pass  # 列已存在
             
             # 创建索引以提高查询效率
             self.cursor.execute('''
@@ -101,7 +109,7 @@ class MessageDatabase:
             logger.error(f"❌ 查询消息 ID 失败: {e}")
             return False
     
-    def add_message(self, message_id, message_type=None, symbol=None, title=None, created_time=None):
+    def add_message(self, message_id, message_type=None, symbol=None, title=None, created_time=None, content=None):
         """
         添加消息到数据库
         
@@ -111,6 +119,7 @@ class MessageDatabase:
             symbol: 币种符号
             title: 消息标题
             created_time: 消息创建时间（毫秒时间戳）
+            content: 消息内容
         
         Returns:
             bool: 添加成功返回 True，失败或已存在返回 False
@@ -124,15 +133,16 @@ class MessageDatabase:
             
             self.cursor.execute('''
                 INSERT INTO processed_messages 
-                (message_id, message_type, symbol, title, processed_time, created_time)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (message_id, message_type, symbol, title, processed_time, created_time, content)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             ''', (
                 str(message_id),
                 message_type,
                 symbol,
                 title,
                 current_time,
-                created_time
+                created_time,
+                content
             ))
             
             self.conn.commit()
@@ -182,6 +192,53 @@ class MessageDatabase:
             return self.cursor.fetchall()
         except sqlite3.Error as e:
             logger.error(f"❌ 获取最近消息失败: {e}")
+            return []
+    
+    def get_recent_messages_for_ai(self, limit=200, since_timestamp_ms=None):
+        """
+        获取最近的消息用于 AI 分析
+        
+        Args:
+            limit: 返回的消息数量
+            since_timestamp_ms: 只返回此时间戳之后的消息（毫秒）
+        
+        Returns:
+            list: 消息字典列表
+        """
+        try:
+            if since_timestamp_ms:
+                self.cursor.execute('''
+                    SELECT message_id, message_type, symbol, title, 
+                           processed_time, created_time, content
+                    FROM processed_messages
+                    WHERE created_time >= ?
+                    ORDER BY created_time DESC
+                    LIMIT ?
+                ''', (since_timestamp_ms, limit))
+            else:
+                self.cursor.execute('''
+                    SELECT message_id, message_type, symbol, title, 
+                           processed_time, created_time, content
+                    FROM processed_messages
+                    ORDER BY created_time DESC
+                    LIMIT ?
+                ''', (limit,))
+            
+            rows = self.cursor.fetchall()
+            return [
+                {
+                    "id": row[0],
+                    "type": row[1],
+                    "symbol": row[2],
+                    "title": row[3],
+                    "processedTime": row[4],
+                    "createTime": row[5],
+                    "content": row[6] if len(row) > 6 else "",
+                }
+                for row in rows
+            ]
+        except sqlite3.Error as e:
+            logger.error(f"❌ 获取 AI 分析消息失败: {e}")
             return []
     
     def clean_old_messages(self, days=30):
@@ -297,7 +354,7 @@ def is_message_processed(message_id):
     return db.is_processed(message_id)
 
 
-def mark_message_processed(message_id, message_type=None, symbol=None, title=None, created_time=None):
+def mark_message_processed(message_id, message_type=None, symbol=None, title=None, created_time=None, content=None):
     """
     快捷函数：标记消息为已处理
     
@@ -307,9 +364,10 @@ def mark_message_processed(message_id, message_type=None, symbol=None, title=Non
         symbol: 币种符号
         title: 消息标题
         created_time: 创建时间
+        content: 消息内容
     
     Returns:
         bool: 成功返回 True
     """
     db = get_database()
-    return db.add_message(message_id, message_type, symbol, title, created_time)
+    return db.add_message(message_id, message_type, symbol, title, created_time, content)

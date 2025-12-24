@@ -1,4 +1,4 @@
-import { Send, Globe, Server, Shield, BarChart3, FileText } from 'lucide-react'
+import { Send, Globe, Server, Shield, BarChart3, FileText, Brain } from 'lucide-react'
 import type { SignalMonitorConfig } from '../../types/config'
 import { ConfigFieldGroup } from './ConfigFieldGroup'
 import { SensitiveFieldInput } from './SensitiveFieldInput'
@@ -320,6 +320,99 @@ export function SignalMonitorConfigSection({
                 className={inputClass}
               />
             </div>
+          )}
+        </div>
+      </ConfigFieldGroup>
+
+      {/* AI Market Summary Group */}
+      <ConfigFieldGroup
+        title="AI 市场总结"
+        description="使用 AI 分析市场信号，定时发送总结到 Telegram"
+        icon={<Brain className="w-5 h-5" />}
+        defaultExpanded={false}
+      >
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <label className="text-sm text-neutral-400">
+              启用 AI 市场总结
+            </label>
+            <Toggle
+              checked={!!config.ai_summary_enabled}
+              onChange={() =>
+                updateField('ai_summary_enabled', !config.ai_summary_enabled)
+              }
+            />
+          </div>
+          
+          {config.ai_summary_enabled && (
+            <>
+              <SensitiveFieldInput
+                fieldKey="ai_summary_api_key"
+                value={config.ai_summary_api_key || ''}
+                onChange={(v) => updateField('ai_summary_api_key', v)}
+                label="AI API Key"
+                placeholder="输入 OpenAI 或其他 AI API Key"
+              />
+              
+              <div>
+                <label className={labelClass}>API URL</label>
+                <input
+                  type="text"
+                  value={config.ai_summary_api_url || 'https://api.openai.com/v1/chat/completions'}
+                  onChange={(e) => updateField('ai_summary_api_url', e.target.value)}
+                  placeholder="https://api.openai.com/v1/chat/completions"
+                  className={inputClass}
+                />
+                <p className="text-xs text-neutral-500 mt-1">
+                  支持 OpenAI 兼容接口
+                </p>
+              </div>
+              
+              <div>
+                <label className={labelClass}>模型名称</label>
+                <input
+                  type="text"
+                  value={config.ai_summary_model || 'gpt-4o-mini'}
+                  onChange={(e) => updateField('ai_summary_model', e.target.value)}
+                  placeholder="gpt-4o-mini"
+                  className={inputClass}
+                />
+              </div>
+              
+              <div>
+                <label className={labelClass}>总结间隔（小时）</label>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0.5"
+                  value={config.ai_summary_interval_hours || 1}
+                  onChange={(e) =>
+                    updateField('ai_summary_interval_hours', parseFloat(e.target.value) || 1)
+                  }
+                  className={inputClass}
+                />
+                <p className="text-xs text-neutral-500 mt-1">
+                  每隔多少小时生成一次市场总结
+                </p>
+              </div>
+              
+              <div>
+                <label className={labelClass}>数据回溯时间（小时）</label>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0.5"
+                  value={config.ai_summary_lookback_hours || 1}
+                  onChange={(e) =>
+                    updateField('ai_summary_lookback_hours', parseFloat(e.target.value) || 1)
+                  }
+                  className={inputClass}
+                />
+                <p className="text-xs text-neutral-500 mt-1">
+                  分析最近多少小时内的信号数据
+                </p>
+              </div>
+            </>
           )}
         </div>
       </ConfigFieldGroup>
