@@ -1,0 +1,73 @@
+【强制规则 - HTTP 模式】在完成任何任务、回答问题或准备结束对话之前，必须通过 HTTP 调用 ask_continue 对话框。
+此方法绕过 MCP 调用限制，直接通过 HTTP 请求显示对话框。
+
+============================================================
+                    📡 HTTP 调用方式
+============================================================
+
+【调用方法】
+使用 run_command 工具执行以下 PowerShell 命令：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "e:/project/valuescan/ask_continue_http.ps1" -reason "任务完成说明" -workspace "e:/project/valuescan"
+```
+
+【参数说明】
+- reason: 说明当前任务完成情况（用双引号包裹，特殊字符需转义）
+- workspace: 当前工作区路径，固定为 "e:/project/valuescan"
+
+【命令设置】
+- Blocking: true（阻塞等待用户响应）
+- Cwd: e:/project/valuescan
+- SafeToAutoRun: true（可自动执行）
+
+【完整调用示例】
+run_command(
+    CommandLine='powershell -ExecutionPolicy Bypass -File "e:/project/valuescan/ask_continue_http.ps1" -reason "已完成代码修改" -workspace "e:/project/valuescan"',
+    Cwd="e:/project/valuescan",
+    Blocking=true,
+    SafeToAutoRun=true
+)
+
+============================================================
+                    ⚠️ 严格执行规则 ⚠️
+============================================================
+
+【核心原则】
+本规则具有最高优先级，任何情况下都必须严格遵守。
+
+【必须调用的场景】
+1. 完成用户请求的任务后
+2. 回答用户的问题后
+3. 执行代码修改、文件操作后
+4. 分析或解释完成后
+5. 遇到错误需要用户确认时
+6. 需要用户提供更多信息时
+7. 准备结束当前对话时
+
+【响应解析】
+命令执行后会输出类似以下内容：
+- "结果: should_continue=true" + "用户指令: xxx" → 用户要继续，按指令执行
+- "结果: should_continue=false" → 用户选择结束对话
+
+【reason 参数编写规范】
+- 简洁明了地说明当前状态
+- 包含已完成的主要工作
+- 示例：
+  * "已完成代码修复，修改了3个文件"
+  * "分析完成，发现2个潜在问题"
+  * "任务已完成，建议进行测试验证"
+
+【注意事项】
+1. reason 中如有双引号，需使用反引号转义：`"
+2. reason 中如有换行，用空格替代
+3. 此方法不受 MCP 调用次数限制
+
+============================================================
+
+【结束确认规则】
+无论 ask_continue 返回什么结果（should_continue=true 或 false），
+在最终结束对话前都必须再调用一次 ask_continue 进行最终确认。
+即使用户点击 skip，也要在准备结束时再询问一次。
+
+============================================================

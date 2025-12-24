@@ -24,7 +24,7 @@ import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 # Logging
 logging.basicConfig(
@@ -49,6 +49,33 @@ LOGIN_LOCK_TIMEOUT_SECONDS = int(os.getenv("VALUESCAN_LOGIN_LOCK_TIMEOUT_SECONDS
 LOGIN_LOCK_STALE_SECONDS = int(os.getenv("VALUESCAN_LOGIN_LOCK_STALE_SECONDS", "1200"))
 
 LOGIN_METHOD_RAW = os.getenv("VALUESCAN_LOGIN_METHOD", "auto")
+
+
+def _resolve_bool_env(name: str, default: Optional[bool] = None) -> Optional[bool]:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    value = raw.strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
+def _resolve_headless(default: bool) -> bool:
+    override = _resolve_bool_env("VALUESCAN_LOGIN_HEADLESS")
+    return override if override is not None else default
+
+
+def _resolve_profile_dir() -> Tuple[str, str]:
+    env_path = (os.getenv("VALUESCAN_LOGIN_PROFILE_DIR") or "").strip()
+    if env_path:
+        return env_path, "env"
+    shared_path = BASE_DIR / "chrome-debug-profile"
+    if shared_path.exists():
+        return str(shared_path), "shared"
+    return os.path.join(tempfile.gettempdir(), "valuescan_login_profile"), "temp"
 
 
 def _login_lock_path() -> Path:
@@ -292,6 +319,8 @@ def _normalize_login_method(value: str) -> str:
         return "api"
     if raw in {"browser", "chromium", "ui", "drission"}:
         return "browser"
+    if raw in {"cdp", "devtools", "cdp_browser"}:
+        return "cdp"
     return "auto"
 
 
@@ -339,6 +368,19 @@ def _run_http_api_login(email: str, password: str, timeout_seconds: int = 90) ->
     if msg:
         logger.warning("HTTP login completed but no account_token found: %s", msg[-200:])
     return False
+
+
+def _run_cdp_login(email: str, password: str) -> bool:
+    try:
+        from cdp_token_refresher import cdp_refresh_token
+    except Exception as exc:
+        logger.warning("CDP login unavailable: %s", exc)
+        return False
+    try:
+        return bool(cdp_refresh_token(email, password))
+    except Exception as exc:
+        logger.warning("CDP login failed: %s", exc)
+        return False
 
 
 def get_token_expiry() -> Optional[datetime]:
@@ -761,6 +803,13 @@ def login_and_refresh_token(email: str, password: str, headless: bool = True) ->
         _cleanup_stale_browsers()
 
         login_method = _normalize_login_method(LOGIN_METHOD_RAW)
+        if login_method == "cdp":
+            logger.info("Attempting CDP login (method=cdp)...")
+            if _run_cdp_login(email, password):
+                return True
+            logger.error("CDP login failed and other methods are disabled.")
+            return False
+
         http_attempted = False
         if login_method in {"auto", "api"}:
             logger.info("Attempting HTTP API login (method=%s)...", login_method)
@@ -771,6 +820,7 @@ def login_and_refresh_token(email: str, password: str, headless: bool = True) ->
                 logger.error("HTTP API login failed and browser login is disabled.")
                 return False
 
+        headless = _resolve_headless(headless)
         logger.info("Launching Chromium for ValueScan login (headless=%s)...", headless)
 
         options = ChromiumOptions()
@@ -782,18 +832,19 @@ def login_and_refresh_token(email: str, password: str, headless: bool = True) ->
         options.set_argument("--no-sandbox")
         options.set_argument("--disable-dev-shm-usage")
         options.set_argument("--disable-gpu")
+        options.set_argument("--disable-software-rasterizer")
         options.set_argument("--window-size", "1920,1080")
+        options.set_argument("--remote-allow-origins=*")
         _apply_browser_stealth_options(options)
 
         # Dedicated user data dir to avoid clobbering an interactive session
-        profile_dir = (os.getenv("VALUESCAN_LOGIN_PROFILE_DIR") or "").strip()
-        if not profile_dir:
-            profile_dir = os.path.join(tempfile.gettempdir(), "valuescan_login_profile")
+        profile_dir, profile_source = _resolve_profile_dir()
         try:
             Path(profile_dir).mkdir(parents=True, exist_ok=True)
             options.set_user_data_path(profile_dir)
-        except Exception:
-            pass
+            logger.info("Using Chromium profile dir: %s (source=%s)", profile_dir, profile_source)
+        except Exception as exc:
+            logger.warning("Failed to set profile dir (%s): %s", profile_dir, exc)
 
         browser_path = _pick_browser_path()
         if browser_path:
@@ -805,7 +856,28 @@ def login_and_refresh_token(email: str, password: str, headless: bool = True) ->
 
         page = None
         try:
-            page = ChromiumPage(addr_or_opts=options)
+            try:
+                page = ChromiumPage(addr_or_opts=options)
+            except Exception as exc:
+                logger.error("Failed to start Chromium session: %s", exc)
+                if profile_source != "env":
+                    _cleanup_stale_browsers()
+                    fallback_dir = os.path.join(
+                        tempfile.gettempdir(),
+                        f"valuescan_login_profile_{int(time.time())}",
+                    )
+                    try:
+                        Path(fallback_dir).mkdir(parents=True, exist_ok=True)
+                        options.set_user_data_path(fallback_dir)
+                        logger.warning("Retrying with fresh profile dir: %s", fallback_dir)
+                        page = ChromiumPage(addr_or_opts=options)
+                    except Exception as retry_exc:
+                        logger.error("Chromium retry failed: %s", retry_exc)
+                if page is None:
+                    if _resolve_bool_env("VALUESCAN_LOGIN_CDP_FALLBACK", True):
+                        if _run_cdp_login(email, password):
+                            return True
+                    return False
 
             login_urls = _get_login_urls()
             login_ready = False
@@ -1051,6 +1123,9 @@ def login_and_refresh_token(email: str, password: str, headless: bool = True) ->
             return True
         except Exception as exc:
             logger.error("Browser login failed: %s", exc)
+            if _resolve_bool_env("VALUESCAN_LOGIN_CDP_FALLBACK", True):
+                if _run_cdp_login(email, password):
+                    return True
             return False
         finally:
             if page:

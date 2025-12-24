@@ -1,0 +1,2 @@
+﻿Result: should_continue=false
+User chose to end the conversation.

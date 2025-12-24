@@ -16,6 +16,7 @@ SyslogIdentifier=valuescan-api
 
 # Environment
 Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/root/valuescan/config/valuescan.env
 
 # Resource limits
 LimitNOFILE=65536

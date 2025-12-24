@@ -31,6 +31,14 @@ var (
 	// XML tag extraction (supports any characters in reasoning chain)
 	reReasoningTag = regexp.MustCompile(`(?s)<reasoning>(.*?)</reasoning>`)
 	reDecisionTag  = regexp.MustCompile(`(?s)<decision>(.*?)</decision>`)
+
+	// Model thinking process tags (need to be removed before extracting decisions)
+	// Supports: <think>, <thinking>, <thought>, <reflection>, <analysis>
+	reThinkTag      = regexp.MustCompile(`(?s)<think>(.*?)</think>`)
+	reThinkingTag   = regexp.MustCompile(`(?s)<thinking>(.*?)</thinking>`)
+	reThoughtTag    = regexp.MustCompile(`(?s)<thought>(.*?)</thought>`)
+	reReflectionTag = regexp.MustCompile(`(?s)<reflection>(.*?)</reflection>`)
+	reAnalysisTag   = regexp.MustCompile(`(?s)<analysis>(.*?)</analysis>`)
 )
 
 // ============================================================================
@@ -1337,20 +1345,51 @@ func parseFullDecisionResponse(aiResponse string, accountEquity float64, btcEthL
 }
 
 func extractCoTTrace(response string) string {
+	// Priority 1: Extract from <think> tag (DeepSeek, Qwen models)
+	if match := reThinkTag.FindStringSubmatch(response); match != nil && len(match) > 1 {
+		logger.Infof("✓ Extracted reasoning chain using <think> tag")
+		return strings.TrimSpace(match[1])
+	}
+
+	// Priority 2: Extract from <thinking> tag
+	if match := reThinkingTag.FindStringSubmatch(response); match != nil && len(match) > 1 {
+		logger.Infof("✓ Extracted reasoning chain using <thinking> tag")
+		return strings.TrimSpace(match[1])
+	}
+
+	// Priority 3: Extract from <reasoning> tag (our standard format)
 	if match := reReasoningTag.FindStringSubmatch(response); match != nil && len(match) > 1 {
 		logger.Infof("✓ Extracted reasoning chain using <reasoning> tag")
 		return strings.TrimSpace(match[1])
 	}
 
-	if decisionIdx := strings.Index(response, "<decision>"); decisionIdx > 0 {
-		logger.Infof("✓ Extracted content before <decision> tag as reasoning chain")
-		return strings.TrimSpace(response[:decisionIdx])
+	// Priority 4: Extract from <thought> tag
+	if match := reThoughtTag.FindStringSubmatch(response); match != nil && len(match) > 1 {
+		logger.Infof("✓ Extracted reasoning chain using <thought> tag")
+		return strings.TrimSpace(match[1])
 	}
 
+	// Fallback 1: Content before <decision> tag
+	if decisionIdx := strings.Index(response, "<decision>"); decisionIdx > 0 {
+		content := strings.TrimSpace(response[:decisionIdx])
+		// Remove any remaining thinking tags from the content
+		content = removeThinkingContent(content)
+		if content != "" {
+			logger.Infof("✓ Extracted content before <decision> tag as reasoning chain")
+			return content
+		}
+	}
+
+	// Fallback 2: Content before JSON array (old format)
 	jsonStart := strings.Index(response, "[")
 	if jsonStart > 0 {
-		logger.Infof("⚠️  Extracted reasoning chain using old format ([ character separator)")
-		return strings.TrimSpace(response[:jsonStart])
+		content := strings.TrimSpace(response[:jsonStart])
+		// Remove any remaining thinking tags from the content
+		content = removeThinkingContent(content)
+		if content != "" {
+			logger.Infof("⚠️  Extracted reasoning chain using old format ([ character separator)")
+			return content
+		}
 	}
 
 	return strings.TrimSpace(response)
@@ -1360,6 +1399,10 @@ func extractDecisions(response string) ([]Decision, error) {
 	s := removeInvisibleRunes(response)
 	s = strings.TrimSpace(s)
 	s = fixMissingQuotes(s)
+
+	// CRITICAL: Remove model thinking content FIRST before any JSON extraction
+	// This prevents JSON in <think>, <thinking>, etc. from being misidentified as decisions
+	s = removeThinkingContent(s)
 
 	var jsonPart string
 	if match := reDecisionTag.FindStringSubmatch(s); match != nil && len(match) > 1 {
@@ -1479,6 +1522,41 @@ func min(a, b int) int {
 
 func removeInvisibleRunes(s string) string {
 	return reInvisibleRunes.ReplaceAllString(s, "")
+}
+
+// removeThinkingContent removes all model thinking process tags from response
+// This prevents JSON in thinking blocks from being misidentified as decisions
+func removeThinkingContent(s string) string {
+	result := s
+
+	// Remove <think>...</think> (DeepSeek, Qwen, etc.)
+	if reThinkTag.MatchString(result) {
+		logger.Infof("🧹 Removing <think> tag content from response")
+		result = reThinkTag.ReplaceAllString(result, "")
+	}
+
+	// Remove <thinking>...</thinking>
+	if reThinkingTag.MatchString(result) {
+		logger.Infof("🧹 Removing <thinking> tag content from response")
+		result = reThinkingTag.ReplaceAllString(result, "")
+	}
+
+	// Remove <thought>...</thought>
+	if reThoughtTag.MatchString(result) {
+		logger.Infof("🧹 Removing <thought> tag content from response")
+		result = reThoughtTag.ReplaceAllString(result, "")
+	}
+
+	// Remove <reflection>...</reflection>
+	if reReflectionTag.MatchString(result) {
+		logger.Infof("🧹 Removing <reflection> tag content from response")
+		result = reReflectionTag.ReplaceAllString(result, "")
+	}
+
+	// Remove <analysis>...</analysis> (but only if it's clearly a thinking block, not decision analysis)
+	// Skip this one as it might be part of the actual decision content
+
+	return strings.TrimSpace(result)
 }
 
 func compactArrayOpen(s string) string {
