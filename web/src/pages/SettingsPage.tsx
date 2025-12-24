@@ -168,11 +168,13 @@ export function SettingsPage() {
   const loadConfig = async () => {
     setConfigLoading(true)
     try {
+      console.log('[CONFIG-LOAD] Starting to load configs...')
       const [configData, keepaliveData, aiSummaryData] = await Promise.all([
         api.getConfig(),
-        api.getKeepaliveConfig().catch(() => null),
-        api.getAISummaryConfig().catch(() => null),
+        api.getKeepaliveConfig().catch((e) => { console.log('[CONFIG-LOAD] keepalive error:', e); return null }),
+        api.getAISummaryConfig().catch((e) => { console.log('[CONFIG-LOAD] AI summary error:', e); return null }),
       ])
+      console.log('[CONFIG-LOAD] aiSummaryData:', aiSummaryData)
       
       // Merge AI summary config into configData before setting state
       let mergedConfig = { ...configData }

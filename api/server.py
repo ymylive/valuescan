@@ -1218,6 +1218,23 @@ def get_config():
     signal = {**signal_defaults, **signal_current}
     trader = {**trader_defaults, **trader_current}
     copytrade = {**copytrade_defaults, **copytrade_current}
+    
+    # Merge AI summary config into signal config
+    try:
+        ai_defaults = _default_ai_summary_config()
+        ai_current = {}
+        if AI_SUMMARY_CONFIG_FILE.exists():
+            ai_current = json.loads(AI_SUMMARY_CONFIG_FILE.read_text(encoding='utf-8'))
+        if isinstance(ai_current, dict):
+            ai_cfg = {**ai_defaults, **ai_current}
+            signal['ai_summary_enabled'] = ai_cfg.get('enabled', False)
+            signal['ai_summary_api_key'] = ai_cfg.get('api_key', '')
+            signal['ai_summary_api_url'] = ai_cfg.get('api_url', 'https://api.openai.com/v1/chat/completions')
+            signal['ai_summary_model'] = ai_cfg.get('model', 'gpt-4o-mini')
+            signal['ai_summary_interval_hours'] = ai_cfg.get('interval_hours', 1)
+            signal['ai_summary_lookback_hours'] = ai_cfg.get('lookback_hours', 1)
+    except Exception as e:
+        print(f"[API] Failed to merge AI summary config: {e}")
 
     # Normalize major coins list so both "BTC" and "BTCUSDT" inputs can work.
     try:
