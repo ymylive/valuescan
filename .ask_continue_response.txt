@@ -1,4 +1,4 @@
 ﻿Result: should_continue=true
-User instruction: 虽然开启了，但是无法进行详细配置的写入，在保存后还是原来的数据
+User instruction: 你要让ai输出得生动形象一点让用户能够看懂，并且要精简，一眼就能看出来哪些货币有机会，并保持专业性
 
 Please continue the task based on the user's new instruction.
