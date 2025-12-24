@@ -48,6 +48,15 @@ NOFX_API_AUTH = os.getenv("NOFX_API_AUTH", "cm_568c67eae410d912c54c").strip()
 # Binance Futures API
 BINANCE_FUTURES_BASE = "https://fapi.binance.com"
 
+# 代理配置 - Clash 代理在 7890 端口
+PROXY_URL = os.getenv("VALUESCAN_PROXY") or os.getenv("HTTP_PROXY") or "http://127.0.0.1:7890"
+
+def _get_proxies():
+    """获取代理配置"""
+    if PROXY_URL:
+        return {"http": PROXY_URL, "https": PROXY_URL}
+    return None
+
 # 加密新闻 API（可选）
 CRYPTO_NEWS_API_KEY = os.getenv("CRYPTO_NEWS_API_KEY", "").strip()
 
@@ -200,7 +209,8 @@ def _fetch_binance_klines(symbol: str, interval: str = "1h", limit: int = 24) ->
     }
     
     try:
-        resp = requests.get(url, params=params, timeout=15)
+        proxies = _get_proxies()
+        resp = requests.get(url, params=params, timeout=15, proxies=proxies)
         if resp.status_code == 200:
             data = resp.json()
             klines = []
@@ -299,7 +309,17 @@ def _fetch_nofx_coin_data(symbol: str) -> Optional[Dict[str, Any]]:
     try:
         resp = requests.get(url, timeout=10)
         if resp.status_code == 200:
-            return resp.json()
+            result = resp.json()
+            # API 返回 {"success": true, "data": {...}}
+            if isinstance(result, dict) and result.get("success"):
+                data = result.get("data", {})
+                # 提取关键数据
+                return {
+                    "price": data.get("price"),
+                    "netflow": data.get("netflow", {}),
+                    "oi": data.get("oi", {}),
+                }
+            return result
         else:
             logger.debug("NOFX API 返回 %d: %s", resp.status_code, symbol)
             return None
@@ -523,29 +543,32 @@ def _build_macro_analysis_prompt(
         
         # NOFX 量化数据
         quant = data.get("quant", {})
-        if quant:
-            price_data = quant.get("price", {})
+        if quant and isinstance(quant, dict):
+            price_val = quant.get("price")
             netflow = quant.get("netflow", {})
             oi = quant.get("oi", {})
             
             prompt += f"\n**量化指标 (NOFX)**:\n"
             
-            if price_data:
-                prompt += f"  - 24h价格变化: {price_data.get('change_24h', 0):.2f}%\n"
+            if price_val:
+                prompt += f"  - 当前价格: ${price_val:,.2f}\n"
             
-            if netflow:
-                nf_1h = netflow.get("netflow_1h", 0)
-                nf_4h = netflow.get("netflow_4h", 0)
-                nf_24h = netflow.get("netflow_24h", 0)
-                nf_emoji = "📈" if nf_1h > 0 else "📉"
-                prompt += f"  - 资金净流入: {nf_emoji} 1h=${nf_1h/1e6:.2f}M, 4h=${nf_4h/1e6:.2f}M, 24h=${nf_24h/1e6:.2f}M\n"
+            if netflow and isinstance(netflow, dict):
+                # netflow 结构: institution.future.1h 等
+                inst = netflow.get("institution", {})
+                fut = inst.get("future", {}) if isinstance(inst, dict) else {}
+                if fut:
+                    nf_1h = fut.get("1h", 0) or 0
+                    nf_4h = fut.get("4h", 0) or 0
+                    nf_24h = fut.get("24h", 0) or 0
+                    nf_emoji = "📈" if nf_1h > 0 else "📉"
+                    prompt += f"  - 机构资金流: {nf_emoji} 1h=${nf_1h/1e6:.2f}M, 4h=${nf_4h/1e6:.2f}M, 24h=${nf_24h/1e6:.2f}M\n"
             
-            if oi:
-                oi_change_1h = oi.get("oi_change_1h", 0)
-                oi_change_4h = oi.get("oi_change_4h", 0)
-                oi_value = oi.get("oi_value", 0)
-                oi_emoji = "⬆️" if oi_change_1h > 0 else "⬇️"
-                prompt += f"  - 持仓量(OI): {oi_emoji} 变化1h={oi_change_1h:.2f}%, 4h={oi_change_4h:.2f}%, 总OI=${oi_value/1e9:.2f}B\n"
+            if oi and isinstance(oi, dict):
+                oi_val = oi.get("value", 0) or 0
+                oi_change = oi.get("change_1h", 0) or 0
+                oi_emoji = "⬆️" if oi_change > 0 else "⬇️"
+                prompt += f"  - 持仓量(OI): {oi_emoji} ${oi_val/1e9:.2f}B, 变化={oi_change:.2f}%\n"
     
     # OI 排行数据
     if oi_ranking and isinstance(oi_ranking, list) and len(oi_ranking) > 0:
@@ -605,42 +628,42 @@ def _build_macro_analysis_prompt(
     
     prompt += """
 
-请生成一份**专业、易懂、有深度**的市场分析报告。
+请严格按以下六个维度生成市场分析报告：
 
-📊 **市场大势**
-综合 BTC/ETH 的 K线走势、资金流向、OI变化，用2-3句话描述当前市场整体状态。
-给出明确判断：看涨/看跌/震荡，并说明依据。
-信心指数：用⭐表示（1-5星）
+【大盘走向】
+综合 BTC 和 ETH 的 K线趋势（1h/4h/日线）、MA均线、资金净流入、OI变化等数据，给出明确的市场方向判断。
+- BTC：当前价格、趋势方向、关键支撑/阻力位、资金流向信号
+- ETH：当前价格、趋势方向、与BTC联动性、ETH/BTC汇率趋势
+- 整体判断：看涨/看跌/震荡，信心指数（1-5⭐）
 
-₿ **BTC 分析**
-- 当前趋势和强度
-- 关键支撑位和阻力位
-- 资金流向解读（结合 netflow 数据）
-- 短期操作建议
+【看涨货币】
+结合 ValueScan 看涨信号数据，列出 2-3 个最值得关注的看涨币种：
+- 币种 | 信号次数 | 看涨理由（资金流入、OI增加等具体数据）
 
-Ξ **ETH 分析**  
-- 当前趋势和与 BTC 的联动
-- 关键价位
-- ETH/BTC 汇率趋势
-- 短期操作建议
+【看跌货币】
+结合 ValueScan 看跌信号数据，列出 1-2 个需要警惕的看跌币种：
+- 币种 | 信号次数 | 看跌原因（资金流出、OI下降等具体数据）
 
-🚀 **机会币种**
-基于 OI 排行和信号数据，列出 2-3 个值得关注的币种：
-- 币种名称 + 为什么看好（用数据说话，如 OI 变化、资金流入等）
+【机会币种】
+基于 OI 排行榜变化和市场热度，识别潜在套利机会：
+- 币种 | OI变化% | 套利逻辑（如：OI激增但价格未跟上，存在补涨空间）
 
-⚠️ **风险警示**
-- 需要回避或谨慎对待的币种
-- 当前市场主要风险点
+【市场宏观分析】
+综合以上所有数据，用 2-3 句话给出宏观市场解读：
+- 当前市场处于什么阶段（积累/上涨/分配/下跌）
+- 资金面整体情况
+- 短期（24h）操作建议
 
-💡 **操作策略**
-给出今日的具体操作思路，包括仓位建议、入场点位参考等。
+【新闻面总结】
+根据市场新闻和趋势数据，总结当前市场热点：
+- 近期重大事件或热点
+- 对市场可能的影响
 
 格式要求：
-- 使用中文，语言专业但通俗易懂
-- 适当使用 emoji 增强可读性，但不要过度
-- 分析要有理有据，结论明确
-- 总长度控制在 500-600 字
-- 不要使用过多分割线，保持简洁自然的排版
+- 语言专业简洁，无废话
+- 每个维度用【】标注，清晰分隔
+- 数据要具体，观点要明确
+- 总长度 500-700 字
 """
     
     return prompt
@@ -664,10 +687,10 @@ def _call_ai_api(prompt: str, config: Dict[str, Any]) -> Optional[str]:
     payload = {
         "model": model,
         "messages": [
-            {"role": "system", "content": "你是一个专业的加密货币市场分析师，擅长分析市场信号并给出简洁的投资建议。"},
+            {"role": "system", "content": "你是一个专业的加密货币市场分析师，擅长分析市场信号并给出简洁的投资建议。请确保输出完整，不要截断。"},
             {"role": "user", "content": prompt},
         ],
-        "max_tokens": 1000,
+        "max_tokens": 2000,
         "temperature": 0.7,
     }
     
