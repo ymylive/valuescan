@@ -9,6 +9,7 @@ import (
 type AIClient interface {
 	SetAPIKey(apiKey string, customURL string, customModel string)
 	SetTimeout(timeout time.Duration)
+	SetUseFileUpload(useFileUpload bool) // 设置是否使用文件上传模式
 	CallWithMessages(systemPrompt, userPrompt string) (string, error)
 	CallWithRequest(req *Request) (string, error) // Builder pattern API (supports advanced features)
 }

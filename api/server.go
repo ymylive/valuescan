@@ -418,6 +418,7 @@ type SafeModelConfig struct {
 	Enabled         bool   `json:"enabled"`
 	CustomAPIURL    string `json:"customApiUrl"`    // Custom API URL (usually not sensitive)
 	CustomModelName string `json:"customModelName"` // Custom model name (not sensitive)
+	UseFileUpload   bool   `json:"useFileUpload"`   // 是否使用txt文件上传模式绕过长度限制
 }
 
 type ExchangeConfig struct {
@@ -451,6 +452,7 @@ type UpdateModelConfigRequest struct {
 		APIKey          string `json:"api_key"`
 		CustomAPIURL    string `json:"custom_api_url"`
 		CustomModelName string `json:"custom_model_name"`
+		UseFileUpload   bool   `json:"use_file_upload"` // 是否使用txt文件上传模式
 	} `json:"models"`
 }
 
@@ -1376,6 +1378,7 @@ func (s *Server) handleGetModelConfigs(c *gin.Context) {
 			Enabled:         model.Enabled,
 			CustomAPIURL:    model.CustomAPIURL,
 			CustomModelName: model.CustomModelName,
+			UseFileUpload:   model.UseFileUpload,
 		}
 	}
 
@@ -1444,7 +1447,7 @@ func (s *Server) handleUpdateModelConfigs(c *gin.Context) {
 
 	// Update each model's configuration
 	for modelID, modelData := range req.Models {
-		err := s.store.AIModel().Update(userID, modelID, modelData.Enabled, modelData.APIKey, modelData.CustomAPIURL, modelData.CustomModelName)
+		err := s.store.AIModel().Update(userID, modelID, modelData.Enabled, modelData.APIKey, modelData.CustomAPIURL, modelData.CustomModelName, modelData.UseFileUpload)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to update model %s: %v", modelID, err)})
 			return

@@ -71,6 +71,7 @@ type AutoTraderConfig struct {
 	CustomAPIURL    string
 	CustomAPIKey    string
 	CustomModelName string
+	UseFileUpload   bool // 是否使用txt文件上传模式绕过输入长度限制
 
 	// Scan configuration
 	ScanInterval time.Duration // Scan interval (recommended 3 minutes)
@@ -202,6 +203,12 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 
 	if config.CustomAPIURL != "" || config.CustomModelName != "" {
 		logger.Infof("🔧 [%s] Custom config - URL: %s, Model: %s", config.Name, config.CustomAPIURL, config.CustomModelName)
+	}
+
+	// 设置文件上传模式（用于绕过输入长度限制）
+	if config.UseFileUpload {
+		mcpClient.SetUseFileUpload(true)
+		logger.Infof("📁 [%s] File upload mode enabled for long text bypass", config.Name)
 	}
 
 	// Set default trading platform

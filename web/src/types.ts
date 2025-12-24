@@ -111,6 +111,7 @@ export interface AIModel {
   apiKey?: string
   customApiUrl?: string
   customModelName?: string
+  useFileUpload?: boolean // 是否使用txt文件上传模式绕过长度限制
 }
 
 export interface Exchange {
@@ -182,6 +183,7 @@ export interface UpdateModelConfigRequest {
       api_key: string
       custom_api_url?: string
       custom_model_name?: string
+      use_file_upload?: boolean // 是否使用txt文件上传模式
     }
   }
 }

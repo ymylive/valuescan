@@ -26,6 +26,7 @@ type AIModel struct {
 	APIKey          string    `json:"apiKey"`
 	CustomAPIURL    string    `json:"customApiUrl"`
 	CustomModelName string    `json:"customModelName"`
+	UseFileUpload   bool      `json:"useFileUpload"` // 是否使用txt文件上传模式绕过长度限制
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 }
@@ -64,6 +65,7 @@ func (s *AIModelStore) initTables() error {
 	// Backward compatibility: add potentially missing columns
 	s.db.Exec(`ALTER TABLE ai_models ADD COLUMN custom_api_url TEXT DEFAULT ''`)
 	s.db.Exec(`ALTER TABLE ai_models ADD COLUMN custom_model_name TEXT DEFAULT ''`)
+	s.db.Exec(`ALTER TABLE ai_models ADD COLUMN use_file_upload BOOLEAN DEFAULT 0`)
 
 	return nil
 }
@@ -93,6 +95,7 @@ func (s *AIModelStore) List(userID string) ([]*AIModel, error) {
 		SELECT id, user_id, name, provider, enabled, api_key,
 		       COALESCE(custom_api_url, '') as custom_api_url,
 		       COALESCE(custom_model_name, '') as custom_model_name,
+		       COALESCE(use_file_upload, 0) as use_file_upload,
 		       created_at, updated_at
 		FROM ai_models WHERE user_id = ? ORDER BY id
 	`, userID)
@@ -108,7 +111,7 @@ func (s *AIModelStore) List(userID string) ([]*AIModel, error) {
 		err := rows.Scan(
 			&model.ID, &model.UserID, &model.Name, &model.Provider,
 			&model.Enabled, &model.APIKey, &model.CustomAPIURL, &model.CustomModelName,
-			&createdAt, &updatedAt,
+			&model.UseFileUpload, &createdAt, &updatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -143,12 +146,13 @@ func (s *AIModelStore) Get(userID, modelID string) (*AIModel, error) {
 		var createdAt, updatedAt string
 		err := s.db.QueryRow(`
 			SELECT id, user_id, name, provider, enabled, api_key,
-			       COALESCE(custom_api_url, ''), COALESCE(custom_model_name, ''), created_at, updated_at
+			       COALESCE(custom_api_url, ''), COALESCE(custom_model_name, ''),
+			       COALESCE(use_file_upload, 0), created_at, updated_at
 			FROM ai_models WHERE user_id = ? AND id = ? LIMIT 1
 		`, uid, modelID).Scan(
 			&model.ID, &model.UserID, &model.Name, &model.Provider,
 			&model.Enabled, &model.APIKey, &model.CustomAPIURL, &model.CustomModelName,
-			&createdAt, &updatedAt,
+			&model.UseFileUpload, &createdAt, &updatedAt,
 		)
 		if err == nil {
 			model.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
@@ -173,12 +177,13 @@ func (s *AIModelStore) GetByID(modelID string) (*AIModel, error) {
 	var createdAt, updatedAt string
 	err := s.db.QueryRow(`
 		SELECT id, user_id, name, provider, enabled, api_key,
-		       COALESCE(custom_api_url, ''), COALESCE(custom_model_name, ''), created_at, updated_at
+		       COALESCE(custom_api_url, ''), COALESCE(custom_model_name, ''),
+		       COALESCE(use_file_upload, 0), created_at, updated_at
 		FROM ai_models WHERE id = ? LIMIT 1
 	`, modelID).Scan(
 		&model.ID, &model.UserID, &model.Name, &model.Provider,
 		&model.Enabled, &model.APIKey, &model.CustomAPIURL, &model.CustomModelName,
-		&createdAt, &updatedAt,
+		&model.UseFileUpload, &createdAt, &updatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -212,13 +217,14 @@ func (s *AIModelStore) firstEnabled(userID string) (*AIModel, error) {
 	var createdAt, updatedAt string
 	err := s.db.QueryRow(`
 		SELECT id, user_id, name, provider, enabled, api_key,
-		       COALESCE(custom_api_url, ''), COALESCE(custom_model_name, ''), created_at, updated_at
+		       COALESCE(custom_api_url, ''), COALESCE(custom_model_name, ''),
+		       COALESCE(use_file_upload, 0), created_at, updated_at
 		FROM ai_models WHERE user_id = ? AND enabled = 1
 		ORDER BY datetime(updated_at) DESC, id ASC LIMIT 1
 	`, userID).Scan(
 		&model.ID, &model.UserID, &model.Name, &model.Provider,
 		&model.Enabled, &model.APIKey, &model.CustomAPIURL, &model.CustomModelName,
-		&createdAt, &updatedAt,
+		&model.UseFileUpload, &createdAt, &updatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -231,7 +237,7 @@ func (s *AIModelStore) firstEnabled(userID string) (*AIModel, error) {
 
 // Update updates AI model, creates if not exists
 // IMPORTANT: If apiKey is empty string, the existing API key will be preserved (not overwritten)
-func (s *AIModelStore) Update(userID, id string, enabled bool, apiKey, customAPIURL, customModelName string) error {
+func (s *AIModelStore) Update(userID, id string, enabled bool, apiKey, customAPIURL, customModelName string, useFileUpload bool) error {
 	// Try exact ID match first
 	var existingID string
 	err := s.db.QueryRow(`SELECT id FROM ai_models WHERE user_id = ? AND id = ? LIMIT 1`, userID, id).Scan(&existingID)
@@ -239,15 +245,15 @@ func (s *AIModelStore) Update(userID, id string, enabled bool, apiKey, customAPI
 		// If apiKey is empty, preserve the existing API key
 		if apiKey == "" {
 			_, err = s.db.Exec(`
-				UPDATE ai_models SET enabled = ?, custom_api_url = ?, custom_model_name = ?, updated_at = datetime('now')
+				UPDATE ai_models SET enabled = ?, custom_api_url = ?, custom_model_name = ?, use_file_upload = ?, updated_at = datetime('now')
 				WHERE id = ? AND user_id = ?
-			`, enabled, customAPIURL, customModelName, existingID, userID)
+			`, enabled, customAPIURL, customModelName, useFileUpload, existingID, userID)
 		} else {
 			encryptedAPIKey := s.encrypt(apiKey)
 			_, err = s.db.Exec(`
-				UPDATE ai_models SET enabled = ?, api_key = ?, custom_api_url = ?, custom_model_name = ?, updated_at = datetime('now')
+				UPDATE ai_models SET enabled = ?, api_key = ?, custom_api_url = ?, custom_model_name = ?, use_file_upload = ?, updated_at = datetime('now')
 				WHERE id = ? AND user_id = ?
-			`, enabled, encryptedAPIKey, customAPIURL, customModelName, existingID, userID)
+			`, enabled, encryptedAPIKey, customAPIURL, customModelName, useFileUpload, existingID, userID)
 		}
 		return err
 	}
@@ -260,15 +266,15 @@ func (s *AIModelStore) Update(userID, id string, enabled bool, apiKey, customAPI
 		// If apiKey is empty, preserve the existing API key
 		if apiKey == "" {
 			_, err = s.db.Exec(`
-				UPDATE ai_models SET enabled = ?, custom_api_url = ?, custom_model_name = ?, updated_at = datetime('now')
+				UPDATE ai_models SET enabled = ?, custom_api_url = ?, custom_model_name = ?, use_file_upload = ?, updated_at = datetime('now')
 				WHERE id = ? AND user_id = ?
-			`, enabled, customAPIURL, customModelName, existingID, userID)
+			`, enabled, customAPIURL, customModelName, useFileUpload, existingID, userID)
 		} else {
 			encryptedAPIKey := s.encrypt(apiKey)
 			_, err = s.db.Exec(`
-				UPDATE ai_models SET enabled = ?, api_key = ?, custom_api_url = ?, custom_model_name = ?, updated_at = datetime('now')
+				UPDATE ai_models SET enabled = ?, api_key = ?, custom_api_url = ?, custom_model_name = ?, use_file_upload = ?, updated_at = datetime('now')
 				WHERE id = ? AND user_id = ?
-			`, enabled, encryptedAPIKey, customAPIURL, customModelName, existingID, userID)
+			`, enabled, encryptedAPIKey, customAPIURL, customModelName, useFileUpload, existingID, userID)
 		}
 		return err
 	}
@@ -305,9 +311,9 @@ func (s *AIModelStore) Update(userID, id string, enabled bool, apiKey, customAPI
 	logger.Infof("✓ Creating new AI model configuration: ID=%s, Provider=%s, Name=%s", newModelID, provider, name)
 	encryptedAPIKey := s.encrypt(apiKey)
 	_, err = s.db.Exec(`
-		INSERT INTO ai_models (id, user_id, name, provider, enabled, api_key, custom_api_url, custom_model_name, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-	`, newModelID, userID, name, provider, enabled, encryptedAPIKey, customAPIURL, customModelName)
+		INSERT INTO ai_models (id, user_id, name, provider, enabled, api_key, custom_api_url, custom_model_name, use_file_upload, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+	`, newModelID, userID, name, provider, enabled, encryptedAPIKey, customAPIURL, customModelName, useFileUpload)
 	return err
 }
 

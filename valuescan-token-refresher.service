@@ -1,5 +1,5 @@
 [Unit]
-Description=ValueScan Token Auto Refresher
+Description=ValueScan Token Auto Refresher (CDP-based)
 Documentation=https://github.com/ymylive/valuescan
 After=network.target
 Wants=network-online.target
@@ -8,15 +8,19 @@ Wants=network-online.target
 Type=simple
 User=root
 WorkingDirectory=/root/valuescan/signal_monitor
-ExecStart=/usr/bin/python3.9 /root/valuescan/signal_monitor/token_refresher.py --interval 0.8
+# Use CDP-based token refresher for better reliability
+ExecStart=/usr/bin/python3.9 /root/valuescan/signal_monitor/cdp_token_refresher.py --interval 0.8
 Restart=always
-RestartSec=30
+RestartSec=60
 StandardOutput=journal
 StandardError=journal
 
 # 环境变量
 Environment=DISPLAY=:99
 Environment=PYTHONUNBUFFERED=1
+Environment=VALUESCAN_LOGIN_METHOD=cdp
+Environment=VALUESCAN_CDP_PORT=9222
+Environment=VALUESCAN_BROWSER_STARTUP_TIMEOUT=60
 EnvironmentFile=-/root/valuescan/config/valuescan.env
 
 [Install]

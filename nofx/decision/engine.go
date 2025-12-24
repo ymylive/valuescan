@@ -22,8 +22,10 @@ import (
 
 var (
 	// Safe regex: precisely match ```json code blocks
-	reJSONFence      = regexp.MustCompile(`(?is)` + "```json\\s*(\\[\\s*\\{.*?\\}\\s*\\])\\s*```")
-	reJSONArray      = regexp.MustCompile(`(?is)\[\s*\{.*?\}\s*\]`)
+	reJSONFence = regexp.MustCompile(`(?is)` + "```json\\s*(\\[\\s*\\{.*?\\}\\s*\\])\\s*```")
+	// Plain ``` code fence (without language specifier) - common in Gemini responses
+	rePlainFence = regexp.MustCompile(`(?is)` + "```\\s*(\\[\\s*\\{.*?\\}\\s*\\])\\s*```")
+	reJSONArray  = regexp.MustCompile(`(?is)\[\s*\{.*?\}\s*\]`)
 	reArrayHead      = regexp.MustCompile(`^\[\s*\{`)
 	reArrayOpenSpace = regexp.MustCompile(`^\[\s+\{`)
 	reInvisibleRunes = regexp.MustCompile("[\u200B\u200C\u200D\uFEFF]")
@@ -1415,6 +1417,7 @@ func extractDecisions(response string) ([]Decision, error) {
 
 	jsonPart = fixMissingQuotes(jsonPart)
 
+	// Try ```json code fence first
 	if m := reJSONFence.FindStringSubmatch(jsonPart); m != nil && len(m) > 1 {
 		jsonContent := strings.TrimSpace(m[1])
 		jsonContent = compactArrayOpen(jsonContent)
@@ -1426,6 +1429,23 @@ func extractDecisions(response string) ([]Decision, error) {
 		if err := json.Unmarshal([]byte(jsonContent), &decisions); err != nil {
 			return nil, fmt.Errorf("JSON parsing failed: %w\nJSON content: %s", err, jsonContent)
 		}
+		logger.Infof("✓ Extracted JSON using ```json code fence")
+		return decisions, nil
+	}
+
+	// Try plain ``` code fence (common in Gemini responses)
+	if m := rePlainFence.FindStringSubmatch(jsonPart); m != nil && len(m) > 1 {
+		jsonContent := strings.TrimSpace(m[1])
+		jsonContent = compactArrayOpen(jsonContent)
+		jsonContent = fixMissingQuotes(jsonContent)
+		if err := validateJSONFormat(jsonContent); err != nil {
+			return nil, fmt.Errorf("JSON format validation failed: %w\nJSON content: %s\nFull response:\n%s", err, jsonContent, response)
+		}
+		var decisions []Decision
+		if err := json.Unmarshal([]byte(jsonContent), &decisions); err != nil {
+			return nil, fmt.Errorf("JSON parsing failed: %w\nJSON content: %s", err, jsonContent)
+		}
+		logger.Infof("✓ Extracted JSON using plain ``` code fence (Gemini format)")
 		return decisions, nil
 	}
 

@@ -532,7 +532,8 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
     modelId: string,
     apiKey: string,
     customApiUrl?: string,
-    customModelName?: string
+    customModelName?: string,
+    useFileUpload?: boolean
   ) => {
     try {
       // 创建或更新用户的模型配置
@@ -557,6 +558,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                   apiKey,
                   customApiUrl: customApiUrl || '',
                   customModelName: customModelName || '',
+                  useFileUpload: useFileUpload || false,
                   enabled: true,
                 }
               : m
@@ -568,6 +570,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
           apiKey,
           customApiUrl: customApiUrl || '',
           customModelName: customModelName || '',
+          useFileUpload: useFileUpload || false,
           enabled: true,
         }
         updatedModels = [...(allModels || []), newModel]
@@ -582,6 +585,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
               api_key: model.apiKey || '',
               custom_api_url: model.customApiUrl || '',
               custom_model_name: model.customModelName || '',
+              use_file_upload: model.useFileUpload || false,
             },
           ])
         ),
@@ -1343,7 +1347,8 @@ function ModelConfigModal({
     modelId: string,
     apiKey: string,
     baseUrl?: string,
-    modelName?: string
+    modelName?: string,
+    useFileUpload?: boolean
   ) => void
   onDelete: (modelId: string) => void
   onClose: () => void
@@ -1353,18 +1358,20 @@ function ModelConfigModal({
   const [apiKey, setApiKey] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
   const [modelName, setModelName] = useState('')
+  const [useFileUpload, setUseFileUpload] = useState(false)
 
   // 获取当前编辑的模型信息 - 编辑时从已配置的模型中查找，新建时从所有支持的模型中查找
   const selectedModel = editingModelId
     ? configuredModels?.find((m) => m.id === selectedModelId)
     : allModels?.find((m) => m.id === selectedModelId)
 
-  // 如果是编辑现有模型，初始化API Key、Base URL和Model Name
+  // 如果是编辑现有模型，初始化API Key、Base URL、Model Name和文件上传开关
   useEffect(() => {
     if (editingModelId && selectedModel) {
       setApiKey(selectedModel.apiKey || '')
       setBaseUrl(selectedModel.customApiUrl || '')
       setModelName(selectedModel.customModelName || '')
+      setUseFileUpload(selectedModel.useFileUpload || false)
     }
   }, [editingModelId, selectedModel])
 
@@ -1376,7 +1383,8 @@ function ModelConfigModal({
       selectedModelId,
       apiKey.trim(),
       baseUrl.trim() || undefined,
-      modelName.trim() || undefined
+      modelName.trim() || undefined,
+      useFileUpload
     )
   }
 
@@ -1593,6 +1601,39 @@ function ModelConfigModal({
                   />
                   <div className="text-xs mt-1" style={{ color: '#848E9C' }}>
                     {t('leaveBlankForDefaultModel', language)}
+                  </div>
+                </div>
+
+                {/* 文件上传模式开关 */}
+                <div
+                  className="p-4 rounded"
+                  style={{ background: '#0B0E11', border: '1px solid #2B3139' }}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div
+                        className="text-sm font-semibold"
+                        style={{ color: '#EAECEF' }}
+                      >
+                        {t('useFileUpload', language)}
+                      </div>
+                      <div className="text-xs mt-1" style={{ color: '#848E9C' }}>
+                        {t('useFileUploadDesc', language)}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setUseFileUpload(!useFileUpload)}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        useFileUpload ? 'bg-green-500' : 'bg-gray-600'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          useFileUpload ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
                   </div>
                 </div>
 

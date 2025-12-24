@@ -658,6 +658,7 @@ func (tm *TraderManager) addTraderFromStore(traderCfg *store.Trader, aiModelCfg 
 		QwenKey:               "",
 		CustomAPIURL:          aiModelCfg.CustomAPIURL,
 		CustomModelName:       aiModelCfg.CustomModelName,
+		UseFileUpload:         aiModelCfg.UseFileUpload,
 		ScanInterval:         time.Duration(traderCfg.ScanIntervalMinutes) * time.Minute,
 		InitialBalance:       traderCfg.InitialBalance,
 		IsCrossMargin:        traderCfg.IsCrossMargin,

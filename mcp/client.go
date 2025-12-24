@@ -35,15 +35,16 @@ var (
 
 // Client AI API configuration
 type Client struct {
-	Provider   string
-	APIKey     string
-	BaseURL    string
-	Model      string
-	UseFullURL bool // Whether to use full URL (without appending /chat/completions)
-	MaxTokens  int  // Maximum tokens for AI response
+	Provider      string
+	APIKey        string
+	BaseURL       string
+	Model         string
+	UseFullURL    bool // Whether to use full URL (without appending /chat/completions)
+	MaxTokens     int  // Maximum tokens for AI response
+	UseFileUpload bool // 是否使用文件上传模式绕过输入长度限制
 
 	httpClient *http.Client
-	logger     Logger // Logger (replaceable)
+	logger     Logger  // Logger (replaceable)
 	config     *Config // Config object (stores all configurations)
 
 	// hooks are used to implement dynamic dispatch (polymorphism)
@@ -133,10 +134,23 @@ func (client *Client) SetTimeout(timeout time.Duration) {
 	client.httpClient.Timeout = timeout
 }
 
+// SetUseFileUpload 设置是否使用文件上传模式绕过输入长度限制
+func (client *Client) SetUseFileUpload(useFileUpload bool) {
+	client.UseFileUpload = useFileUpload
+	if useFileUpload {
+		client.logger.Infof("📁 [MCP] File upload mode enabled")
+	}
+}
+
 // CallWithMessages template method - fixed retry flow (cannot be overridden)
 func (client *Client) CallWithMessages(systemPrompt, userPrompt string) (string, error) {
 	if client.APIKey == "" {
 		return "", fmt.Errorf("AI API key not set, please call SetAPIKey first")
+	}
+
+	// 如果启用了文件上传模式，使用文件上传方式处理长文本
+	if client.UseFileUpload {
+		return client.callWithFileUploadRetry(systemPrompt, userPrompt)
 	}
 
 	// Fixed retry flow
@@ -172,6 +186,39 @@ func (client *Client) CallWithMessages(systemPrompt, userPrompt string) (string,
 	}
 
 	return "", fmt.Errorf("still failed after %d retries: %w", maxRetries, lastErr)
+}
+
+// callWithFileUploadRetry 使用文件上传模式调用AI API（带重试）
+func (client *Client) callWithFileUploadRetry(systemPrompt, userPrompt string) (string, error) {
+	var lastErr error
+	maxRetries := client.config.MaxRetries
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		if attempt > 1 {
+			client.logger.Warnf("⚠️  AI API (file upload) call failed, retrying (%d/%d)...", attempt, maxRetries)
+		}
+
+		result, err := client.CallWithFileUpload(systemPrompt, userPrompt)
+		if err == nil {
+			if attempt > 1 {
+				client.logger.Infof("✓ AI API (file upload) retry succeeded")
+			}
+			return result, nil
+		}
+
+		lastErr = err
+		if !client.hooks.isRetryableError(err) {
+			return "", err
+		}
+
+		if attempt < maxRetries {
+			waitTime := client.config.RetryWaitBase * time.Duration(attempt)
+			client.logger.Infof("⏳ Waiting %v before retry...", waitTime)
+			time.Sleep(waitTime)
+		}
+	}
+
+	return "", fmt.Errorf("still failed after %d retries (file upload mode): %w", maxRetries, lastErr)
 }
 
 func (client *Client) setAuthHeader(reqHeader http.Header) {
