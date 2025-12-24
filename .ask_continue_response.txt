@@ -1,4 +1,4 @@
 ﻿Result: should_continue=true
-User instruction: 自己查看
+User instruction: 根据项目全部文件结构，写一个详细的，专业的，美观的readme
 
 Please continue the task based on the user's new instruction.
