@@ -1553,8 +1553,34 @@ func removeThinkingContent(s string) string {
 		result = reReflectionTag.ReplaceAllString(result, "")
 	}
 
-	// Remove <analysis>...</analysis> (but only if it's clearly a thinking block, not decision analysis)
-	// Skip this one as it might be part of the actual decision content
+	// Remove <reasoning>...</reasoning> - this is CoT content, not decision
+	if reReasoningTag.MatchString(result) {
+		logger.Infof("🧹 Removing <reasoning> tag content from response")
+		result = reReasoningTag.ReplaceAllString(result, "")
+	}
+
+	// Remove plain text "reasoning" block at the beginning (common AI output pattern)
+	// Pattern: starts with "reasoning" followed by newline and content before <decision> or JSON
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(result)), "reasoning") {
+		// Find where the actual decision content starts
+		decisionIdx := strings.Index(result, "<decision>")
+		jsonIdx := strings.Index(result, "[{")
+		jsonFenceIdx := strings.Index(result, "```json")
+
+		cutPoint := -1
+		if decisionIdx > 0 {
+			cutPoint = decisionIdx
+		} else if jsonFenceIdx > 0 {
+			cutPoint = jsonFenceIdx
+		} else if jsonIdx > 0 {
+			cutPoint = jsonIdx
+		}
+
+		if cutPoint > 0 {
+			logger.Infof("🧹 Removing plain text reasoning prefix (found decision at %d)", cutPoint)
+			result = result[cutPoint:]
+		}
+	}
 
 	return strings.TrimSpace(result)
 }

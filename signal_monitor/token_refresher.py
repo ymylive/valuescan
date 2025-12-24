@@ -170,6 +170,14 @@ def load_credentials() -> Optional[Dict[str, str]]:
     return None
 
 
+def _load_env_credentials() -> Optional[Dict[str, str]]:
+    email = (os.getenv("VALUESCAN_EMAIL") or "").strip()
+    password = (os.getenv("VALUESCAN_PASSWORD") or "").strip()
+    if email and password:
+        return {"email": email, "password": password}
+    return None
+
+
 def save_credentials(email: str, password: str) -> bool:
     """Persist login credentials (plaintext; ensure file perms are restrictive)."""
     try:
@@ -1228,10 +1236,16 @@ def main() -> None:
     password = args.password
 
     if not email or not password:
+        env_creds = _load_env_credentials()
+        if env_creds:
+            email = env_creds["email"]
+            password = env_creds["password"]
+
+    if not email or not password:
         saved = load_credentials()
         if saved:
-            email = email or saved.get("email")
-            password = password or saved.get("password")
+            email = saved.get("email")
+            password = saved.get("password")
 
     if not email or not password:
         logger.error("Please provide credentials: --email <email> --password <password>")
