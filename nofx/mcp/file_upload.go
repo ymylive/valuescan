@@ -130,13 +130,27 @@ func (c *Client) DeleteFile(fileID string) error {
 	return nil
 }
 
-// CallWithFileUpload calls AI API with long text
-// Note: Most third-party API proxies don't support file attachments,
-// so we just send the content directly as text (with truncation if needed)
+// CallWithFileUpload calls AI API with long text uploaded as file
+// This is useful for bypassing input length limits
 func (c *Client) CallWithFileUpload(systemPrompt, userPrompt string) (string, error) {
-	c.logger.Infof("📁 [%s] File upload mode - sending content directly (length: %d chars)", c.String(), len(userPrompt))
+	c.logger.Infof("📁 [%s] Using file upload mode for long text (length: %d chars)", c.String(), len(userPrompt))
 
-	// Build messages - send content directly since most APIs don't support file attachments
+	// Upload user prompt as file
+	fileID, err := c.UploadTextAsFile(userPrompt, "trading_data.txt")
+	if err != nil {
+		c.logger.Warnf("⚠️ [%s] File upload failed: %v, falling back to direct content", c.String(), err)
+		// Fallback to direct content if file upload fails
+		return c.callWithDirectContent(systemPrompt, userPrompt)
+	}
+
+	// Ensure file is deleted after use
+	defer func() {
+		if deleteErr := c.DeleteFile(fileID); deleteErr != nil {
+			c.logger.Warnf("⚠️ [%s] Failed to delete file %s: %v", c.String(), fileID, deleteErr)
+		}
+	}()
+
+	// Build messages with file attachment
 	var messages []any
 
 	if systemPrompt != "" {
@@ -146,12 +160,23 @@ func (c *Client) CallWithFileUpload(systemPrompt, userPrompt string) (string, er
 		})
 	}
 
-	// Send user prompt directly as text content
-	// This works with all API providers
-	messages = append(messages, map[string]string{
-		"role":    "user",
-		"content": userPrompt,
-	})
+	// Create user message with file attachment reference
+	userMessage := map[string]any{
+		"role": "user",
+		"content": []map[string]any{
+			{
+				"type": "text",
+				"text": "Please analyze the trading data in the attached file and provide your trading decision.",
+			},
+			{
+				"type": "file",
+				"file": map[string]string{
+					"file_id": fileID,
+				},
+			},
+		},
+	}
+	messages = append(messages, userMessage)
 
 	// Build request body
 	requestBody := map[string]any{
@@ -166,9 +191,41 @@ func (c *Client) CallWithFileUpload(systemPrompt, userPrompt string) (string, er
 		requestBody["max_tokens"] = c.MaxTokens
 	}
 
-	c.logger.Infof("📤 [%s] Sending request with user prompt (%d chars)", c.String(), len(userPrompt))
+	c.logger.Infof("📤 [%s] Sending request with file attachment (file_id: %s)", c.String(), fileID)
 
 	// Send request
+	return c.sendRequest(requestBody)
+}
+
+// callWithDirectContent sends content directly without file upload (fallback)
+func (c *Client) callWithDirectContent(systemPrompt, userPrompt string) (string, error) {
+	var messages []any
+
+	if systemPrompt != "" {
+		messages = append(messages, map[string]string{
+			"role":    "system",
+			"content": systemPrompt,
+		})
+	}
+
+	messages = append(messages, map[string]string{
+		"role":    "user",
+		"content": userPrompt,
+	})
+
+	requestBody := map[string]any{
+		"model":       c.Model,
+		"messages":    messages,
+		"temperature": c.config.Temperature,
+	}
+
+	if c.Provider == ProviderOpenAI {
+		requestBody["max_completion_tokens"] = c.MaxTokens
+	} else {
+		requestBody["max_tokens"] = c.MaxTokens
+	}
+
+	c.logger.Infof("📤 [%s] Sending request with direct content (%d chars)", c.String(), len(userPrompt))
 	return c.sendRequest(requestBody)
 }
 

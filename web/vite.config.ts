@@ -10,8 +10,15 @@ export default defineConfig(({ mode }) => {
   return {
     base,
     plugins: [react()],
-    esbuild: {
-      drop: [], // Keep console.log in production
+    build: {
+      rollupOptions: {
+        output: {
+          // Force new hash for cache busting
+          entryFileNames: `assets/[name]-[hash]-v2.js`,
+          chunkFileNames: `assets/[name]-[hash]-v2.js`,
+          assetFileNames: `assets/[name]-[hash]-v2.[ext]`,
+        },
+      },
     },
     server: {
       host: '0.0.0.0',
