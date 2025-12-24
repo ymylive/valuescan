@@ -79,7 +79,7 @@ def get_beijing_time_str(timestamp_ms, format_str='%H:%M:%S'):
     return dt.strftime(format_str) + ' (UTC+8)'
 
 
-def send_telegram_message(message_text, pin_message=False, symbol=None):
+def send_telegram_message(message_text, pin_message=False, symbol=None, parse_mode="HTML"):
     """
     发送消息到 Telegram
 
@@ -87,6 +87,7 @@ def send_telegram_message(message_text, pin_message=False, symbol=None):
         message_text: 要发送的消息文本（支持 HTML 格式）
         pin_message: 是否置顶该消息（默认 False）
         symbol: 币种符号，用于生成Binance合约链接（可选）
+        parse_mode: 解析模式（HTML/Markdown/None）
 
     Returns:
         dict: 发送成功返回包含 message_id 的字典，失败返回 None
@@ -125,10 +126,11 @@ def send_telegram_message(message_text, pin_message=False, symbol=None):
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
         "text": message_text,
-        "parse_mode": "HTML",
         "disable_web_page_preview": True,
         "reply_markup": inline_keyboard
     }
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
 
     try:
         response = requests.post(url, json=payload, timeout=10)

@@ -463,18 +463,20 @@ def _send_summary_to_telegram(summary: str) -> bool:
     from telegram import send_telegram_message
     
     now = datetime.now(BEIJING_TZ)
-    header = f"📊 <b>AI 市场总结</b>\n⏰ {now.strftime('%Y-%m-%d %H:%M')} (北京时间)\n\n"
+    header = f"📊 AI 市场总结\n⏰ {now.strftime('%Y-%m-%d %H:%M')} (北京时间)\n\n"
     
-    # 转换 markdown 到 HTML
+    # 清理消息，移除 markdown 格式，使用纯文本
     message = header + summary
-    # 简单的 markdown 到 HTML 转换
-    message = message.replace("**", "<b>").replace("</b><b>", "")
-    # 确保 bold 标签成对
-    bold_count = message.count("<b>")
-    if bold_count % 2 == 1:
-        message += "</b>"
+    # 移除 markdown 格式符号
+    message = message.replace("**", "")
+    message = message.replace("###", "")
+    message = message.replace("---", "")
+    # 移除可能导致 HTML 解析错误的标签
+    message = message.replace("<b>", "").replace("</b>", "")
+    message = message.replace("<i>", "").replace("</i>", "")
     
-    result = send_telegram_message(message, pin_message=False)
+    # 使用纯文本模式发送，不使用 HTML 解析
+    result = send_telegram_message(message, pin_message=False, parse_mode=None)
     return result is not None and result.get("success", False)
 
 
