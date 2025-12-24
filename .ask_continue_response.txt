@@ -1,4 +1,4 @@
 ﻿Result: should_continue=true
-User instruction: 还是一样的，点击保存但又显示关闭，应该是前端和后端没有对应上的问题，务必仔细查看vps文件结构，让前端和后端一一对应，然后更新代码到github
+User instruction: 自己查看
 
 Please continue the task based on the user's new instruction.

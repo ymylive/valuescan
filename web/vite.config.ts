@@ -10,6 +10,9 @@ export default defineConfig(({ mode }) => {
   return {
     base,
     plugins: [react()],
+    esbuild: {
+      drop: [], // Keep console.log in production
+    },
     server: {
       host: '0.0.0.0',
       port: 3000,

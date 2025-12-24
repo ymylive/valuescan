@@ -166,7 +166,7 @@ func (c *Client) CallWithFileUpload(systemPrompt, userPrompt string) (string, er
 		requestBody["max_tokens"] = c.MaxTokens
 	}
 
-	c.logger.Infof("📤 [%s] Sending request with file attachment (file_id: %s)", c.String(), fileID)
+	c.logger.Infof("📤 [%s] Sending request with user prompt (%d chars)", c.String(), len(userPrompt))
 
 	// Send request
 	return c.sendRequest(requestBody)

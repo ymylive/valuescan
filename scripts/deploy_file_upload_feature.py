@@ -34,6 +34,7 @@ def main():
         ("api/server.go", f"{NOFX_DIR}/api/server.go"),
         ("mcp/interface.go", f"{NOFX_DIR}/mcp/interface.go"),
         ("mcp/client.go", f"{NOFX_DIR}/mcp/client.go"),
+        ("mcp/config.go", f"{NOFX_DIR}/mcp/config.go"),
         ("mcp/file_upload.go", f"{NOFX_DIR}/mcp/file_upload.go"),
         ("trader/auto_trader.go", f"{NOFX_DIR}/trader/auto_trader.go"),
         ("manager/trader_manager.go", f"{NOFX_DIR}/manager/trader_manager.go"),
