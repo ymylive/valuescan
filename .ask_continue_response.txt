@@ -1,2 +1,4 @@
-﻿Result: should_continue=false
-User chose to end the conversation.
+﻿Result: should_continue=true
+User instruction: 虽然开启了，但是无法进行详细配置的写入，在保存后还是原来的数据
+
+Please continue the task based on the user's new instruction.

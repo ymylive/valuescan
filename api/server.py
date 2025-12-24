@@ -1305,8 +1305,9 @@ def save_config():
     restart_errors = []
     
     if 'signal' in data:
+        signal_data = data['signal']
         signal_template = BASE_DIR / 'signal_monitor' / 'config.example.py'
-        content = generate_config(data['signal'], signal_template)
+        content = generate_config(signal_data, signal_template)
         if content:
             try:
                 with open(SIGNAL_CONFIG, 'w', encoding='utf-8') as f:
@@ -1318,6 +1319,26 @@ def save_config():
                 print(f"[API] Signal config error: {e}")
         else:
             errors.append("Signal config template not found")
+        
+        # Also save AI summary config if present in signal data
+        try:
+            ai_keys = ['ai_summary_enabled', 'ai_summary_api_key', 'ai_summary_api_url', 
+                       'ai_summary_model', 'ai_summary_interval_hours', 'ai_summary_lookback_hours']
+            if any(k in signal_data for k in ai_keys):
+                ai_defaults = _default_ai_summary_config()
+                ai_cfg = {
+                    'enabled': signal_data.get('ai_summary_enabled', ai_defaults['enabled']),
+                    'api_key': signal_data.get('ai_summary_api_key', ai_defaults['api_key']),
+                    'api_url': signal_data.get('ai_summary_api_url', ai_defaults['api_url']),
+                    'model': signal_data.get('ai_summary_model', ai_defaults['model']),
+                    'interval_hours': signal_data.get('ai_summary_interval_hours', ai_defaults['interval_hours']),
+                    'lookback_hours': signal_data.get('ai_summary_lookback_hours', ai_defaults['lookback_hours']),
+                }
+                AI_SUMMARY_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+                AI_SUMMARY_CONFIG_FILE.write_text(json.dumps(ai_cfg, ensure_ascii=False, indent=2), encoding='utf-8')
+                print(f"[API] AI summary config saved: enabled={ai_cfg['enabled']}")
+        except Exception as e:
+            print(f"[API] Failed to save AI summary config: {e}")
     
     if 'trader' in data:
         trader_template = BASE_DIR / 'binance_trader' / 'config.example.py'
