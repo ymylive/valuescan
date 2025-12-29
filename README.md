@@ -1,11 +1,16 @@
 <p align="center">
-  <img src="screenshots/logo.png" alt="ValueScan Logo" width="120" />
+  <img src="screenshots/logo.svg" alt="ValueScan Logo" width="120" />
 </p>
 
 <h1 align="center">ValueScan</h1>
 
 <p align="center">
   <strong>🚀 AI-Powered Crypto Signal Monitor & Autonomous Trading System</strong>
+</p>
+
+<p align="center">
+  <a href="README.md"><img src="https://img.shields.io/badge/lang-English-blue?style=for-the-badge" alt="English" /></a>
+  <a href="README.zh-CN.md"><img src="https://img.shields.io/badge/lang-简体中文-red?style=for-the-badge" alt="简体中文" /></a>
 </p>
 
 <p align="center">
