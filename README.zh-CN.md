@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="screenshots/logo.svg" alt="ValueScan Logo" width="120" />
+  <img src="screenshots/logo.png" alt="ValueScan Logo" width="120" />
 </p>
 
 <h1 align="center">ValueScan</h1>
