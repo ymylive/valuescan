@@ -1,0 +1,142 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* --- Night Mode: Glass Black --- */
+    --bg-page: #000000; /* Pure Black */
+    --text-primary: #ffffff;
+    --text-secondary: #9ca3af;
+    
+    /* Panel: Deep, smoky glass */
+    --panel-bg: rgba(20, 20, 20, 0.6); 
+    --input-bg: rgba(30, 30, 30, 0.5);
+    
+    /* Border: Sharp glass edge */
+    --border-color: rgba(255, 255, 255, 0.12);
+    --border-highlight: rgba(255, 255, 255, 0.25);
+    
+    /* Shadow: Deep ambient */
+    --card-shadow: 0 20px 40px -10px rgba(0,0,0,0.8);
+  }
+
+  .light-mode {
+    /* --- Day Mode: Mica White --- */
+    --bg-page: #F3F3F3; /* Mica Base */
+    --text-primary: #1a1a1a;
+    --text-secondary: #52525b;
+    
+    /* Panel: Pearlescent Mica */
+    /* High brightness, low opacity, heavy blur */
+    --panel-bg: rgba(255, 255, 255, 0.65); 
+    --input-bg: rgba(255, 255, 255, 0.5);
+    
+    /* Border: Subtle pearl shine */
+    --border-color: rgba(255, 255, 255, 0.8);
+    --border-highlight: #ffffff;
+    
+    /* Shadow: Soft ambient glow */
+    --card-shadow: 
+        0 8px 30px rgba(0, 0, 0, 0.04),
+        0 0 0 1px rgba(255, 255, 255, 0.6) inset;
+  }
+
+  body {
+    @apply antialiased;
+    background-color: var(--bg-page);
+    color: var(--text-primary);
+    transition: background-color 0.8s cubic-bezier(0.2, 0.8, 0.2, 1), color 0.3s ease;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  /* Text Overrides */
+  .light-mode .text-white { color: var(--text-primary) !important; }
+  .light-mode .text-neutral-400 { color: var(--text-secondary) !important; }
+  .light-mode .text-neutral-500 { color: #71717a !important; }
+  .light-mode .bg-black { background-color: transparent !important; }
+  
+  /* Component Specific Overrides for Light Mode */
+  .light-mode .bg-neutral-900 { background-color: rgba(255,255,255,0.4) !important; }
+  .light-mode .border-neutral-800 { border-color: rgba(0,0,0,0.05) !important; }
+
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { @apply bg-transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 999px; }
+}
+
+@layer components {
+  /* Mica / Glass Card - Optimized blur for performance */
+  .glass {
+    background: var(--panel-bg);
+    /* Reduced blur for better performance */
+    backdrop-filter: blur(12px) saturate(110%);
+    -webkit-backdrop-filter: blur(12px) saturate(110%);
+    
+    border: 1px solid var(--border-color);
+    border-top: 1px solid var(--border-highlight);
+    border-left: 1px solid var(--border-highlight);
+    
+    box-shadow: var(--card-shadow);
+    /* Use will-change sparingly and GPU-accelerated properties */
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .glass-card {
+    @apply glass rounded-2xl;
+    /* Enable GPU acceleration */
+    transform: translateZ(0);
+  }
+  
+  .glass-card:hover {
+    transform: translateY(-2px) translateZ(0);
+    box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.12);
+  }
+  
+  /* Inputs */
+  .input-modern {
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    @apply w-full px-4 py-3 rounded-xl text-sm font-medium;
+    @apply placeholder:text-neutral-400/60;
+    @apply focus:outline-none focus:ring-2 focus:ring-black/5 dark:focus:ring-white/10;
+    transition: border-color 0.15s ease;
+  }
+
+  /* Buttons */
+  .btn-modern {
+    @apply relative overflow-hidden inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold tracking-wide;
+    transition: transform 0.1s ease, opacity 0.1s ease;
+  }
+  
+  .btn-modern:active {
+    transform: scale(0.97);
+  }
+
+  .btn-modern-primary {
+    /* Day: Black button, Night: White/Gold button */
+    @apply bg-neutral-900 text-white dark:bg-white dark:text-black;
+    @apply hover:opacity-90 shadow-lg;
+  }
+  
+  .light-mode .btn-modern-primary {
+      background-color: #1a1a1a;
+      color: #ffffff;
+  }
+
+  .btn-modern-ghost {
+    color: var(--text-secondary);
+    @apply hover:bg-black/5 dark:hover:bg-white/10;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, var(--text-primary) 0%, var(--text-secondary) 100%);
+  }
+}

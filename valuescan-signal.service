@@ -1,0 +1,26 @@
+[Unit]
+Description=ValueScan Signal Polling Monitor
+Documentation=https://github.com/ymylive/valuescan
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/valuescan/signal_monitor
+ExecStart=/usr/bin/python3.9 /root/valuescan/signal_monitor/start_polling.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=valuescan-signal
+
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/root/valuescan/config/valuescan.env
+Environment=VALUESCAN_AUTO_RELOGIN=0
+Environment=VALUESCAN_DISABLE_HTTP_REFRESH=1
+Environment=VALUESCAN_AUTO_RELOGIN_COOLDOWN=1800
+
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

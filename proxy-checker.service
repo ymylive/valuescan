@@ -1,0 +1,20 @@
+[Unit]
+Description=Proxy Checker (Xray auto-switch) for Binance API
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/valuescan
+ExecStart=/usr/bin/python3.9 /root/valuescan/proxy_manager/node_checker.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=proxy-checker
+
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
+
