@@ -16,15 +16,16 @@ type Store struct {
 	db *sql.DB
 
 	// Sub-stores (lazy initialization)
-	user     *UserStore
-	aiModel  *AIModelStore
-	exchange *ExchangeStore
-	trader   *TraderStore
-	decision *DecisionStore
-	backtest *BacktestStore
-	position *PositionStore
-	strategy *StrategyStore
-	equity   *EquityStore
+	user       *UserStore
+	userConfig *UserConfigStore
+	aiModel    *AIModelStore
+	exchange   *ExchangeStore
+	trader     *TraderStore
+	decision   *DecisionStore
+	backtest   *BacktestStore
+	position   *PositionStore
+	strategy   *StrategyStore
+	equity     *EquityStore
 
 	// Encryption functions
 	encryptFunc func(string) string
@@ -129,6 +130,9 @@ func (s *Store) initTables() error {
 	if err := s.User().initTables(); err != nil {
 		return fmt.Errorf("failed to initialize user tables: %w", err)
 	}
+	if err := s.UserConfig().InitSchema(); err != nil {
+		return fmt.Errorf("failed to initialize user config tables: %w", err)
+	}
 	if err := s.AIModel().initTables(); err != nil {
 		return fmt.Errorf("failed to initialize AI model tables: %w", err)
 	}
@@ -184,6 +188,16 @@ func (s *Store) User() *UserStore {
 		s.user = &UserStore{db: s.db}
 	}
 	return s.user
+}
+
+// UserConfig gets user config storage
+func (s *Store) UserConfig() *UserConfigStore {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.userConfig == nil {
+		s.userConfig = &UserConfigStore{db: s.db}
+	}
+	return s.userConfig
 }
 
 // AIModel gets AI model storage

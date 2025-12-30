@@ -195,6 +195,19 @@ func (s *Server) setupRoutes() {
 			// Backtest routes
 			backtest := protected.Group("/backtest")
 			s.registerBacktestRoutes(backtest)
+
+			// Clash proxy routes
+			proxyHandler := NewProxyHandler(s.store)
+			proxy := protected.Group("/proxy")
+			{
+				proxy.GET("/config", proxyHandler.HandleGetConfig)
+				proxy.POST("/config", proxyHandler.HandleSaveConfig)
+				proxy.GET("/nodes", proxyHandler.HandleGetNodes)
+				proxy.POST("/nodes", proxyHandler.HandleSaveNodes)
+				proxy.POST("/nodes/:id/test", proxyHandler.HandleTestNode)
+				proxy.POST("/nodes/test-all", proxyHandler.HandleTestAllNodes)
+				proxy.GET("/stats", proxyHandler.HandleGetStats)
+			}
 		}
 	}
 }

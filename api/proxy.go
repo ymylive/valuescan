@@ -77,7 +77,7 @@ func (h *ProxyHandler) HandleGetConfig(c *gin.Context) {
 	userID := c.GetString("user_id")
 
 	// Get configuration from database
-	configData, err := h.store.GetUserConfig(userID, "clash_config")
+	configData, err := h.store.UserConfig().Get(userID, "clash_config")
 	if err != nil {
 		// Return default configuration
 		defaultConfig := ClashConfig{
@@ -126,7 +126,7 @@ func (h *ProxyHandler) HandleSaveConfig(c *gin.Context) {
 	}
 
 	// Save to database
-	if err := h.store.SaveUserConfig(userID, "clash_config", string(configData)); err != nil {
+	if err := h.store.UserConfig().Set(userID, "clash_config", string(configData)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
 		return
 	}
@@ -140,7 +140,7 @@ func (h *ProxyHandler) HandleGetNodes(c *gin.Context) {
 	userID := c.GetString("user_id")
 
 	// Get nodes from database
-	nodesData, err := h.store.GetUserConfig(userID, "clash_nodes")
+	nodesData, err := h.store.UserConfig().Get(userID, "clash_nodes")
 	if err != nil {
 		c.JSON(http.StatusOK, []ProxyNode{})
 		return
@@ -174,7 +174,7 @@ func (h *ProxyHandler) HandleSaveNodes(c *gin.Context) {
 	}
 
 	// Save to database
-	if err := h.store.SaveUserConfig(userID, "clash_nodes", string(nodesData)); err != nil {
+	if err := h.store.UserConfig().Set(userID, "clash_nodes", string(nodesData)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save nodes"})
 		return
 	}
@@ -243,20 +243,4 @@ func (h *ProxyHandler) HandleGetStats(c *gin.Context) {
 		"uploadSpeed":    1024 * 50,          // 50KB/s
 		"downloadSpeed":  1024 * 200,         // 200KB/s
 	})
-}
-
-// RegisterProxyRoutes Register proxy routes
-func (s *Server) RegisterProxyRoutes(protected *gin.RouterGroup) {
-	proxyHandler := NewProxyHandler(s.store)
-
-	proxy := protected.Group("/proxy")
-	{
-		proxy.GET("/config", proxyHandler.HandleGetConfig)
-		proxy.POST("/config", proxyHandler.HandleSaveConfig)
-		proxy.GET("/nodes", proxyHandler.HandleGetNodes)
-		proxy.POST("/nodes", proxyHandler.HandleSaveNodes)
-		proxy.POST("/nodes/:id/test", proxyHandler.HandleTestNode)
-		proxy.POST("/nodes/test-all", proxyHandler.HandleTestAllNodes)
-		proxy.GET("/stats", proxyHandler.HandleGetStats)
-	}
 }
