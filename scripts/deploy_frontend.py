@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 部署前端到 VPS
 """
@@ -27,8 +27,6 @@ ssh.connect(VPS_HOST, username=VPS_USER, password=VPS_PASSWORD)
 
 sftp = ssh.open_sftp()
 
-# 上传前端文件
-import os
 dist_dir = "web/dist"
 
 def upload_dir(local_dir, remote_dir):
@@ -53,6 +51,18 @@ upload_dir(dist_dir, "/root/valuescan/web/dist")
 
 sftp.close()
 
+# 同步到 nginx 服务的前端目录 (cornna.qzz.io / cornna.abrdns.com)
+print("\n同步到 /var/www/valuescan ...")
+stdin, stdout, stderr = ssh.exec_command("cp -r /root/valuescan/web/dist/* /var/www/valuescan/")
+stdout.channel.recv_exit_status()
+print("同步完成")
+
+# 重载 nginx
+print("\n重载 nginx...")
+stdin, stdout, stderr = ssh.exec_command("nginx -t && systemctl reload nginx")
+stdout.channel.recv_exit_status()
+print(stdout.read().decode())
+
 # 重启 API 服务以加载新前端
 print("\n重启 API 服务...")
 stdin, stdout, stderr = ssh.exec_command("systemctl restart valuescan-api")
@@ -66,4 +76,6 @@ stdin, stdout, stderr = ssh.exec_command("systemctl status valuescan-api --no-pa
 print(stdout.read().decode())
 
 ssh.close()
-print("\nDone! 前端已部署。")
+print("\nDone! 前端已部署到:")
+print("  - https://cornna.qzz.io/")
+print("  - https://cornna.abrdns.com/")
