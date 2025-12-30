@@ -27,11 +27,10 @@ export class ConfigService {
   // Load configuration from backend or local storage
   async loadConfiguration(): Promise<CompleteConfig> {
     try {
-      const response = await api.get<BackendConfig>('/config');
-      // @ts-ignore
-      const data: BackendConfig = response;
+      const data = await api.get('/config') as any;
+      const backendConfig = data as BackendConfig;
 
-      return this.transformBackendToFrontend(data);
+      return this.transformBackendToFrontend(backendConfig);
     } catch (error) {
       console.warn('Failed to load configuration from backend, using local storage:', error);
 
