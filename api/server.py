@@ -3842,21 +3842,25 @@ def get_clash_config():
     获取 Clash 配置
     """
     try:
-        config = {
-            'port': 7890,
-            'socksPort': 7891,
-            'allowLan': False,
-            'mode': 'rule',
-            'logLevel': 'info',
-            'externalController': '127.0.0.1:9090',
-            'secret': '',
-            'subscriptions': [],
-            'autoTest': True,
-            'autoTestInterval': 30,
-            'testUrl': 'http://www.gstatic.com/generate_204',
-            'testTimeout': 5
-        }
+        from api.clash_store import ClashStore
+        store = ClashStore()
+        config = store.get_config()
         return jsonify(config)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/clash/config', methods=['POST'])
+def save_clash_config():
+    """
+    保存 Clash 配置
+    """
+    try:
+        from api.clash_store import ClashStore
+        store = ClashStore()
+        config = request.get_json()
+        store.save_config(config)
+        return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -3867,8 +3871,25 @@ def get_clash_nodes():
     获取代理节点列表
     """
     try:
-        nodes = []
+        from api.clash_store import ClashStore
+        store = ClashStore()
+        nodes = store.get_nodes()
         return jsonify(nodes)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/clash/nodes', methods=['POST'])
+def save_clash_nodes():
+    """
+    保存代理节点列表
+    """
+    try:
+        from api.clash_store import ClashStore
+        store = ClashStore()
+        nodes = request.get_json()
+        store.save_nodes(nodes)
+        return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
