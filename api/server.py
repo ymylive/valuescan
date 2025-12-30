@@ -32,6 +32,12 @@ try:
 except ImportError:
     from config_validator import validate_config
 
+# Import performance database
+try:
+    from api.performance_db import PerformanceDatabase
+except ImportError:
+    from performance_db import PerformanceDatabase
+
 app = Flask(__name__, static_folder='../web/dist', static_url_path='')
 CORS(app)
 
@@ -47,6 +53,11 @@ _log_monitors_lock = threading.Lock()
 # One-time ValueScan browser import sessions now use a stateless, signed token
 # to survive multi-worker Gunicorn deployments and proxy IP changes.
 _login_secret_cache = None
+
+# Initialize performance database
+BASE_DIR = Path(__file__).resolve().parent.parent
+DB_PATH = os.getenv('VALUESCAN_PERFORMANCE_DB_PATH', str(BASE_DIR / 'data' / 'performance.db'))
+performance_db = PerformanceDatabase(DB_PATH)
 
 
 def _valuescan_login_secret() -> bytes:
@@ -3681,18 +3692,20 @@ def get_my_traders():
     获取当前用户的所有交易者
     """
     try:
-        traders = [
-            {
-                'trader_id': 'trader_001',
-                'trader_name': 'AI Trader 1',
+        # 从数据库获取所有交易者
+        db_traders = performance_db.get_all_traders()
+        traders = []
+        for t in db_traders:
+            traders.append({
+                'trader_id': t.id,
+                'trader_name': t.name,
                 'ai_model': 'claude-3-opus',
                 'exchange_id': 'binance',
                 'is_running': True,
                 'initial_balance': 10000.0,
                 'strategy_id': 'balanced_day',
-                'strategy_name': '平衡日内策略'
-            }
-        ]
+                'strategy_name': t.description or '平衡日内策略'
+            })
         return jsonify(traders)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -3705,13 +3718,22 @@ def get_account():
     """
     try:
         trader_id = request.args.get('trader_id', '')
+
+        # 从数据库获取该交易者的所有交易记录
+        trades = performance_db.get_trades_by_trader(trader_id) if trader_id else []
+
+        # 计算账户信息
+        total_pnl = sum(t.realized_pnl for t in trades)
+        initial_balance = 10000.0
+        total_equity = initial_balance + total_pnl
+
         account = {
-            'total_equity': 10500.0,
-            'available_balance': 8500.0,
-            'total_pnl': 500.0,
-            'total_pnl_pct': 5.0,
-            'wallet_balance': 10000.0,
-            'position_count': 2,
+            'total_equity': total_equity,
+            'available_balance': total_equity * 0.8,
+            'total_pnl': total_pnl,
+            'total_pnl_pct': (total_pnl / initial_balance * 100) if initial_balance > 0 else 0,
+            'wallet_balance': initial_balance,
+            'position_count': 0,
             'margin_used_pct': 20.0
         }
         return jsonify(account)
@@ -3739,7 +3761,26 @@ def get_decisions():
     """
     try:
         trader_id = request.args.get('trader_id', '')
+
+        # 从数据库获取交易记录
+        trades = performance_db.get_trades_by_trader(trader_id) if trader_id else []
+
+        # 转换为决策格式
         decisions = []
+        for trade in trades:
+            decisions.append({
+                'id': trade.id,
+                'trader_id': trade.trader_id,
+                'timestamp': trade.timestamp,
+                'action': 'OPEN' if trade.side == 'BUY' else 'CLOSE',
+                'symbol': trade.symbol,
+                'reason': f'{trade.side} {trade.quantity} @ ${trade.price}',
+                'price': trade.price,
+                'size': trade.quantity,
+                'pnl': trade.realized_pnl,
+                'pnl_pct': (trade.realized_pnl / (trade.price * trade.quantity) * 100) if (trade.price * trade.quantity) > 0 else 0
+            })
+
         return jsonify(decisions)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -3752,16 +3793,41 @@ def get_statistics():
     """
     try:
         trader_id = request.args.get('trader_id', '')
+
+        # 从数据库获取交易记录
+        trades = performance_db.get_trades_by_trader(trader_id) if trader_id else []
+
+        if not trades:
+            return jsonify({
+                'total_trades': 0,
+                'winning_trades': 0,
+                'losing_trades': 0,
+                'win_rate': 0.0,
+                'total_pnl': 0.0,
+                'total_pnl_pct': 0.0,
+                'avg_win': 0.0,
+                'avg_loss': 0.0,
+                'profit_factor': 0.0
+            })
+
+        # 计算统计数据
+        winning_trades = [t for t in trades if t.realized_pnl > 0]
+        losing_trades = [t for t in trades if t.realized_pnl < 0]
+
+        total_pnl = sum(t.realized_pnl for t in trades)
+        total_wins = sum(t.realized_pnl for t in winning_trades)
+        total_losses = abs(sum(t.realized_pnl for t in losing_trades))
+
         stats = {
-            'total_trades': 0,
-            'winning_trades': 0,
-            'losing_trades': 0,
-            'win_rate': 0.0,
-            'total_pnl': 0.0,
-            'total_pnl_pct': 0.0,
-            'avg_win': 0.0,
-            'avg_loss': 0.0,
-            'profit_factor': 0.0
+            'total_trades': len(trades),
+            'winning_trades': len(winning_trades),
+            'losing_trades': len(losing_trades),
+            'win_rate': len(winning_trades) / len(trades) if trades else 0.0,
+            'total_pnl': total_pnl,
+            'total_pnl_pct': (total_pnl / 10000.0 * 100) if total_pnl else 0.0,
+            'avg_win': total_wins / len(winning_trades) if winning_trades else 0.0,
+            'avg_loss': total_losses / len(losing_trades) if losing_trades else 0.0,
+            'profit_factor': total_wins / total_losses if total_losses > 0 else 0.0
         }
         return jsonify(stats)
     except Exception as e:
