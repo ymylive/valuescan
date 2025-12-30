@@ -4,6 +4,7 @@ import { GlassCard } from '../components/Common/GlassCard';
 import { Button } from '../components/Common/Button';
 import { TraderConfig, AccountInfo, Position } from '../types/trading';
 import { tradingApi } from '../services/tradingApi';
+import { logger } from '../services/loggerService';
 
 interface TraderDetailsProps {
   traderId: string;
@@ -24,6 +25,7 @@ const TraderDetails: React.FC<TraderDetailsProps> = ({ traderId }) => {
   const loadTraderData = async () => {
     setLoading(true);
     setError(null);
+    logger.info('TraderDetails', '开始加载交易者数据', { traderId });
     try {
       const [traderResponse, accountResponse, positionsResponse] = await Promise.all([
         tradingApi.getTrader(traderId),
@@ -33,8 +35,13 @@ const TraderDetails: React.FC<TraderDetailsProps> = ({ traderId }) => {
       setTrader(traderResponse.data);
       setAccount(accountResponse.data);
       setPositions(positionsResponse.data);
+      logger.info('TraderDetails', '交易者数据加载成功', {
+        trader: traderResponse.data.trader_name,
+        positionsCount: positionsResponse.data.length
+      });
     } catch (err) {
       setError('加载交易者数据失败');
+      logger.error('TraderDetails', '加载交易者数据失败', err as Error, { traderId });
       console.error('Failed to load trader data:', err);
     } finally {
       setLoading(false);

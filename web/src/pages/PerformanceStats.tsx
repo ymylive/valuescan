@@ -3,6 +3,7 @@ import { TrendingUp, Award, Target, AlertCircle } from 'lucide-react';
 import { GlassCard } from '../components/Common/GlassCard';
 import { Statistics } from '../types/trading';
 import { tradingApi } from '../services/tradingApi';
+import { logger } from '../services/loggerService';
 
 const PerformanceStats: React.FC = () => {
   const [stats, setStats] = useState<Statistics | null>(null);
@@ -17,11 +18,14 @@ const PerformanceStats: React.FC = () => {
   const loadStatistics = async () => {
     setLoading(true);
     setError(null);
+    logger.info('PerformanceStats', '开始加载性能统计', { trader: selectedTrader });
     try {
       const response = await tradingApi.getStatistics(selectedTrader === 'all' ? '' : selectedTrader);
       setStats(response.data);
+      logger.info('PerformanceStats', '性能统计加载成功', { stats: response.data });
     } catch (err) {
       setError('加载性能统计失败');
+      logger.error('PerformanceStats', '加载性能统计失败', err as Error);
       console.error('Failed to load statistics:', err);
     } finally {
       setLoading(false);

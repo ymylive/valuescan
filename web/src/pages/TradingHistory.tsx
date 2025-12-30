@@ -4,6 +4,7 @@ import { GlassCard } from '../components/Common/GlassCard';
 import { Button } from '../components/Common/Button';
 import { Decision } from '../types/trading';
 import { tradingApi } from '../services/tradingApi';
+import { logger } from '../services/loggerService';
 
 const TradingHistory: React.FC = () => {
   const [decisions, setDecisions] = useState<Decision[]>([]);
@@ -26,11 +27,14 @@ const TradingHistory: React.FC = () => {
   const loadDecisions = async () => {
     setLoading(true);
     setError(null);
+    logger.info('TradingHistory', '开始加载交易历史', { trader: selectedTrader });
     try {
       const response = await tradingApi.getDecisions(selectedTrader === 'all' ? '' : selectedTrader);
       setDecisions(response.data);
+      logger.info('TradingHistory', '交易历史加载成功', { count: response.data.length });
     } catch (err) {
       setError('加载交易历史失败');
+      logger.error('TradingHistory', '加载交易历史失败', err as Error);
       console.error('Failed to load decisions:', err);
     } finally {
       setLoading(false);
