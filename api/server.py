@@ -3834,6 +3834,45 @@ def get_statistics():
         return jsonify({'error': str(e)}), 500
 
 
+# ==================== Clash Proxy API Routes ====================
+
+@app.route('/api/clash/config', methods=['GET'])
+def get_clash_config():
+    """
+    获取 Clash 配置
+    """
+    try:
+        config = {
+            'port': 7890,
+            'socksPort': 7891,
+            'allowLan': False,
+            'mode': 'rule',
+            'logLevel': 'info',
+            'externalController': '127.0.0.1:9090',
+            'secret': '',
+            'subscriptions': [],
+            'autoTest': True,
+            'autoTestInterval': 30,
+            'testUrl': 'http://www.gstatic.com/generate_204',
+            'testTimeout': 5
+        }
+        return jsonify(config)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/clash/nodes', methods=['GET'])
+def get_clash_nodes():
+    """
+    获取代理节点列表
+    """
+    try:
+        nodes = []
+        return jsonify(nodes)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     # Use socketio.run instead of app.run for WebSocket support
     port = int(os.environ.get("PORT", "5000"))
