@@ -22,6 +22,7 @@ import {
 } from '../types/config';
 import { configService } from '../services/configService';
 import { configValidator } from '../utils/configValidation';
+import { logger } from '../services/loggerService';
 
 type ConfigTab = 'ai' | 'signal' | 'trading' | 'risk' | 'notification' | 'login' | 'system';
 
@@ -248,6 +249,7 @@ const ConfigurationPage: React.FC = () => {
 
   const loadConfiguration = async () => {
     setLoading(true);
+    logger.info('ConfigurationPage', '开始加载配置');
     try {
       const config = await configService.loadConfiguration();
 
@@ -258,8 +260,10 @@ const ConfigurationPage: React.FC = () => {
       setLoggingConfig(config.logging);
       setEnvironmentConfig(config.environment);
 
+      logger.info('ConfigurationPage', '配置加载成功');
       showMessage('success', '配置加载成功（后端未连接时使用本地存储）');
     } catch (error) {
+      logger.error('ConfigurationPage', '配置加载失败', error as Error);
       console.error('Failed to load configuration:', error);
       showMessage('error', '配置加载失败');
     } finally {
@@ -338,8 +342,10 @@ const ConfigurationPage: React.FC = () => {
       };
 
       await configService.saveConfiguration(config);
+      logger.info('ConfigurationPage', '配置保存成功');
       showMessage('success', '配置保存成功（后端未连接时仅保存到本地存储）');
     } catch (error) {
+      logger.error('ConfigurationPage', '配置保存失败', error as Error);
       console.error('Failed to save configuration:', error);
       showMessage('error', '配置保存失败');
     } finally {

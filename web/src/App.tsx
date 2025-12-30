@@ -12,6 +12,7 @@ const PositionMonitor = lazy(() => import('./pages/PositionMonitor'));
 const TradingHistory = lazy(() => import('./pages/TradingHistory'));
 const PerformanceStats = lazy(() => import('./pages/PerformanceStats'));
 const TraderDetails = lazy(() => import('./pages/TraderDetails'));
+const LogsPage = lazy(() => import('./pages/LogsPage'));
 
 const LoadingSpinner = () => (
   <div className="flex items-center justify-center h-64">
@@ -121,6 +122,19 @@ function AnimatedRoutes() {
           >
             <Suspense fallback={<LoadingSpinner />}>
               <PerformanceStats />
+            </Suspense>
+          </motion.div>
+        } />
+        <Route path="/logs" element={
+          <motion.div
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            variants={pageVariants}
+            transition={pageTransition}
+          >
+            <Suspense fallback={<LoadingSpinner />}>
+              <LogsPage />
             </Suspense>
           </motion.div>
         } />

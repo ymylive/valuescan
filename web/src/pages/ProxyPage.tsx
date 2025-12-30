@@ -20,6 +20,7 @@ import { Input } from '../components/Common/Input';
 import { Modal } from '../components/Common/Modal';
 import { clashService } from '../services/clashService';
 import { ProxyNode, Subscription, ClashStats } from '../types/clash';
+import { logger } from '../services/loggerService';
 
 const ProxyPage: React.FC = () => {
   const { t } = useTranslation();
@@ -49,6 +50,7 @@ const ProxyPage: React.FC = () => {
 
   const loadData = async () => {
     try {
+      logger.debug('ProxyPage', '开始加载代理数据');
       const subs = clashService.getSubscriptions();
       const allNodes = await clashService.getNodes();
       const selected = await clashService.getSelectedNode();
@@ -56,7 +58,9 @@ const ProxyPage: React.FC = () => {
       setSubscriptions(subs);
       setNodes(allNodes);
       setSelectedNode(selected);
+      logger.info('ProxyPage', '代理数据加载成功', { subscriptions: subs.length, nodes: allNodes.length });
     } catch (error) {
+      logger.error('ProxyPage', '代理数据加载失败', error as Error);
       console.error('Failed to load data:', error);
     }
   };
