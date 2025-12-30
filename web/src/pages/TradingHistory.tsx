@@ -27,14 +27,27 @@ const TradingHistory: React.FC = () => {
   const loadDecisions = async () => {
     setLoading(true);
     setError(null);
-    logger.info('TradingHistory', '开始加载交易历史', { trader: selectedTrader });
+    logger.info('TradingHistory', '开始加载交易历史', {
+      trader: selectedTrader,
+      action: selectedAction,
+      searchSymbol: searchSymbol
+    });
     try {
       const response = await tradingApi.getDecisions(selectedTrader === 'all' ? '' : selectedTrader);
       setDecisions(response.data);
-      logger.info('TradingHistory', '交易历史加载成功', { count: response.data.length });
+      logger.info('TradingHistory', '交易历史加载成功', {
+        count: response.data.length,
+        trader: selectedTrader,
+        firstDecision: response.data[0] || null,
+        lastDecision: response.data[response.data.length - 1] || null
+      });
     } catch (err) {
       setError('加载交易历史失败');
-      logger.error('TradingHistory', '加载交易历史失败', err as Error);
+      logger.error('TradingHistory', '加载交易历史失败', err as Error, {
+        trader: selectedTrader,
+        action: selectedAction,
+        errorDetails: err
+      });
       console.error('Failed to load decisions:', err);
     } finally {
       setLoading(false);

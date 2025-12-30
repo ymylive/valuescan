@@ -18,14 +18,29 @@ const PerformanceStats: React.FC = () => {
   const loadStatistics = async () => {
     setLoading(true);
     setError(null);
-    logger.info('PerformanceStats', '开始加载性能统计', { trader: selectedTrader });
+    logger.info('PerformanceStats', '开始加载性能统计', {
+      trader: selectedTrader,
+      timestamp: new Date().toISOString()
+    });
     try {
       const response = await tradingApi.getStatistics(selectedTrader === 'all' ? '' : selectedTrader);
       setStats(response.data);
-      logger.info('PerformanceStats', '性能统计加载成功', { stats: response.data });
+      logger.info('PerformanceStats', '性能统计加载成功', {
+        trader: selectedTrader,
+        winRate: response.data.win_rate,
+        totalPnl: response.data.total_pnl,
+        profitFactor: response.data.profit_factor,
+        maxDrawdown: response.data.max_drawdown,
+        totalTrades: response.data.total_trades,
+        winningTrades: response.data.winning_trades,
+        losingTrades: response.data.losing_trades
+      });
     } catch (err) {
       setError('加载性能统计失败');
-      logger.error('PerformanceStats', '加载性能统计失败', err as Error);
+      logger.error('PerformanceStats', '加载性能统计失败', err as Error, {
+        trader: selectedTrader,
+        errorDetails: err
+      });
       console.error('Failed to load statistics:', err);
     } finally {
       setLoading(false);

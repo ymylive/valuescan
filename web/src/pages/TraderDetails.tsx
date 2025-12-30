@@ -25,7 +25,10 @@ const TraderDetails: React.FC<TraderDetailsProps> = ({ traderId }) => {
   const loadTraderData = async () => {
     setLoading(true);
     setError(null);
-    logger.info('TraderDetails', '开始加载交易者数据', { traderId });
+    logger.info('TraderDetails', '开始加载交易者数据', {
+      traderId,
+      timestamp: new Date().toISOString()
+    });
     try {
       const [traderResponse, accountResponse, positionsResponse] = await Promise.all([
         tradingApi.getTrader(traderId),
@@ -36,12 +39,23 @@ const TraderDetails: React.FC<TraderDetailsProps> = ({ traderId }) => {
       setAccount(accountResponse.data);
       setPositions(positionsResponse.data);
       logger.info('TraderDetails', '交易者数据加载成功', {
-        trader: traderResponse.data.trader_name,
-        positionsCount: positionsResponse.data.length
+        traderId,
+        traderName: traderResponse.data.trader_name,
+        totalPnl: accountResponse.data.total_pnl,
+        positionsCount: positionsResponse.data.length,
+        positions: positionsResponse.data.map(p => ({
+          symbol: p.symbol,
+          side: p.side,
+          size: p.size,
+          unrealizedPnl: p.unrealized_pnl
+        }))
       });
     } catch (err) {
       setError('加载交易者数据失败');
-      logger.error('TraderDetails', '加载交易者数据失败', err as Error, { traderId });
+      logger.error('TraderDetails', '加载交易者数据失败', err as Error, {
+        traderId,
+        errorDetails: err
+      });
       console.error('Failed to load trader data:', err);
     } finally {
       setLoading(false);
