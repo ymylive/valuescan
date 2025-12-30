@@ -106,21 +106,30 @@ class ClashService {
     }
 
     try {
-      // 获取订阅内容
-      const response = await fetch(subscription.url);
-      const text = await response.text();
+      // 调用后端API更新订阅
+      const result = await api.post('/clash/subscription/update', {
+        url: subscription.url,
+        type: subscription.type
+      }) as any;
 
-      // 解析节点
-      const nodes = this.parseSubscription(text, subscription.type, id);
+      const nodes = result.nodes || [];
 
       // 更新节点列表
       const existingNodes = await this.getNodes();
       const filteredNodes = existingNodes.filter(node => node.subscriptionId !== id);
-      await this.saveNodes([...filteredNodes, ...nodes]);
+
+      // 为新节点添加ID和订阅ID
+      const newNodes = nodes.map((node: any, index: number) => ({
+        ...node,
+        id: `${id}-${index}`,
+        subscriptionId: id
+      }));
+
+      await this.saveNodes([...filteredNodes, ...newNodes]);
 
       // 更新订阅信息
       subscription.lastUpdate = Date.now();
-      subscription.nodeCount = nodes.length;
+      subscription.nodeCount = newNodes.length;
       this.saveSubscriptions(subscriptions);
     } catch (error) {
       console.error('更新订阅失败:', error);

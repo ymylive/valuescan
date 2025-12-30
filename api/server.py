@@ -3894,6 +3894,35 @@ def save_clash_nodes():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/clash/subscription/update', methods=['POST'])
+def update_clash_subscription():
+    """
+    更新订阅并解析节点
+    """
+    try:
+        import requests
+        from api.clash_parser import parse_clash_subscription, parse_base64_subscription
+
+        data = request.get_json()
+        url = data.get('url')
+        sub_type = data.get('type', 'clash')
+
+        # 获取订阅内容
+        resp = requests.get(url, timeout=30)
+        resp.raise_for_status()
+        content = resp.text
+
+        # 解析节点
+        if sub_type == 'clash':
+            nodes = parse_clash_subscription(content)
+        else:
+            nodes = parse_base64_subscription(content)
+
+        return jsonify({'nodes': nodes, 'count': len(nodes)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/clash/stats', methods=['GET'])
 def get_clash_stats():
     """
