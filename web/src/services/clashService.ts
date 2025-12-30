@@ -1,4 +1,5 @@
 import { ProxyNode, Subscription, ClashConfig, SpeedTestResult, ClashStats } from '../types/clash';
+import api from './api';
 
 class ClashService {
   private readonly STORAGE_KEY = 'valuescan_clash_config';
@@ -6,17 +7,29 @@ class ClashService {
   private readonly SUBSCRIPTIONS_KEY = 'valuescan_clash_subscriptions';
 
   // 获取 Clash 配置
-  getConfig(): ClashConfig {
-    const stored = localStorage.getItem(this.STORAGE_KEY);
-    if (stored) {
-      return JSON.parse(stored);
+  async getConfig(): Promise<ClashConfig> {
+    try {
+      const config = await api.get('/clash/config') as any;
+      return config as ClashConfig;
+    } catch (error) {
+      console.error('Failed to fetch Clash config from API, using localStorage:', error);
+      const stored = localStorage.getItem(this.STORAGE_KEY);
+      if (stored) {
+        return JSON.parse(stored);
+      }
+      return this.getDefaultConfig();
     }
-    return this.getDefaultConfig();
   }
 
   // 保存 Clash 配置
-  saveConfig(config: ClashConfig): void {
-    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(config));
+  async saveConfig(config: ClashConfig): Promise<void> {
+    try {
+      await api.post('/clash/config', config);
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(config));
+    } catch (error) {
+      console.error('Failed to save Clash config to API:', error);
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(config));
+    }
   }
 
   // 获取默认配置
@@ -73,13 +86,14 @@ class ClashService {
   }
 
   // 删除订阅
-  deleteSubscription(id: string): void {
+  async deleteSubscription(id: string): Promise<void> {
     const subscriptions = this.getSubscriptions().filter(sub => sub.id !== id);
     this.saveSubscriptions(subscriptions);
 
     // 删除该订阅的所有节点
-    const nodes = this.getNodes().filter(node => node.subscriptionId !== id);
-    this.saveNodes(nodes);
+    const nodes = await this.getNodes();
+    const filteredNodes = nodes.filter(node => node.subscriptionId !== id);
+    await this.saveNodes(filteredNodes);
   }
 
   // 更新订阅
@@ -100,8 +114,9 @@ class ClashService {
       const nodes = this.parseSubscription(text, subscription.type, id);
 
       // 更新节点列表
-      const existingNodes = this.getNodes().filter(node => node.subscriptionId !== id);
-      this.saveNodes([...existingNodes, ...nodes]);
+      const existingNodes = await this.getNodes();
+      const filteredNodes = existingNodes.filter(node => node.subscriptionId !== id);
+      await this.saveNodes([...filteredNodes, ...nodes]);
 
       // 更新订阅信息
       subscription.lastUpdate = Date.now();
@@ -278,51 +293,51 @@ class ClashService {
   }
 
   // 获取所有节点
-  getNodes(): ProxyNode[] {
-    const stored = localStorage.getItem(this.NODES_KEY);
-    if (stored) {
-      return JSON.parse(stored);
+  async getNodes(): Promise<ProxyNode[]> {
+    try {
+      const nodes = await api.get('/clash/nodes') as any;
+      return nodes as ProxyNode[];
+    } catch (error) {
+      console.error('Failed to fetch nodes from API, using localStorage:', error);
+      const stored = localStorage.getItem(this.NODES_KEY);
+      if (stored) {
+        return JSON.parse(stored);
+      }
+      return [];
     }
-    return [];
   }
 
   // 保存节点列表
-  saveNodes(nodes: ProxyNode[]): void {
-    localStorage.setItem(this.NODES_KEY, JSON.stringify(nodes));
+  async saveNodes(nodes: ProxyNode[]): Promise<void> {
+    try {
+      await api.post('/clash/nodes', nodes);
+      localStorage.setItem(this.NODES_KEY, JSON.stringify(nodes));
+    } catch (error) {
+      console.error('Failed to save nodes to API:', error);
+      localStorage.setItem(this.NODES_KEY, JSON.stringify(nodes));
+    }
   }
 
   // 测速单个节点
   async testNode(nodeId: string): Promise<SpeedTestResult> {
-    const config = this.getConfig();
     const startTime = Date.now();
 
     try {
-      // 这里应该调用后端 API 进行实际测速
-      // 暂时模拟测速结果
-      await new Promise(resolve => setTimeout(resolve, Math.random() * 2000 + 500));
+      // 调用后端 API 进行实际测速
+      const result = await api.post('/clash/test-node', { nodeId }) as any;
+      const testResult = result as SpeedTestResult;
 
-      const delay = Date.now() - startTime;
-      const success = Math.random() > 0.1; // 90% 成功率
-
-      if (success) {
-        // 更新节点延迟信息
-        const nodes = this.getNodes();
-        const node = nodes.find(n => n.id === nodeId);
-        if (node) {
-          node.delay = delay;
-          node.lastTest = Date.now();
-          node.available = true;
-          this.saveNodes(nodes);
-        }
+      // 更新节点延迟信息
+      const nodes = await this.getNodes();
+      const node = nodes.find(n => n.id === nodeId);
+      if (node && testResult.success) {
+        node.delay = testResult.delay;
+        node.lastTest = Date.now();
+        node.available = true;
+        await this.saveNodes(nodes);
       }
 
-      return {
-        nodeId,
-        delay: success ? delay : -1,
-        success,
-        error: success ? undefined : '连接超时',
-        timestamp: Date.now(),
-      };
+      return testResult;
     } catch (error) {
       return {
         nodeId,
@@ -336,7 +351,7 @@ class ClashService {
 
   // 批量测速
   async testAllNodes(): Promise<SpeedTestResult[]> {
-    const nodes = this.getNodes();
+    const nodes = await this.getNodes();
     const results: SpeedTestResult[] = [];
 
     for (const node of nodes) {
@@ -348,32 +363,38 @@ class ClashService {
   }
 
   // 选择节点
-  selectNode(nodeId: string): void {
-    const config = this.getConfig();
+  async selectNode(nodeId: string): Promise<void> {
+    const config = await this.getConfig();
     config.selectedProxy = nodeId;
-    this.saveConfig(config);
+    await this.saveConfig(config);
   }
 
   // 获取当前选中的节点
-  getSelectedNode(): ProxyNode | null {
-    const config = this.getConfig();
+  async getSelectedNode(): Promise<ProxyNode | null> {
+    const config = await this.getConfig();
     if (!config.selectedProxy) {
       return null;
     }
-    const nodes = this.getNodes();
+    const nodes = await this.getNodes();
     return nodes.find(node => node.id === config.selectedProxy) || null;
   }
 
-  // 获取统计信息（模拟）
+  // 获取统计信息
   async getStats(): Promise<ClashStats> {
-    // 这里应该调用 Clash API 获取实际统计信息
-    return {
-      uploadTotal: Math.floor(Math.random() * 1000000000),
-      downloadTotal: Math.floor(Math.random() * 5000000000),
-      connections: Math.floor(Math.random() * 100),
-      uploadSpeed: Math.floor(Math.random() * 1000000),
-      downloadSpeed: Math.floor(Math.random() * 5000000),
-    };
+    try {
+      const stats = await api.get('/clash/stats') as any;
+      return stats as ClashStats;
+    } catch (error) {
+      console.error('Failed to fetch stats from API:', error);
+      // 返回默认值
+      return {
+        uploadTotal: 0,
+        downloadTotal: 0,
+        connections: 0,
+        uploadSpeed: 0,
+        downloadSpeed: 0,
+      };
+    }
   }
 
   // 格式化流量

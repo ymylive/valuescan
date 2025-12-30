@@ -47,14 +47,18 @@ const ProxyPage: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const loadData = () => {
-    const subs = clashService.getSubscriptions();
-    const allNodes = clashService.getNodes();
-    const selected = clashService.getSelectedNode();
+  const loadData = async () => {
+    try {
+      const subs = clashService.getSubscriptions();
+      const allNodes = await clashService.getNodes();
+      const selected = await clashService.getSelectedNode();
 
-    setSubscriptions(subs);
-    setNodes(allNodes);
-    setSelectedNode(selected);
+      setSubscriptions(subs);
+      setNodes(allNodes);
+      setSelectedNode(selected);
+    } catch (error) {
+      console.error('Failed to load data:', error);
+    }
   };
 
   const loadStats = async () => {
@@ -101,10 +105,15 @@ const ProxyPage: React.FC = () => {
     }
   };
 
-  const handleDeleteSubscription = (id: string) => {
+  const handleDeleteSubscription = async (id: string) => {
     if (confirm('确定要删除此订阅吗？')) {
-      clashService.deleteSubscription(id);
-      loadData();
+      try {
+        await clashService.deleteSubscription(id);
+        await loadData();
+      } catch (error) {
+        console.error('Failed to delete subscription:', error);
+        alert('删除订阅失败');
+      }
     }
   };
 
@@ -120,9 +129,13 @@ const ProxyPage: React.FC = () => {
     }
   };
 
-  const handleSelectNode = (node: ProxyNode) => {
-    clashService.selectNode(node.id);
-    setSelectedNode(node);
+  const handleSelectNode = async (node: ProxyNode) => {
+    try {
+      await clashService.selectNode(node.id);
+      setSelectedNode(node);
+    } catch (error) {
+      console.error('Failed to select node:', error);
+    }
   };
 
   const getFilteredAndSortedNodes = () => {

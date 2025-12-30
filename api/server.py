@@ -3873,6 +3873,24 @@ def get_clash_nodes():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/clash/stats', methods=['GET'])
+def get_clash_stats():
+    """
+    获取 Clash 统计信息
+    """
+    try:
+        stats = {
+            'uploadTotal': 0,
+            'downloadTotal': 0,
+            'connections': 0,
+            'uploadSpeed': 0,
+            'downloadSpeed': 0
+        }
+        return jsonify(stats)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     # Use socketio.run instead of app.run for WebSocket support
     port = int(os.environ.get("PORT", "5000"))
