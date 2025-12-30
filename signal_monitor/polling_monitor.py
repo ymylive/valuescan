@@ -633,16 +633,25 @@ def fetch_signals(
 
     Returns (payload, status) where status is one of: ok/expired/retry.
     """
+    logger.info("=" * 60)
+    logger.info("开始获取信号数据")
+    logger.info(f"配置的信号源数量: {len(SIGNAL_ENDPOINTS)}")
+    logger.info(f"使用代理: {proxies is not None}")
+
     combined_messages = []
     seen_keys = set()
     source_counts: Dict[str, int] = {}
     duplicate_count = 0
     statuses = []
 
-    for entry in SIGNAL_ENDPOINTS:
+    for idx, entry in enumerate(SIGNAL_ENDPOINTS, 1):
         source_name, url = entry[0], entry[1]
         method = entry[2] if len(entry) >= 3 else "GET"
         json_payload = entry[3] if len(entry) >= 4 else None
+
+        logger.info(f"[{idx}/{len(SIGNAL_ENDPOINTS)}] 正在从 [{source_name}] 获取数据...")
+        logger.info(f"  URL: {url}")
+        logger.info(f"  方法: {method}")
 
         payload, status = _fetch_from_endpoint(
             session,
@@ -656,6 +665,7 @@ def fetch_signals(
         statuses.append(status)
 
         if status == "expired":
+            logger.error(f"[{source_name}] Token已过期，需要重新登录")
             return None, "expired"
         if status != "ok" or not payload:
             logger.warning(f"[{source_name}] 未获取到有效数据，状态: {status}")
@@ -663,6 +673,8 @@ def fetch_signals(
 
         items = _extract_items_from_payload(payload)
         source_counts[source_name] = len(items)
+        logger.info(f"[{source_name}] 成功获取 {len(items)} 条信号")
+
         for item in items:
             key = _make_dedupe_key(item)
             if key in seen_keys:
@@ -672,12 +684,19 @@ def fetch_signals(
             combined_messages.append(item)
 
     if not any(status == "ok" for status in statuses):
+        logger.error("所有信号源均获取失败")
         return None, "retry"
 
     combined_messages.sort(key=_message_sort_key)
     if duplicate_count:
         logger.info(f"合并过程中跳过 {duplicate_count} 条重复信号")
-    logger.info(f"合并后返回 {len(combined_messages)} 条消息，来源计数: {source_counts}")
+
+    logger.info("=" * 60)
+    logger.info(f"✓ 信号数据获取完成")
+    logger.info(f"  总计: {len(combined_messages)} 条消息")
+    logger.info(f"  来源分布: {source_counts}")
+    logger.info(f"  去重数量: {duplicate_count}")
+    logger.info("=" * 60)
 
     aggregated_payload = {
         "code": 200,
