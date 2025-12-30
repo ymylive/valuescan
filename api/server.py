@@ -3647,12 +3647,12 @@ def refresh_valuescan_token():
     try:
         data = request.get_json() or {}
         force = data.get('force', False)
-        
+
         sys.path.insert(0, str(BASE_DIR / 'signal_monitor'))
         from token_refresher import refresh_if_needed, get_token_expiry, is_token_valid
-        
+
         success = refresh_if_needed(headless=True, force=force)
-        
+
         if success:
             expiry = get_token_expiry()
             return jsonify({
@@ -3671,6 +3671,101 @@ def refresh_valuescan_token():
             'success': False,
             'error': str(e)
         }), 500
+
+
+# ==================== AI Trading API Routes ====================
+
+@app.route('/api/my-traders', methods=['GET'])
+def get_my_traders():
+    """
+    获取当前用户的所有交易者
+    """
+    try:
+        traders = [
+            {
+                'trader_id': 'trader_001',
+                'trader_name': 'AI Trader 1',
+                'ai_model': 'claude-3-opus',
+                'exchange_id': 'binance',
+                'is_running': True,
+                'initial_balance': 10000.0,
+                'strategy_id': 'balanced_day',
+                'strategy_name': '平衡日内策略'
+            }
+        ]
+        return jsonify(traders)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/account', methods=['GET'])
+def get_account():
+    """
+    获取账户信息
+    """
+    try:
+        trader_id = request.args.get('trader_id', '')
+        account = {
+            'total_equity': 10500.0,
+            'available_balance': 8500.0,
+            'total_pnl': 500.0,
+            'total_pnl_pct': 5.0,
+            'wallet_balance': 10000.0,
+            'position_count': 2,
+            'margin_used_pct': 20.0
+        }
+        return jsonify(account)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/positions', methods=['GET'])
+def get_positions():
+    """
+    获取当前持仓
+    """
+    try:
+        trader_id = request.args.get('trader_id', '')
+        positions = []
+        return jsonify(positions)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/decisions', methods=['GET'])
+def get_decisions():
+    """
+    获取交易决策历史
+    """
+    try:
+        trader_id = request.args.get('trader_id', '')
+        decisions = []
+        return jsonify(decisions)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/statistics', methods=['GET'])
+def get_statistics():
+    """
+    获取性能统计
+    """
+    try:
+        trader_id = request.args.get('trader_id', '')
+        stats = {
+            'total_trades': 0,
+            'winning_trades': 0,
+            'losing_trades': 0,
+            'win_rate': 0.0,
+            'total_pnl': 0.0,
+            'total_pnl_pct': 0.0,
+            'avg_win': 0.0,
+            'avg_loss': 0.0,
+            'profit_factor': 0.0
+        }
+        return jsonify(stats)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':
