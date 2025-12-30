@@ -8,7 +8,7 @@ class LoggerService {
   private config: LoggerConfig = {
     enabled: true,
     level: LogLevel.INFO,
-    maxEntries: 1000,
+    maxEntries: 2000,
     persistToLocalStorage: true,
     sendToBackend: false,
     consoleOutput: true,
