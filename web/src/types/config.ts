@@ -21,6 +21,34 @@ export interface AIServiceConfig {
   enable_ai_ab_testing: boolean;
   ai_ab_test_ratio: number;
 
+  // AI Signal Analysis (单币简评)
+  ai_signal_analysis_api_key: string;
+  ai_signal_analysis_api_url: string;
+  ai_signal_analysis_model: string;
+  enable_ai_signal_analysis_service: boolean;
+  ai_signal_analysis_interval: number;
+  ai_signal_analysis_lookback_hours: number;
+
+  // AI Key Levels (主力位分析)
+  ai_key_levels_api_key: string;
+  ai_key_levels_api_url: string;
+  ai_key_levels_model: string;
+  enable_ai_key_levels_service: boolean;
+
+  // AI Overlays (图表叠加层)
+  ai_overlays_api_key: string;
+  ai_overlays_api_url: string;
+  ai_overlays_model: string;
+  enable_ai_overlays_service: boolean;
+
+  // AI Market Analysis (市场宏观分析)
+  ai_market_analysis_api_key: string;
+  ai_market_analysis_api_url: string;
+  ai_market_analysis_model: string;
+  enable_ai_market_analysis: boolean;
+  ai_market_analysis_interval: number;
+  ai_market_analysis_lookback_hours: number;
+
   // AI Summary Proxy
   ai_summary_proxy: string;
 }

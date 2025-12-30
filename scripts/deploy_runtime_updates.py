@@ -1,22 +1,11 @@
 #!/usr/bin/env python3
 """
-Deploy runtime fixes to the ValueScan VPS.
+Deploy the ValueScan frontend + backend to the VPS.
 
 Uploads:
-- api/server.py
-- api/performance_db.py
-- ai_trading/api/routes.py
-- ai_trading/engine/market_analyzer.py
-- ai_trading/llm/api_routes.py
-- ai_trading/llm/client.py
-- ai_trading/llm/config.py
-- ai_trading/llm/adapters/base.py
-- ai_trading/tuning/database.py
-- binance_trader/futures_trader.py
-- binance_trader/trailing_stop.py
-- binance_trader/config.example.py
-- simulation/api_routes.py
-- signal_monitor/database.py
+- backend service directories (filtered, excludes runtime data/secrets)
+- frontend sources (without node_modules/dist)
+- select root files + systemd unit templates
 - web/dist (to /root/valuescan/web/dist and optionally /opt/valuescan/web/dist)
 - web/nofx_dist (to /root/valuescan/web/nofx_dist)
 - web/nofx_root_dist (to /opt/nofx/web/dist when present)
@@ -30,10 +19,14 @@ Credentials (recommended via env vars):
 - VALUESCAN_VPS_HOST (default: 82.158.88.34)
 - VALUESCAN_VPS_USER (default: root)
 - VALUESCAN_VPS_PASSWORD (required; fallback attempts to parse local deploy scripts)
+- VALUESCAN_VPS_PROJECT_ROOT (optional; auto-detected when missing)
+- VALUESCAN_VPS_WEB_ROOT (optional; auto-detected when missing)
+- VALUESCAN_VPS_WEB_MIRROR_ROOT (optional; auto-detected when missing)
 """
 
 from __future__ import annotations
 
+import fnmatch
 import os
 import re
 import socket
@@ -49,9 +42,10 @@ from paramiko.ssh_exception import AuthenticationException, BadAuthenticationTyp
 DEFAULT_HOST = "82.158.88.34"
 DEFAULT_USER = "root"
 DEFAULT_PROJECT_ROOT = "/root/valuescan"
+DEFAULT_WEB_ROOT = "/var/www/valuescan"
 DEFAULT_WEB_MIRROR_ROOT = "/opt/valuescan/web/dist"
 DEFAULT_OPT_ROOT = "/opt/valuescan"
-DEFAULT_NGINX_DOMAIN_CONF = "/etc/nginx/conf.d/cornna.abrdns.com.conf"
+DEFAULT_NGINX_DOMAIN_CONF = "/etc/nginx/conf.d/valuescan.conf"
 
 
 def _resolve_key_file() -> str:
@@ -146,6 +140,136 @@ def _sftp_put_mkdir(sftp: paramiko.SFTPClient, local: Path, remote: str) -> None
             except Exception:
                 pass
     sftp.put(str(local), remote)
+
+
+def _is_excluded(path: str, patterns: list[str]) -> bool:
+    for pattern in patterns:
+        if fnmatch.fnmatch(path, pattern):
+            return True
+    return False
+
+
+def _remote_dir_exists(ssh: paramiko.SSHClient, path: str) -> bool:
+    if not path:
+        return False
+    result = _exec(ssh, f"test -d {path} && echo OK || echo NO", timeout=15)
+    return result.strip() == "OK"
+
+
+def _detect_project_root_from_systemd(ssh: paramiko.SSHClient) -> str:
+    output = _exec(
+        ssh,
+        "grep -R -h -E '/(opt|root)/valuescan' /etc/systemd/system/valuescan-*.service "
+        "2>/dev/null | head -50",
+        timeout=15,
+    )
+    if "/opt/valuescan" in output:
+        return "/opt/valuescan"
+    if "/root/valuescan" in output:
+        return "/root/valuescan"
+    return ""
+
+
+def _resolve_project_root(ssh: paramiko.SSHClient, project_root: str) -> str:
+    if _remote_dir_exists(ssh, project_root):
+        return project_root
+
+    detected = _detect_project_root_from_systemd(ssh)
+    if detected and _remote_dir_exists(ssh, detected):
+        return detected
+
+    for candidate in ("/root/valuescan", "/opt/valuescan"):
+        if _remote_dir_exists(ssh, candidate):
+            return candidate
+
+    return project_root
+
+
+def _pick_web_root(
+    ssh: paramiko.SSHClient,
+    project_root: str,
+    preferred: str,
+    mirror_preferred: str,
+) -> tuple[str, str | None]:
+    if preferred:
+        web_root = preferred
+    elif _remote_dir_exists(ssh, DEFAULT_WEB_ROOT):
+        web_root = DEFAULT_WEB_ROOT
+    elif _remote_dir_exists(ssh, DEFAULT_WEB_MIRROR_ROOT):
+        web_root = DEFAULT_WEB_MIRROR_ROOT
+    elif _remote_dir_exists(ssh, f"{project_root}/web/dist"):
+        web_root = f"{project_root}/web/dist"
+    else:
+        web_root = DEFAULT_WEB_ROOT
+
+    mirror_root = mirror_preferred or ""
+    if not mirror_root and web_root != DEFAULT_WEB_MIRROR_ROOT:
+        if _remote_dir_exists(ssh, DEFAULT_WEB_MIRROR_ROOT):
+            mirror_root = DEFAULT_WEB_MIRROR_ROOT
+
+    return web_root, (mirror_root or None)
+
+
+def _sync_tree_filtered(
+    ssh: paramiko.SSHClient,
+    sftp: paramiko.SFTPClient,
+    local_root: Path,
+    remote_root: str,
+    repo_root: Path,
+    exclude_globs: list[str],
+) -> None:
+    if not local_root.exists():
+        print(f"SKIP missing local path: {local_root}")
+        return
+    if local_root.is_file():
+        rel = local_root.relative_to(repo_root).as_posix()
+        if _is_excluded(rel, exclude_globs):
+            print(f"SKIP excluded file: {rel}")
+            return
+        _sftp_put_mkdir(sftp, local_root, remote_root)
+        return
+
+    _exec(ssh, f"mkdir -p {remote_root}", timeout=120)
+    for path in local_root.rglob("*"):
+        if path.is_dir():
+            continue
+        rel_repo = path.relative_to(repo_root).as_posix()
+        if _is_excluded(rel_repo, exclude_globs):
+            continue
+        rel = path.relative_to(local_root).as_posix()
+        remote_path = f"{remote_root}/{rel}"
+        _sftp_put_mkdir(sftp, path, remote_path)
+
+
+def _sync_root_files(
+    sftp: paramiko.SFTPClient,
+    repo_root: Path,
+    project_root: str,
+    exclude_globs: list[str],
+) -> None:
+    root_files = [
+        Path("requirements.txt"),
+        Path("LICENSE"),
+        Path("THIRD_PARTY_NOTICES.md"),
+        Path("go.mod"),
+        Path("go.sum"),
+        Path("main.go"),
+        Path("docker-compose.yml"),
+        Path("keepalive_main.py"),
+        Path("token_refresher.py"),
+        Path("ipc_config.py"),
+    ]
+    root_files.extend(sorted(repo_root.glob("*.service")))
+    for path in root_files:
+        full_path = path if path.is_absolute() else (repo_root / path)
+        if not full_path.exists():
+            continue
+        rel_repo = full_path.relative_to(repo_root).as_posix()
+        if _is_excluded(rel_repo, exclude_globs):
+            continue
+        remote_path = f"{project_root}/{rel_repo}"
+        _sftp_put_mkdir(sftp, full_path, remote_path)
+        print(f"  OK {full_path} -> {remote_path}")
 
 def _sftp_read_text(sftp: paramiko.SFTPClient, remote_path: str) -> str:
     try:
@@ -348,7 +472,16 @@ def _maybe_build_web_dist() -> None:
     try:
         import subprocess
 
-        subprocess.run(["npm", "run", "build"], cwd=str(web_dir), check=True, timeout=900)
+        build_cmd = (os.getenv("VALUESCAN_WEB_BUILD_CMD") or "").strip()
+        if build_cmd:
+            subprocess.run(build_cmd, cwd=str(web_dir), check=True, timeout=900, shell=True)
+            return
+
+        cmd = ["npm", "run", "build"]
+        if os.name == "nt":
+            cmd = ["cmd", "/c", "npm", "run", "build"]
+
+        subprocess.run(cmd, cwd=str(web_dir), check=True, timeout=900)
     except Exception as exc:
         print(f"Web build skipped/failed: {exc}")
 
@@ -527,10 +660,23 @@ def main() -> None:
     host = os.environ.get("VALUESCAN_VPS_HOST", DEFAULT_HOST)
     user = os.environ.get("VALUESCAN_VPS_USER", DEFAULT_USER)
     project_root = os.environ.get("VALUESCAN_VPS_PROJECT_ROOT", DEFAULT_PROJECT_ROOT)
-    web_mirror_root = os.environ.get("VALUESCAN_VPS_WEB_MIRROR_ROOT", DEFAULT_WEB_MIRROR_ROOT)
+    web_root = os.environ.get("VALUESCAN_VPS_WEB_ROOT", "").strip()
+    web_mirror_root = os.environ.get("VALUESCAN_VPS_WEB_MIRROR_ROOT", "").strip()
     opt_root = os.environ.get("VALUESCAN_VPS_OPT_ROOT", DEFAULT_OPT_ROOT)
     domain_conf = os.environ.get("VALUESCAN_NGINX_DOMAIN_CONF", DEFAULT_NGINX_DOMAIN_CONF)
-    domain_name = os.environ.get("VALUESCAN_NGINX_DOMAIN", "cornna.abrdns.com").strip()
+    domain_name = os.environ.get("VALUESCAN_NGINX_DOMAIN", host).strip()
+    configure_nginx = (os.environ.get("VALUESCAN_CONFIGURE_NGINX") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    sync_backend = (os.environ.get("VALUESCAN_SYNC_BACKEND") or "1").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
     proxy_subscribe_url = (
         os.environ.get("PROXY_SUBSCRIBE_URL")
         or os.environ.get("VALUESCAN_PROXY_SUBSCRIBE_URL")
@@ -564,64 +710,91 @@ def main() -> None:
     sftp = ssh.open_sftp()
 
     try:
-        print("Uploading runtime files...")
-        file_uploads = [
-            (Path("requirements.txt"), f"{project_root}/requirements.txt"),
-            (Path("LICENSE"), f"{project_root}/LICENSE"),
-            (Path("THIRD_PARTY_NOTICES.md"), f"{project_root}/THIRD_PARTY_NOTICES.md"),
-            # systemd unit templates (installed to /etc/systemd/system below)
-            (Path("valuescan-api.service"), f"{project_root}/valuescan-api.service"),
-            (Path("valuescan-signal.service"), f"{project_root}/valuescan-signal.service"),
-            (Path("valuescan-trader.service"), f"{project_root}/valuescan-trader.service"),
-            (Path("proxy-checker.service"), f"{project_root}/proxy-checker.service"),
-            (Path("scripts/valuescan-token-refresher.service"), f"{project_root}/valuescan-token-refresher.service"),
-            (Path("api/server.py"), f"{project_root}/api/server.py"),
-            (Path("api/nofx_compat.py"), f"{project_root}/api/nofx_compat.py"),
-            # Binance trader module - core trading files
-            (Path("binance_trader/futures_main.py"), f"{project_root}/binance_trader/futures_main.py"),
-            (Path("binance_trader/futures_trader.py"), f"{project_root}/binance_trader/futures_trader.py"),
-            (Path("binance_trader/trailing_stop.py"), f"{project_root}/binance_trader/trailing_stop.py"),
-            (Path("binance_trader/trading_signal_processor.py"), f"{project_root}/binance_trader/trading_signal_processor.py"),
-            (Path("binance_trader/signal_aggregator.py"), f"{project_root}/binance_trader/signal_aggregator.py"),
-            (Path("binance_trader/risk_manager.py"), f"{project_root}/binance_trader/risk_manager.py"),
-            (Path("binance_trader/config.example.py"), f"{project_root}/binance_trader/config.example.py"),
-            (Path("binance_trader/__init__.py"), f"{project_root}/binance_trader/__init__.py"),
-            # Signal monitor module
-            (Path("signal_monitor/movement_list_cache.py"), f"{project_root}/signal_monitor/movement_list_cache.py"),
-            (Path("signal_monitor/api_monitor.py"), f"{project_root}/signal_monitor/api_monitor.py"),
-            (Path("signal_monitor/http_api_login.py"), f"{project_root}/signal_monitor/http_api_login.py"),
-            (Path("signal_monitor/http_login.py"), f"{project_root}/signal_monitor/http_login.py"),
-            (Path("signal_monitor/start_polling.py"), f"{project_root}/signal_monitor/start_polling.py"),
-            (Path("signal_monitor/polling_monitor.py"), f"{project_root}/signal_monitor/polling_monitor.py"),
-            # Scripts
-            (Path("scripts/valuescan_futures_bridge.py"), f"{project_root}/scripts/valuescan_futures_bridge.py"),
-            (Path("scripts/build_nofx_dev_web.sh"), f"{project_root}/scripts/build_nofx_dev_web.sh"),
-            # Sync script
-            (Path("sync_to_remote.py"), f"{project_root}/sync_to_remote.py"),
-            # IPC config
-            (Path("ipc_config.py"), f"{project_root}/ipc_config.py"),
-            # Trader compatibility entrypoint
-            (Path("binance_trader/ipc_server.py"), f"{project_root}/binance_trader/ipc_server.py"),
-            # Proxy manager
-            (Path("proxy_manager/node_checker.py"), f"{project_root}/proxy_manager/node_checker.py"),
-            (Path("api/performance_db.py"), f"{project_root}/api/performance_db.py"),
-            (Path("ai_trading/api/routes.py"), f"{project_root}/ai_trading/api/routes.py"),
-            (Path("ai_trading/engine/market_analyzer.py"), f"{project_root}/ai_trading/engine/market_analyzer.py"),
-            (Path("ai_trading/llm/api_routes.py"), f"{project_root}/ai_trading/llm/api_routes.py"),
-            (Path("ai_trading/llm/client.py"), f"{project_root}/ai_trading/llm/client.py"),
-            (Path("ai_trading/llm/config.py"), f"{project_root}/ai_trading/llm/config.py"),
-            (Path("ai_trading/llm/adapters/base.py"), f"{project_root}/ai_trading/llm/adapters/base.py"),
-            (Path("ai_trading/llm/adapters/openai_compatible_adapter.py"), f"{project_root}/ai_trading/llm/adapters/openai_compatible_adapter.py"),
-            # Runtime helper scripts live in /opt on the VPS
-            (Path("token_refresher.py"), f"{opt_root}/token_refresher.py"),
+        project_root = _resolve_project_root(ssh, project_root)
+        web_root, web_mirror_root = _pick_web_root(ssh, project_root, web_root, web_mirror_root)
+        repo_root = Path(".").resolve()
+
+        print(f"Project root: {project_root}")
+        print(f"Web root: {web_root}")
+        if web_mirror_root:
+            print(f"Web mirror: {web_mirror_root}")
+
+        exclude_globs = [
+            ".git/**",
+            "**/.git/**",
+            "**/__pycache__/**",
+            "**/*.pyc",
+            "**/*.pyo",
+            "**/.pytest_cache/**",
+            "**/.mypy_cache/**",
+            "**/.ruff_cache/**",
+            "**/node_modules/**",
+            "**/.vite/**",
+            "**/dist/**",
+            "**/nofx_dist/**",
+            "**/nofx_root_dist/**",
+            "**/logs/**",
+            "**/*.log",
+            "**/data/**",
+            "**/*.db",
+            "**/*.sqlite",
+            "**/*.sqlite3",
+            "**/valuescan_localstorage*.json",
+            "**/valuescan_sessionstorage*.json",
+            "**/valuescan_cookies*.json",
+            "**/valuescan_credentials*.json",
+            "**/*.env",
+            "config/*.env",
+            "config/valuescan.env",
+            "output/**",
+            "screenshots/**",
+            "docs/**",
         ]
 
-        for local, remote in file_uploads:
-            if local.exists():
-                _sftp_put_mkdir(sftp, local, remote)
-                print(f"  OK {local} -> {remote}")
-            else:
-                print(f"  SKIP missing local file: {local}")
+        if sync_backend:
+            print("Uploading backend + frontend sources...")
+            _sync_root_files(sftp, repo_root, project_root, exclude_globs)
+
+            sync_dirs = [
+                "api",
+                "signal_monitor",
+                "binance_trader",
+                "keepalive",
+                "telegram_copytrade",
+                "simulation",
+                "proxy_manager",
+                "manager",
+                "market",
+                "decision",
+                "provider",
+                "trader",
+                "backtest",
+                "mcp",
+                "netutil",
+                "store",
+                "config",
+                "scripts",
+                "web",
+                "nginx",
+                "docker",
+                "ai_trading",
+            ]
+
+            for name in sync_dirs:
+                local_dir = repo_root / name
+                if not local_dir.exists():
+                    print(f"  SKIP missing dir: {local_dir}")
+                    continue
+                remote_dir = f"{project_root}/{name}"
+                _sync_tree_filtered(ssh, sftp, local_dir, remote_dir, repo_root, exclude_globs)
+                print(f"  OK {local_dir} -> {remote_dir}")
+        else:
+            print("Backend/source sync disabled (VALUESCAN_SYNC_BACKEND=0).")
+
+        token_refresher = Path("token_refresher.py")
+        if opt_root and token_refresher.exists():
+            _sftp_put_mkdir(sftp, token_refresher, f"{opt_root}/token_refresher.py")
+            print(f"  OK {token_refresher} -> {opt_root}/token_refresher.py")
 
         if proxy_subscribe_url:
             escaped = proxy_subscribe_url.replace("'", "'\"'\"'")
@@ -638,27 +811,14 @@ def main() -> None:
         else:
             print("PROXY_SUBSCRIBE_URL not provided; skip proxy subscription update.")
 
-        _sync_tree(
-            ssh,
-            sftp,
-            Path("ai_trading/exchanges"),
-            f"{project_root}/ai_trading/exchanges",
-            glob_pattern="*.py",
-        )
-        _sync_tree(
-            ssh,
-            sftp,
-            Path("ai_trading/llm/adapters"),
-            f"{project_root}/ai_trading/llm/adapters",
-            glob_pattern="*.py",
-        )
-        print("  OK synced packages: ai_trading/exchanges, ai_trading/llm/adapters")
-
         print("Uploading web dist...")
         _maybe_build_web_dist()
         local_dist = Path("web/dist")
         _sync_dist(ssh, sftp, local_dist, f"{project_root}/web/dist")
         print(f"  OK {local_dist} -> {project_root}/web/dist")
+        if web_root and web_root != f"{project_root}/web/dist":
+            _sync_dist(ssh, sftp, local_dist, web_root)
+            print(f"  OK {local_dist} -> {web_root}")
 
         local_nofx_dist = Path("web/nofx_dist")
         if local_nofx_dist.exists():
@@ -685,19 +845,15 @@ def main() -> None:
             else:
                 print("NOFX root dist not found (web/nofx_root_dist). Skip upload.")
 
-        # Mirror dist to /opt tree if present (some deployments use nginx/static there).
-        mirror_exists = True
-        try:
-            _exec(ssh, f"test -d {web_mirror_root} && echo OK || echo NO", timeout=30)
-        except Exception:
-            mirror_exists = False
-
-        if mirror_exists:
+        if web_mirror_root and web_mirror_root not in {web_root, f"{project_root}/web/dist"}:
             _sync_dist(ssh, sftp, local_dist, web_mirror_root)
             print(f"  OK {local_dist} -> {web_mirror_root}")
 
-        _configure_nginx(ssh, web_mirror_root, host)
-        _patch_domain_nginx_conf(ssh, sftp, conf_path=domain_conf, server_name=domain_name)
+        if configure_nginx:
+            _configure_nginx(ssh, web_root, host)
+            _patch_domain_nginx_conf(ssh, sftp, conf_path=domain_conf, server_name=domain_name)
+        else:
+            print("Skipping nginx config (set VALUESCAN_CONFIGURE_NGINX=1 to enable).")
 
         print("Installing/Updating Python dependencies...")
         print(_install_requirements(ssh, project_root))

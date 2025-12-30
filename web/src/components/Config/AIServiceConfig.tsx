@@ -279,6 +279,334 @@ export const AIServiceConfigComponent: React.FC<AIServiceConfigProps> = ({ confi
           </div>
         </div>
       </GlassCard>
+
+      {/* AI Signal Analysis (单币简评) */}
+      <GlassCard className="p-6">
+        <div className="flex items-center gap-3 mb-6">
+          <Brain className="text-green-500" size={24} />
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white">AI 单币简评服务</h3>
+        </div>
+
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="enable_ai_signal_analysis_service"
+              checked={config.enable_ai_signal_analysis_service}
+              onChange={(e) => handleChange('enable_ai_signal_analysis_service', e.target.checked)}
+              className="w-5 h-5 rounded border-gray-300 text-green-600 focus:ring-green-500"
+            />
+            <label htmlFor="enable_ai_signal_analysis_service" className="text-gray-700 dark:text-gray-300 font-medium">
+              启用 AI 单币简评
+            </label>
+          </div>
+
+          {config.enable_ai_signal_analysis_service && (
+            <div className="space-y-4 pl-8 border-l-2 border-green-500/30">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  API 端点 URL
+                </label>
+                <Input
+                  type="text"
+                  value={config.ai_signal_analysis_api_url}
+                  onChange={(e) => handleChange('ai_signal_analysis_api_url', e.target.value)}
+                  placeholder="https://api.example.com/v1"
+                  className="w-full"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  API 密钥
+                </label>
+                <Input
+                  type="password"
+                  value={config.ai_signal_analysis_api_key}
+                  onChange={(e) => handleChange('ai_signal_analysis_api_key', e.target.value)}
+                  placeholder="sk-..."
+                  className="w-full"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  模型名称
+                </label>
+                <Input
+                  type="text"
+                  value={config.ai_signal_analysis_model}
+                  onChange={(e) => handleChange('ai_signal_analysis_model', e.target.value)}
+                  placeholder="gpt-4, claude-3-opus, etc."
+                  className="w-full"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    生成间隔（秒）
+                  </label>
+                  <Input
+                    type="number"
+                    value={config.ai_signal_analysis_interval}
+                    onChange={(e) => handleChange('ai_signal_analysis_interval', parseInt(e.target.value))}
+                    min={300}
+                    max={86400}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">AI 简评生成间隔</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    回溯时间（小时）
+                  </label>
+                  <Input
+                    type="number"
+                    value={config.ai_signal_analysis_lookback_hours}
+                    onChange={(e) => handleChange('ai_signal_analysis_lookback_hours', parseInt(e.target.value))}
+                    min={1}
+                    max={168}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">分析历史数据时长</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </GlassCard>
+
+      {/* AI Key Levels (主力位分析) */}
+      <GlassCard className="p-6">
+        <div className="flex items-center gap-3 mb-6">
+          <TrendingUp className="text-orange-500" size={24} />
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white">AI 主力位分析</h3>
+        </div>
+
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="enable_ai_key_levels_service"
+              checked={config.enable_ai_key_levels_service}
+              onChange={(e) => handleChange('enable_ai_key_levels_service', e.target.checked)}
+              className="w-5 h-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+            />
+            <label htmlFor="enable_ai_key_levels_service" className="text-gray-700 dark:text-gray-300 font-medium">
+              启用 AI 主力位分析
+            </label>
+          </div>
+
+          {config.enable_ai_key_levels_service && (
+            <div className="space-y-4 pl-8 border-l-2 border-orange-500/30">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  API 端点 URL
+                </label>
+                <Input
+                  type="text"
+                  value={config.ai_key_levels_api_url}
+                  onChange={(e) => handleChange('ai_key_levels_api_url', e.target.value)}
+                  placeholder="https://api.example.com/v1"
+                  className="w-full"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  API 密钥
+                </label>
+                <Input
+                  type="password"
+                  value={config.ai_key_levels_api_key}
+                  onChange={(e) => handleChange('ai_key_levels_api_key', e.target.value)}
+                  placeholder="sk-..."
+                  className="w-full"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  模型名称
+                </label>
+                <Input
+                  type="text"
+                  value={config.ai_key_levels_model}
+                  onChange={(e) => handleChange('ai_key_levels_model', e.target.value)}
+                  placeholder="gpt-4, claude-3-opus, etc."
+                  className="w-full"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </GlassCard>
+
+      {/* AI Overlays (图表叠加层) */}
+      <GlassCard className="p-6">
+        <div className="flex items-center gap-3 mb-6">
+          <Zap className="text-cyan-500" size={24} />
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white">AI 图表叠加层</h3>
+        </div>
+
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="enable_ai_overlays_service"
+              checked={config.enable_ai_overlays_service}
+              onChange={(e) => handleChange('enable_ai_overlays_service', e.target.checked)}
+              className="w-5 h-5 rounded border-gray-300 text-cyan-600 focus:ring-cyan-500"
+            />
+            <label htmlFor="enable_ai_overlays_service" className="text-gray-700 dark:text-gray-300 font-medium">
+              启用 AI 图表叠加层
+            </label>
+          </div>
+
+          {config.enable_ai_overlays_service && (
+            <div className="space-y-4 pl-8 border-l-2 border-cyan-500/30">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  API 端点 URL
+                </label>
+                <Input
+                  type="text"
+                  value={config.ai_overlays_api_url}
+                  onChange={(e) => handleChange('ai_overlays_api_url', e.target.value)}
+                  placeholder="https://api.example.com/v1"
+                  className="w-full"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  API 密钥
+                </label>
+                <Input
+                  type="password"
+                  value={config.ai_overlays_api_key}
+                  onChange={(e) => handleChange('ai_overlays_api_key', e.target.value)}
+                  placeholder="sk-..."
+                  className="w-full"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  模型名称
+                </label>
+                <Input
+                  type="text"
+                  value={config.ai_overlays_model}
+                  onChange={(e) => handleChange('ai_overlays_model', e.target.value)}
+                  placeholder="gpt-4, claude-3-opus, etc."
+                  className="w-full"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </GlassCard>
+
+      {/* AI Market Analysis (市场宏观分析) */}
+      <GlassCard className="p-6">
+        <div className="flex items-center gap-3 mb-6">
+          <Brain className="text-indigo-500" size={24} />
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white">AI 市场宏观分析</h3>
+        </div>
+
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="enable_ai_market_analysis"
+              checked={config.enable_ai_market_analysis}
+              onChange={(e) => handleChange('enable_ai_market_analysis', e.target.checked)}
+              className="w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+            />
+            <label htmlFor="enable_ai_market_analysis" className="text-gray-700 dark:text-gray-300 font-medium">
+              启用 AI 市场宏观分析
+            </label>
+          </div>
+
+          {config.enable_ai_market_analysis && (
+            <div className="space-y-4 pl-8 border-l-2 border-indigo-500/30">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  API 端点 URL
+                </label>
+                <Input
+                  type="text"
+                  value={config.ai_market_analysis_api_url}
+                  onChange={(e) => handleChange('ai_market_analysis_api_url', e.target.value)}
+                  placeholder="https://api.example.com/v1"
+                  className="w-full"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  API 密钥
+                </label>
+                <Input
+                  type="password"
+                  value={config.ai_market_analysis_api_key}
+                  onChange={(e) => handleChange('ai_market_analysis_api_key', e.target.value)}
+                  placeholder="sk-..."
+                  className="w-full"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  模型名称
+                </label>
+                <Input
+                  type="text"
+                  value={config.ai_market_analysis_model}
+                  onChange={(e) => handleChange('ai_market_analysis_model', e.target.value)}
+                  placeholder="gpt-4, claude-3-opus, etc."
+                  className="w-full"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    生成间隔（秒）
+                  </label>
+                  <Input
+                    type="number"
+                    value={config.ai_market_analysis_interval}
+                    onChange={(e) => handleChange('ai_market_analysis_interval', parseInt(e.target.value))}
+                    min={300}
+                    max={86400}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">市场分析生成间隔</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    回溯时间（小时）
+                  </label>
+                  <Input
+                    type="number"
+                    value={config.ai_market_analysis_lookback_hours}
+                    onChange={(e) => handleChange('ai_market_analysis_lookback_hours', parseInt(e.target.value))}
+                    min={1}
+                    max={168}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">分析历史数据时长</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </GlassCard>
     </div>
   );
 };

@@ -1,13 +1,17 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useLocation, useParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ThemeProvider } from './context/ThemeContext';
+import { ToastProvider } from './components/Common/Toast';
 import { MainLayout } from './components/Layout/MainLayout';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const ConfigurationPage = lazy(() => import('./pages/ConfigurationPage'));
 const ProxyPage = lazy(() => import('./pages/ProxyPage'));
 const PositionMonitor = lazy(() => import('./pages/PositionMonitor'));
+const TradingHistory = lazy(() => import('./pages/TradingHistory'));
+const PerformanceStats = lazy(() => import('./pages/PerformanceStats'));
+const TraderDetails = lazy(() => import('./pages/TraderDetails'));
 
 const LoadingSpinner = () => (
   <div className="flex items-center justify-center h-64">
@@ -18,6 +22,11 @@ const LoadingSpinner = () => (
     />
   </div>
 );
+
+const TraderDetailsWrapper = () => {
+  const { traderId } = useParams<{ traderId: string }>();
+  return <TraderDetails traderId={traderId || ''} />;
+};
 
 const pageVariants = {
   initial: { opacity: 0, y: 20 },
@@ -89,6 +98,45 @@ function AnimatedRoutes() {
             </Suspense>
           </motion.div>
         } />
+        <Route path="/trading-history" element={
+          <motion.div
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            variants={pageVariants}
+            transition={pageTransition}
+          >
+            <Suspense fallback={<LoadingSpinner />}>
+              <TradingHistory />
+            </Suspense>
+          </motion.div>
+        } />
+        <Route path="/performance" element={
+          <motion.div
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            variants={pageVariants}
+            transition={pageTransition}
+          >
+            <Suspense fallback={<LoadingSpinner />}>
+              <PerformanceStats />
+            </Suspense>
+          </motion.div>
+        } />
+        <Route path="/trader/:traderId" element={
+          <motion.div
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            variants={pageVariants}
+            transition={pageTransition}
+          >
+            <Suspense fallback={<LoadingSpinner />}>
+              <TraderDetailsWrapper />
+            </Suspense>
+          </motion.div>
+        } />
       </Routes>
     </AnimatePresence>
   );
@@ -97,11 +145,13 @@ function AnimatedRoutes() {
 function App() {
   return (
     <ThemeProvider>
-      <Router>
-        <MainLayout>
-          <AnimatedRoutes />
-        </MainLayout>
-      </Router>
+      <ToastProvider>
+        <Router>
+          <MainLayout>
+            <AnimatedRoutes />
+          </MainLayout>
+        </Router>
+      </ToastProvider>
     </ThemeProvider>
   );
 }

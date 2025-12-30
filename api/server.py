@@ -20,7 +20,7 @@ import hashlib
 import base64
 from pathlib import Path
 from typing import Optional, Dict
-from flask import Flask, jsonify, request, send_from_directory, Response, redirect
+from flask import Flask, jsonify, request, send_from_directory, Response
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import threading
@@ -268,18 +268,6 @@ try:
 except ImportError as e:
     print(f"Exchange module not available: {e}")
     EXCHANGES_AVAILABLE = False
-
-# Register NOFX compatibility routes (so NOFX web UI can run against this Flask server)
-try:
-    from api.nofx_compat import nofx_bp
-    app.register_blueprint(nofx_bp)
-    # Also expose the NOFX endpoints under /nofx/api/* so the NOFX UI can live at
-    # /nofx without mixing routes into the main /api namespace.
-    app.register_blueprint(nofx_bp, url_prefix="/nofx", name="nofx_compat_prefixed")
-    NOFX_COMPAT_AVAILABLE = True
-except Exception as e:
-    print(f"NOFX compat routes not available: {e}")
-    NOFX_COMPAT_AVAILABLE = False
 
 SIGNAL_CONFIG = BASE_DIR / 'signal_monitor' / 'config.py'
 TRADER_CONFIG = BASE_DIR / 'binance_trader' / 'config.py'
@@ -1288,47 +1276,6 @@ def index():
     return Response(html, mimetype="text/html")
 
 
-def _nofx_ui_dist_dir() -> Path:
-    env_dir = (os.getenv("NOFX_UI_DIST_DIR") or "").strip()
-    if env_dir:
-        return Path(env_dir)
-    return BASE_DIR / "web" / "nofx_dist"
-
-
-@app.route("/nofx")
-def nofx_root():
-    return redirect("/nofx/", code=302)
-
-
-@app.route("/nofx/")
-def nofx_index():
-    dist_dir = _nofx_ui_dist_dir()
-    index_path = dist_dir / "index.html"
-    if not index_path.exists():
-        return (
-            "NOFX UI is not built. Run scripts/build_nofx_dev_web.sh (Linux) or "
-            "scripts/build_nofx_dev_web.ps1 (Windows) to generate web/nofx_dist.\n",
-            404,
-        )
-    return send_from_directory(dist_dir, "index.html")
-
-
-@app.route("/nofx/<path:path>")
-def nofx_static_files(path: str):
-    dist_dir = _nofx_ui_dist_dir()
-    if not (dist_dir / "index.html").exists():
-        return (
-            "NOFX UI is not built. Run scripts/build_nofx_dev_web.sh (Linux) or "
-            "scripts/build_nofx_dev_web.ps1 (Windows) to generate web/nofx_dist.\n",
-            404,
-        )
-
-    file_path = dist_dir / path
-    if file_path.exists() and file_path.is_file():
-        return send_from_directory(dist_dir, path)
-    return send_from_directory(dist_dir, "index.html")
-
-
 @app.route('/api/config', methods=['GET'])
 def get_config():
     """获取配置"""
@@ -1412,7 +1359,7 @@ def get_config():
     except Exception:
         pass
     return jsonify({
-        # NOFX web expects these keys from GET /api/config (extra keys are ignored).
+        # Frontend expects these keys from GET /api/config (extra keys are ignored).
         'beta_mode': False,
         'registration_enabled': True,
         'signal': signal,

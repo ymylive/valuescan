@@ -25,6 +25,21 @@ export const tradingApi = {
    */
   getTraderConfig: (id: string) => api.get(`/traders/${id}/config`),
 
+  /**
+   * Get a single trader by ID
+   */
+  getTrader: (id: string) => api.get<TraderConfig>(`/traders/${id}`),
+
+  /**
+   * Start a trader
+   */
+  startTrader: (id: string) => api.post(`/traders/${id}/start`, {}),
+
+  /**
+   * Stop a trader
+   */
+  stopTrader: (id: string) => api.post(`/traders/${id}/stop`, {}),
+
   // ==================== Account & Positions ====================
 
   /**
