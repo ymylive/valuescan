@@ -4,14 +4,9 @@ import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard,
-  Users,
-  Zap,
-  BrainCircuit,
-  Wallet,
-  MessagesSquare,
-  Settings,
   Sliders,
   Wifi,
+  TrendingUp,
   X
 } from 'lucide-react';
 import { cn } from '../Common/GlassCard';
@@ -43,14 +38,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
   const navItems = [
     { to: '/', icon: LayoutDashboard, label: t('common.dashboard') },
-    { to: '/traders', icon: Users, label: t('common.traders') },
-    { to: '/strategies', icon: Zap, label: t('common.strategies') },
-    { to: '/models', icon: BrainCircuit, label: t('common.models') },
-    { to: '/exchanges', icon: Wallet, label: t('common.exchanges') },
-    { to: '/debates', icon: MessagesSquare, label: t('common.debates') },
+    { to: '/positions', icon: TrendingUp, label: '持仓监控' },
     { to: '/proxy', icon: Wifi, label: '代理节点' },
     { to: '/configuration', icon: Sliders, label: '系统配置' },
-    { to: '/settings', icon: Settings, label: t('common.settings') },
   ];
 
   return (

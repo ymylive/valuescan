@@ -5,14 +5,9 @@ import { ThemeProvider } from './context/ThemeContext';
 import { MainLayout } from './components/Layout/MainLayout';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
-const Traders = lazy(() => import('./pages/Traders'));
-const Strategies = lazy(() => import('./pages/Strategies'));
-const Models = lazy(() => import('./pages/Models'));
-const Exchanges = lazy(() => import('./pages/Exchanges'));
-const Debates = lazy(() => import('./pages/Debates'));
-const Settings = lazy(() => import('./pages/Settings'));
 const ConfigurationPage = lazy(() => import('./pages/ConfigurationPage'));
 const ProxyPage = lazy(() => import('./pages/ProxyPage'));
+const PositionMonitor = lazy(() => import('./pages/PositionMonitor'));
 
 const LoadingSpinner = () => (
   <div className="flex items-center justify-center h-64">
@@ -55,84 +50,6 @@ function AnimatedRoutes() {
             </Suspense>
           </motion.div>
         } />
-        <Route path="/traders" element={
-          <motion.div
-            initial="initial"
-            animate="animate"
-            exit="exit"
-            variants={pageVariants}
-            transition={pageTransition}
-          >
-            <Suspense fallback={<LoadingSpinner />}>
-              <Traders />
-            </Suspense>
-          </motion.div>
-        } />
-        <Route path="/strategies" element={
-          <motion.div
-            initial="initial"
-            animate="animate"
-            exit="exit"
-            variants={pageVariants}
-            transition={pageTransition}
-          >
-            <Suspense fallback={<LoadingSpinner />}>
-              <Strategies />
-            </Suspense>
-          </motion.div>
-        } />
-        <Route path="/models" element={
-          <motion.div
-            initial="initial"
-            animate="animate"
-            exit="exit"
-            variants={pageVariants}
-            transition={pageTransition}
-          >
-            <Suspense fallback={<LoadingSpinner />}>
-              <Models />
-            </Suspense>
-          </motion.div>
-        } />
-        <Route path="/exchanges" element={
-          <motion.div
-            initial="initial"
-            animate="animate"
-            exit="exit"
-            variants={pageVariants}
-            transition={pageTransition}
-          >
-            <Suspense fallback={<LoadingSpinner />}>
-              <Exchanges />
-            </Suspense>
-          </motion.div>
-        } />
-        <Route path="/debates" element={
-          <motion.div
-            initial="initial"
-            animate="animate"
-            exit="exit"
-            variants={pageVariants}
-            transition={pageTransition}
-          >
-            <Suspense fallback={<LoadingSpinner />}>
-              <Debates />
-            </Suspense>
-          </motion.div>
-        } />
-        <Route path="/settings" element={
-          <motion.div
-            initial="initial"
-            animate="animate"
-            exit="exit"
-            variants={pageVariants}
-            transition={pageTransition}
-          >
-            <Suspense fallback={<LoadingSpinner />}>
-              <Settings />
-            </Suspense>
-          </motion.div>
-        } />
         <Route path="/configuration" element={
           <motion.div
             initial="initial"
@@ -156,6 +73,19 @@ function AnimatedRoutes() {
           >
             <Suspense fallback={<LoadingSpinner />}>
               <ProxyPage />
+            </Suspense>
+          </motion.div>
+        } />
+        <Route path="/positions" element={
+          <motion.div
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            variants={pageVariants}
+            transition={pageTransition}
+          >
+            <Suspense fallback={<LoadingSpinner />}>
+              <PositionMonitor />
             </Suspense>
           </motion.div>
         } />
