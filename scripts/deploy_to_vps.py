@@ -84,7 +84,9 @@ def main():
         ("拉取最新代码", f"cd {VPS_PATH} && git fetch origin && git reset --hard origin/master"),
         ("安装前端依赖", f"cd {VPS_PATH}/web && npm install"),
         ("构建前端", f"cd {VPS_PATH}/web && npm run build"),
-        ("重启服务", "systemctl restart valuescan-signal && systemctl restart valuescan-trader"),
+        ("重启 API 服务", "systemctl restart valuescan-api"),
+        ("重启信号监控", "systemctl restart valuescan-signal"),
+        ("重启交易机器人", "systemctl restart valuescan-trader"),
     ]
 
     success = True
@@ -103,6 +105,7 @@ def main():
         print("  ✓ 部署完成!")
         print("=" * 50)
         print("\n已重启服务:")
+        print("  - valuescan-api (API 服务)")
         print("  - valuescan-signal (信号监控)")
         print("  - valuescan-trader (交易机器人)")
         print()
