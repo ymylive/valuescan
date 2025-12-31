@@ -4072,7 +4072,51 @@ def get_clash_stats():
     """
     try:
         import requests
-        from api.clash_store import ClashStore
+
+        controller = os.getenv('VALUESCAN_CLASH_API_URL') or os.getenv(
+            'VALUESCAN_CLASH_EXTERNAL_CONTROLLER', '127.0.0.1:9090'
+        )
+        if controller.startswith('http://') or controller.startswith('https://'):
+            base_url = controller
+        else:
+            base_url = f"http://{controller}"
+
+        secret = (os.getenv('VALUESCAN_CLASH_SECRET') or '').strip()
+        headers = {}
+        if secret:
+            headers['Authorization'] = f"Bearer {secret}"
+
+        session = requests.Session()
+        session.trust_env = False
+
+        traffic = {}
+        connections_payload = {}
+        try:
+            traffic_resp = session.get(f"{base_url}/traffic", headers=headers, timeout=2)
+            if traffic_resp.ok:
+                traffic = traffic_resp.json()
+        except Exception:
+            traffic = {}
+
+        try:
+            connections_resp = session.get(f"{base_url}/connections", headers=headers, timeout=2)
+            if connections_resp.ok:
+                connections_payload = connections_resp.json()
+        except Exception:
+            connections_payload = {}
+
+        connections_list = connections_payload.get('connections') or []
+        stats = {
+            'uploadTotal': connections_payload.get('uploadTotal', 0),
+            'downloadTotal': connections_payload.get('downloadTotal', 0),
+            'connections': len(connections_list),
+            'uploadSpeed': traffic.get('up', 0),
+            'downloadSpeed': traffic.get('down', 0)
+        }
+        return jsonify(stats)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
         store = ClashStore()
         config = store.get_config()
