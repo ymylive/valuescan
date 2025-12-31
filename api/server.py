@@ -3961,13 +3961,14 @@ def update_clash_subscription():
 
         content = resp.text
 
-        # 解析节点
+        # 解析节点和策略组
         if sub_type == 'clash':
-            nodes = parse_clash_subscription(content)
+            nodes, groups = parse_clash_subscription(content)
         else:
             nodes = parse_base64_subscription(content)
+            groups = []
 
-        return jsonify({'nodes': nodes, 'count': len(nodes)})
+        return jsonify({'nodes': nodes, 'groups': groups, 'count': len(nodes)})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

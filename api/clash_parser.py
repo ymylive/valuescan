@@ -5,17 +5,18 @@ Clash 订阅解析器
 import base64
 import json
 import yaml
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 
-def parse_clash_subscription(content: str) -> List[Dict[str, Any]]:
-    """解析 Clash 订阅"""
+def parse_clash_subscription(content: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """解析 Clash 订阅，返回 (节点列表, 策略组列表)"""
     try:
         config = yaml.safe_load(content)
-        if config and 'proxies' in config:
-            return config['proxies']
+        nodes = config.get('proxies', []) if config else []
+        groups = config.get('proxy-groups', []) if config else []
+        return nodes, groups
     except Exception:
         pass
-    return []
+    return [], []
 
 def parse_base64_subscription(content: str) -> List[Dict[str, Any]]:
     """解析 Base64 订阅（V2Ray/Shadowsocks）"""

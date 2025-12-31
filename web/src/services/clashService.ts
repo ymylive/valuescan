@@ -113,6 +113,7 @@ class ClashService {
       }) as any;
 
       const nodes = result.nodes || [];
+      const groups = result.groups || [];
 
       // 更新节点列表
       const existingNodes = await this.getNodes();
@@ -126,6 +127,11 @@ class ClashService {
       }));
 
       await this.saveNodes([...filteredNodes, ...newNodes]);
+
+      // 保存策略组
+      if (groups.length > 0) {
+        await this.saveProxyGroups(groups);
+      }
 
       // 更新订阅信息
       subscription.lastUpdate = Date.now();
