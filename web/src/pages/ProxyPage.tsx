@@ -1,262 +1,76 @@
-import React, { useState, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
-import {
-  Wifi,
-  Plus,
-  RefreshCw,
-  Trash2,
-  Zap,
-  CheckCircle,
-  XCircle,
-  Activity,
-  Globe,
-  Settings,
-  Download,
-  Upload,
-} from 'lucide-react';
+import React from 'react';
+import { ExternalLink, Wifi, Copy, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
 import { GlassCard } from '../components/Common/GlassCard';
 import { Button } from '../components/Common/Button';
-import { Input } from '../components/Common/Input';
-import { Modal } from '../components/Common/Modal';
-import { clashService } from '../services/clashService';
-import { ProxyNode, Subscription, ClashStats } from '../types/clash';
-import { logger } from '../services/loggerService';
-import ProxyGroupCard from '../components/Proxy/ProxyGroupCard';
-import ProxyGroupModal from '../components/Proxy/ProxyGroupModal';
+
+interface ClashServiceStatus {
+  running: boolean;
+  port: number;
+  api_url: string;
+  error?: string;
+}
 
 const ProxyPage: React.FC = () => {
-  const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<'nodes' | 'groups'>('nodes');
-  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
-  const [nodes, setNodes] = useState<ProxyNode[]>([]);
-  const [proxyGroups, setProxyGroups] = useState<any[]>([]);
-  const [selectedNode, setSelectedNode] = useState<ProxyNode | null>(null);
-  const [stats, setStats] = useState<ClashStats | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [showGroupModal, setShowGroupModal] = useState(false);
-  const [editingGroup, setEditingGroup] = useState<any>(null);
-  const [filterText, setFilterText] = useState('');
-  const [sortBy, setSortBy] = useState<'name' | 'delay'>('name');
+  const [copied, setCopied] = React.useState(false);
+  const [serviceStatus, setServiceStatus] = React.useState<ClashServiceStatus | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [checking, setChecking] = React.useState(true);
 
-  // 新订阅表单
-  const [newSubName, setNewSubName] = useState('');
-  const [newSubUrl, setNewSubUrl] = useState('');
-  const [newSubType, setNewSubType] = useState<'clash' | 'v2ray' | 'shadowsocks'>('clash');
+  const clashApiUrl = `${window.location.protocol}//${window.location.host}/clash-api`;
+  const metacubexUrl = 'https://metacubex.github.io/metacubexd/';
 
-  useEffect(() => {
-    loadData();
-    loadStats();
+  // 检查 Clash 服务状态
+  const checkServiceStatus = async () => {
+    setChecking(true);
+    try {
+      const response = await fetch('/api/clash/service/status');
+      const data = await response.json();
+      setServiceStatus(data);
+    } catch (error) {
+      console.error('Failed to check Clash service status:', error);
+      setServiceStatus({ running: false, port: 9090, api_url: 'http://127.0.0.1:9090', error: '无法连接到后端 API' });
+    } finally {
+      setChecking(false);
+    }
+  };
 
-    // 定期更新统计信息
-    const interval = setInterval(loadStats, 3000);
+  // 启动 Clash 服务
+  const startService = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/clash/service/start', { method: 'POST' });
+      const data = await response.json();
+
+      if (response.ok) {
+        alert(data.message || 'Clash 服务启动成功');
+        await checkServiceStatus();
+      } else {
+        alert(data.error || 'Clash 服务启动失败');
+      }
+    } catch (error) {
+      console.error('Failed to start Clash service:', error);
+      alert('启动 Clash 服务失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 页面加载时检查服务状态
+  React.useEffect(() => {
+    checkServiceStatus();
+    // 每 10 秒自动检查一次
+    const interval = setInterval(checkServiceStatus, 10000);
     return () => clearInterval(interval);
   }, []);
 
-  const loadData = async () => {
-    try {
-      logger.debug('ProxyPage', '开始加载代理数据');
-      const subs = clashService.getSubscriptions();
-      const allNodes = await clashService.getNodes();
-      const selected = await clashService.getSelectedNode();
-      const groups = await clashService.getProxyGroups();
-
-      setSubscriptions(subs);
-      setNodes(allNodes);
-      setSelectedNode(selected);
-      setProxyGroups(groups);
-      logger.info('ProxyPage', '代理数据加载成功', { subscriptions: subs.length, nodes: allNodes.length, groups: groups.length });
-    } catch (error) {
-      logger.error('ProxyPage', '代理数据加载失败', error as Error);
-      console.error('Failed to load data:', error);
-    }
+  const handleCopyUrl = () => {
+    navigator.clipboard.writeText(clashApiUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
-  const loadStats = async () => {
-    try {
-      const statsData = await clashService.getStats();
-      setStats(statsData);
-    } catch (error) {
-      console.error('Failed to load stats:', error);
-    }
-  };
-
-  const handleAddSubscription = async () => {
-    if (!newSubName || !newSubUrl) {
-      alert('请填写订阅名称和 URL');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await clashService.addSubscription(newSubName, newSubUrl, newSubType);
-      loadData();
-      setShowAddModal(false);
-      setNewSubName('');
-      setNewSubUrl('');
-      setNewSubType('clash');
-    } catch (error) {
-      console.error('Failed to add subscription:', error);
-      alert('添加订阅失败');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleUpdateSubscription = async (id: string) => {
-    setLoading(true);
-    try {
-      await clashService.updateSubscription(id);
-      loadData();
-    } catch (error) {
-      console.error('Failed to update subscription:', error);
-      alert('更新订阅失败');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDeleteSubscription = async (id: string) => {
-    if (confirm('确定要删除此订阅吗？')) {
-      try {
-        await clashService.deleteSubscription(id);
-        await loadData();
-      } catch (error) {
-        console.error('Failed to delete subscription:', error);
-        alert('删除订阅失败');
-      }
-    }
-  };
-
-  const handleTestAllNodes = async () => {
-    setTesting(true);
-    try {
-      await clashService.testAllNodes();
-      loadData();
-    } catch (error) {
-      console.error('Failed to test nodes:', error);
-    } finally {
-      setTesting(false);
-    }
-  };
-
-  const handleSelectNode = async (node: ProxyNode) => {
-    try {
-      await clashService.selectNode(node.id);
-      setSelectedNode(node);
-    } catch (error) {
-      console.error('Failed to select node:', error);
-    }
-  };
-
-  const getFilteredAndSortedNodes = () => {
-    let filtered = nodes;
-
-    if (filterText) {
-      filtered = filtered.filter(node =>
-        node.name.toLowerCase().includes(filterText.toLowerCase()) ||
-        node.server.toLowerCase().includes(filterText.toLowerCase())
-      );
-    }
-
-    if (sortBy === 'delay') {
-      filtered = [...filtered].sort((a, b) => {
-        if (a.delay === undefined) return 1;
-        if (b.delay === undefined) return -1;
-        return a.delay - b.delay;
-      });
-    } else {
-      filtered = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
-    }
-
-    return filtered;
-  };
-
-  const getDelayColor = (delay?: number) => {
-    if (delay === undefined) return 'text-gray-400';
-    if (delay < 100) return 'text-green-500';
-    if (delay < 300) return 'text-yellow-500';
-    return 'text-red-500';
-  };
-
-  // 策略组相关函数
-  const handleGenerateGroups = async () => {
-    setLoading(true);
-    try {
-      const groups = await clashService.generateProxyGroups();
-      setProxyGroups(groups);
-      await clashService.saveProxyGroups(groups);
-      alert('策略组生成成功');
-    } catch (error) {
-      console.error('Failed to generate groups:', error);
-      alert('生成策略组失败');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleAddGroup = () => {
-    setEditingGroup(null);
-    setShowGroupModal(true);
-  };
-
-  const handleEditGroup = (group: any) => {
-    setEditingGroup(group);
-    setShowGroupModal(true);
-  };
-
-  const handleDeleteGroup = async (groupId: string) => {
-    if (!confirm('确定要删除这个策略组吗？')) return;
-
-    try {
-      const newGroups = proxyGroups.filter(g => g.id !== groupId);
-      setProxyGroups(newGroups);
-      await clashService.saveProxyGroups(newGroups);
-      alert('删除成功');
-    } catch (error) {
-      console.error('Failed to delete group:', error);
-      alert('删除失败');
-    }
-  };
-
-  const handleSaveGroup = async (group: any) => {
-    try {
-      let newGroups;
-      if (editingGroup) {
-        newGroups = proxyGroups.map(g => g.id === group.id ? group : g);
-      } else {
-        newGroups = [...proxyGroups, group];
-      }
-      setProxyGroups(newGroups);
-      await clashService.saveProxyGroups(newGroups);
-      setShowGroupModal(false);
-      alert('保存成功');
-    } catch (error) {
-      console.error('Failed to save group:', error);
-      alert('保存失败');
-    }
-  };
-
-  const handleExportConfig = async () => {
-    try {
-      const yaml = await clashService.exportClashConfig();
-      const blob = new Blob([yaml], { type: 'text/yaml' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'clash-config.yaml';
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Failed to export config:', error);
-      alert('导出配置失败');
-    }
-  };
-
-  const getDelayText = (delay?: number) => {
-    if (delay === undefined) return '未测试';
-    return `${delay}ms`;
+  const handleOpenMetaCubeX = () => {
+    window.open(metacubexUrl, '_blank');
   };
 
   return (
@@ -267,368 +81,157 @@ const ProxyPage: React.FC = () => {
           <Wifi className="text-green-500" size={32} />
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">代理节点管理</h2>
         </div>
-
-        <div className="flex gap-3">
-          {activeTab === 'nodes' && (
-            <>
-              <Button
-                onClick={handleTestAllNodes}
-                disabled={testing || nodes.length === 0}
-                className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600"
-              >
-                <Zap className={testing ? 'animate-pulse' : ''} size={18} />
-                {testing ? '测速中...' : '全部测速'}
-              </Button>
-              <Button
-                onClick={() => setShowAddModal(true)}
-                className="flex items-center gap-2 bg-green-500 hover:bg-green-600"
-              >
-                <Plus size={18} />
-                添加订阅
-              </Button>
-            </>
-          )}
-          {activeTab === 'groups' && (
-            <>
-              <Button
-                onClick={handleAddGroup}
-                className="flex items-center gap-2 bg-green-500 hover:bg-green-600"
-              >
-                <Plus size={18} />
-                添加策略组
-              </Button>
-              <Button
-                onClick={handleGenerateGroups}
-                disabled={loading}
-                className="flex items-center gap-2 bg-purple-500 hover:bg-purple-600"
-              >
-                <RefreshCw size={18} />
-                生成策略组
-              </Button>
-              <Button
-                onClick={handleExportConfig}
-                className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600"
-              >
-                <Download size={18} />
-                导出配置
-              </Button>
-            </>
-          )}
-        </div>
+        <Button
+          onClick={checkServiceStatus}
+          disabled={checking}
+          className="flex items-center gap-2"
+        >
+          <RefreshCw size={18} className={checking ? 'animate-spin' : ''} />
+          刷新状态
+        </Button>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-4 border-b border-gray-200 dark:border-gray-700">
-        <button
-          onClick={() => setActiveTab('nodes')}
-          className={`px-4 py-2 font-medium transition-colors ${
-            activeTab === 'nodes'
-              ? 'text-blue-500 border-b-2 border-blue-500'
-              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
-          }`}
-        >
-          代理节点
-        </button>
-        <button
-          onClick={() => setActiveTab('groups')}
-          className={`px-4 py-2 font-medium transition-colors ${
-            activeTab === 'groups'
-              ? 'text-blue-500 border-b-2 border-blue-500'
-              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
-          }`}
-        >
-          策略组
-        </button>
-      </div>
-
-      {/* Stats */}
-      {stats && (
-        <GlassCard className="p-6">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <div className="flex items-center gap-3">
-              <Activity className="text-green-500" size={24} />
-              <div>
-                <div className="text-sm text-gray-500 dark:text-gray-400">连接数</div>
-                <div className="text-xl font-bold text-gray-900 dark:text-white">
-                  {stats.connections}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <Upload className="text-blue-500" size={24} />
-              <div>
-                <div className="text-sm text-gray-500 dark:text-gray-400">上传速度</div>
-                <div className="text-xl font-bold text-gray-900 dark:text-white">
-                  {clashService.formatSpeed(stats.uploadSpeed)}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <Download className="text-purple-500" size={24} />
-              <div>
-                <div className="text-sm text-gray-500 dark:text-gray-400">下载速度</div>
-                <div className="text-xl font-bold text-gray-900 dark:text-white">
-                  {clashService.formatSpeed(stats.downloadSpeed)}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <Upload className="text-cyan-500" size={24} />
-              <div>
-                <div className="text-sm text-gray-500 dark:text-gray-400">总上传</div>
-                <div className="text-xl font-bold text-gray-900 dark:text-white">
-                  {clashService.formatBytes(stats.uploadTotal)}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <Download className="text-indigo-500" size={24} />
-              <div>
-                <div className="text-sm text-gray-500 dark:text-gray-400">总下载</div>
-                <div className="text-xl font-bold text-gray-900 dark:text-white">
-                  {clashService.formatBytes(stats.downloadTotal)}
-                </div>
+      {/* Service Status Alert */}
+      {serviceStatus && !serviceStatus.running && (
+        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" size={20} />
+            <div className="flex-1">
+              <h3 className="font-semibold text-yellow-800 dark:text-yellow-200 mb-1">
+                Clash 服务未运行
+              </h3>
+              <p className="text-sm text-yellow-700 dark:text-yellow-300 mb-3">
+                检测到 Clash 服务（端口 9090）未启动。请先启动 Clash/Mihomo 服务才能使用 MetaCubeX 管理界面。
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  onClick={startService}
+                  disabled={loading}
+                  className="bg-yellow-600 hover:bg-yellow-700 text-white text-sm"
+                >
+                  {loading ? '启动中...' : '尝试启动服务'}
+                </Button>
+                <Button
+                  onClick={checkServiceStatus}
+                  disabled={checking}
+                  className="bg-gray-600 hover:bg-gray-700 text-white text-sm"
+                >
+                  重新检查
+                </Button>
               </div>
             </div>
           </div>
-        </GlassCard>
+        </div>
       )}
 
-      {/* Content based on active tab */}
-      {activeTab === 'nodes' && (
-        <>
-          {/* Subscriptions */}
-          <GlassCard className="p-6">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">订阅列表</h3>
-
-        {subscriptions.length === 0 ? (
-          <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-            暂无订阅，点击"添加订阅"开始
+      {/* Service Running Status */}
+      {serviceStatus && serviceStatus.running && (
+        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+          <div className="flex items-center gap-3">
+            <CheckCircle className="text-green-600 dark:text-green-400" size={20} />
+            <div>
+              <h3 className="font-semibold text-green-800 dark:text-green-200">
+                Clash 服务运行中
+              </h3>
+              <p className="text-sm text-green-700 dark:text-green-300">
+                服务正常运行在端口 {serviceStatus.port}，可以使用 MetaCubeX 进行管理
+              </p>
+            </div>
           </div>
-        ) : (
-          <div className="space-y-3">
-            {subscriptions.map(sub => (
-              <div
-                key={sub.id}
-                className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700"
-              >
+        </div>
+      )}
+
+      {/* Instructions */}
+      <GlassCard className="p-8">
+        <div className="space-y-6">
+          <div className="flex items-center gap-3">
+            <Wifi className="text-green-500" size={48} />
+            <div>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                使用 MetaCubeX 管理 Clash 代理
+              </h3>
+              <p className="text-gray-600 dark:text-gray-400 mt-1">
+                MetaCubeX 是 Mihomo (Clash Meta) 的官方 Web 管理界面
+              </p>
+            </div>
+          </div>
+
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+            <h4 className="font-semibold text-gray-900 dark:text-white mb-4">
+              使用步骤：
+            </h4>
+
+            <div className="space-y-4">
+              <div className="flex gap-4">
+                <div className="flex-shrink-0 w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center font-bold">
+                  1
+                </div>
                 <div className="flex-1">
-                  <div className="flex items-center gap-3">
-                    <Globe className="text-green-500" size={20} />
-                    <div>
-                      <div className="font-medium text-gray-900 dark:text-white">{sub.name}</div>
-                      <div className="text-sm text-gray-500 dark:text-gray-400">
-                        {sub.nodeCount} 个节点 • 类型: {sub.type.toUpperCase()}
-                        {sub.lastUpdate && (
-                          <> • 更新于: {new Date(sub.lastUpdate).toLocaleString()}</>
-                        )}
-                      </div>
-                    </div>
+                  <p className="text-gray-900 dark:text-white font-medium mb-2">
+                    复制 Clash API 地址
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={clashApiUrl}
+                      readOnly
+                      className="flex-1 px-4 py-2 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white"
+                    />
+                    <Button
+                      onClick={handleCopyUrl}
+                      className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600"
+                    >
+                      {copied ? <CheckCircle size={18} /> : <Copy size={18} />}
+                      {copied ? '已复制' : '复制'}
+                    </Button>
                   </div>
                 </div>
+              </div>
 
-                <div className="flex gap-2">
+              <div className="flex gap-4">
+                <div className="flex-shrink-0 w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center font-bold">
+                  2
+                </div>
+                <div className="flex-1">
+                  <p className="text-gray-900 dark:text-white font-medium mb-2">
+                    打开 MetaCubeX 管理界面
+                  </p>
                   <Button
-                    onClick={() => handleUpdateSubscription(sub.id)}
-                    disabled={loading}
-                    className="px-3 py-1 text-sm bg-blue-500 hover:bg-blue-600"
+                    onClick={handleOpenMetaCubeX}
+                    className="flex items-center gap-2 bg-green-500 hover:bg-green-600"
                   >
-                    <RefreshCw className={loading ? 'animate-spin' : ''} size={16} />
-                  </Button>
-                  <Button
-                    onClick={() => handleDeleteSubscription(sub.id)}
-                    className="px-3 py-1 text-sm bg-red-500 hover:bg-red-600"
-                  >
-                    <Trash2 size={16} />
+                    <ExternalLink size={18} />
+                    打开 MetaCubeX
                   </Button>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-      </GlassCard>
 
-      {/* Nodes */}
-      <GlassCard className="p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-            节点列表 ({nodes.length})
-          </h3>
-
-          <div className="flex gap-3">
-            <Input
-              type="text"
-              placeholder="搜索节点..."
-              value={filterText}
-              onChange={e => setFilterText(e.target.value)}
-              className="w-64"
-            />
-            <select
-              value={sortBy}
-              onChange={e => setSortBy(e.target.value as 'name' | 'delay')}
-              className="px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg"
-            >
-              <option value="name">按名称排序</option>
-              <option value="delay">按延迟排序</option>
-            </select>
-          </div>
-        </div>
-
-        {nodes.length === 0 ? (
-          <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-            暂无节点，请先添加订阅
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[600px] overflow-y-auto">
-            {getFilteredAndSortedNodes().map(node => (
-              <div
-                key={node.id}
-                onClick={() => handleSelectNode(node)}
-                className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
-                  selectedNode?.id === node.id
-                    ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
-                    : 'border-gray-200 dark:border-gray-700 hover:border-green-300 dark:hover:border-green-700'
-                }`}
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex-1">
-                    <div className="font-medium text-gray-900 dark:text-white truncate">
-                      {node.name}
-                    </div>
-                    <div className="text-sm text-gray-500 dark:text-gray-400">
-                      {node.type.toUpperCase()} • {node.server}:{node.port}
-                    </div>
-                  </div>
-                  {selectedNode?.id === node.id && (
-                    <CheckCircle className="text-green-500 flex-shrink-0" size={20} />
-                  )}
+              <div className="flex gap-4">
+                <div className="flex-shrink-0 w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center font-bold">
+                  3
                 </div>
-
-                <div className="flex items-center justify-between">
-                  <div className={`text-sm font-medium ${getDelayColor(node.delay)}`}>
-                    {getDelayText(node.delay)}
-                  </div>
-                  {node.available !== undefined && (
-                    <div className="flex items-center gap-1">
-                      {node.available ? (
-                        <CheckCircle className="text-green-500" size={16} />
-                      ) : (
-                        <XCircle className="text-red-500" size={16} />
-                      )}
-                    </div>
-                  )}
+                <div className="flex-1">
+                  <p className="text-gray-900 dark:text-white font-medium mb-2">
+                    在 MetaCubeX 中配置连接
+                  </p>
+                  <ul className="list-disc list-inside text-gray-600 dark:text-gray-400 space-y-1">
+                    <li>点击左上角的设置图标</li>
+                    <li>在 "Backend URL" 中粘贴上面复制的 API 地址</li>
+                    <li>点击 "Add" 添加连接</li>
+                    <li>开始管理您的代理节点</li>
+                  </ul>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-      </GlassCard>
-        </>
-      )}
-
-      {/* Proxy Groups Tab */}
-      {activeTab === 'groups' && (
-        <GlassCard className="p-6">
-          <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">策略组列表</h3>
-
-          {proxyGroups.length === 0 ? (
-            <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-              暂无策略组，点击"生成策略组"开始
             </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {proxyGroups.map(group => (
-                <ProxyGroupCard
-                  key={group.id}
-                  group={group}
-                  nodes={nodes}
-                  onEdit={handleEditGroup}
-                  onDelete={handleDeleteGroup}
-                />
-              ))}
-            </div>
-          )}
-        </GlassCard>
-      )}
-
-      {/* Proxy Group Modal */}
-      <ProxyGroupModal
-        isOpen={showGroupModal}
-        onClose={() => setShowGroupModal(false)}
-        onSave={handleSaveGroup}
-        group={editingGroup}
-        nodes={nodes}
-      />
-
-      {/* Add Subscription Modal */}
-      <Modal
-        isOpen={showAddModal}
-        onClose={() => setShowAddModal(false)}
-        title="添加订阅"
-      >
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              订阅名称
-            </label>
-            <Input
-              type="text"
-              value={newSubName}
-              onChange={e => setNewSubName(e.target.value)}
-              placeholder="例如: 我的订阅"
-              className="w-full"
-            />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              订阅 URL
-            </label>
-            <Input
-              type="text"
-              value={newSubUrl}
-              onChange={e => setNewSubUrl(e.target.value)}
-              placeholder="https://..."
-              className="w-full"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              订阅类型
-            </label>
-            <select
-              value={newSubType}
-              onChange={e => setNewSubType(e.target.value as any)}
-              className="w-full px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg"
-            >
-              <option value="clash">Clash</option>
-              <option value="v2ray">V2Ray</option>
-              <option value="shadowsocks">Shadowsocks</option>
-            </select>
-          </div>
-
-          <div className="flex gap-3 pt-4">
-            <Button
-              onClick={() => setShowAddModal(false)}
-              className="flex-1 bg-gray-500 hover:bg-gray-600"
-            >
-              取消
-            </Button>
-            <Button
-              onClick={handleAddSubscription}
-              disabled={loading}
-              className="flex-1 bg-green-500 hover:bg-green-600"
-            >
-              {loading ? '添加中...' : '添加'}
-            </Button>
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+            <p className="text-sm text-blue-800 dark:text-blue-200">
+              <strong>提示：</strong> MetaCubeX 是纯前端应用，所有数据都保存在您的浏览器中，非常安全。
+            </p>
           </div>
         </div>
-      </Modal>
+      </GlassCard>
     </div>
   );
 };

@@ -60,20 +60,31 @@ def _generate_proxy_yaml(node: Dict[str, Any]) -> List[str]:
     # 类型特定字段
     node_type = node.get('type', 'ss')
     if node_type in ['ss', 'shadowsocks']:
-        if node.get('cipher'):
-            lines.append(f"    cipher: {node['cipher']}")
-        if node.get('password'):
-            lines.append(f"    password: {node['password']}")
+        # cipher 是必需字段，提供默认值
+        cipher = node.get('cipher', 'aes-256-gcm')
+        lines.append(f"    cipher: {cipher}")
+        # password 也是必需字段
+        password = node.get('password', '')
+        lines.append(f"    password: \"{password}\"")
     elif node_type == 'vmess':
-        if node.get('uuid'):
-            lines.append(f"    uuid: {node['uuid']}")
-        if node.get('alterId') is not None:
-            lines.append(f"    alterId: {node['alterId']}")
+        # vmess 必需字段
+        uuid = node.get('uuid', '')
+        lines.append(f"    uuid: {uuid}")
+        alterId = node.get('alterId', 0)
+        lines.append(f"    alterId: {alterId}")
+        cipher = node.get('cipher', 'auto')
+        lines.append(f"    cipher: {cipher}")
         if node.get('network'):
             lines.append(f"    network: {node['network']}")
+    elif node_type == 'vless':
+        # vless 必需字段
+        uuid = node.get('uuid', '')
+        lines.append(f"    uuid: {uuid}")
+        if node.get('flow'):
+            lines.append(f"    flow: {node['flow']}")
     elif node_type == 'trojan':
-        if node.get('password'):
-            lines.append(f"    password: {node['password']}")
+        password = node.get('password', '')
+        lines.append(f"    password: \"{password}\"")
 
     # 通用可选字段
     if node.get('tls'):

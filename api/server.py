@@ -20,7 +20,7 @@ import hashlib
 import base64
 from pathlib import Path
 from typing import Optional, Dict
-from flask import Flask, jsonify, request, send_from_directory, Response
+from flask import Flask, jsonify, request, send_from_directory, Response, make_response
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import threading
@@ -4102,6 +4102,84 @@ def export_clash_config():
         response.headers['Content-Type'] = 'text/yaml'
         response.headers['Content-Disposition'] = 'attachment; filename=clash-config.yaml'
         return response
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/clash/service/status', methods=['GET'])
+def get_clash_service_status():
+    """
+    获取 Clash 服务状态
+    """
+    try:
+        import socket
+
+        # 检查 9090 端口是否可访问
+        def check_port(host, port):
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(1)
+                result = sock.connect_ex((host, port))
+                sock.close()
+                return result == 0
+            except Exception:
+                return False
+
+        is_running = check_port('127.0.0.1', 9090)
+
+        return jsonify({
+            'running': is_running,
+            'port': 9090,
+            'api_url': 'http://127.0.0.1:9090'
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/clash/service/start', methods=['POST'])
+def start_clash_service():
+    """
+    启动 Clash 服务
+    """
+    try:
+        import platform
+
+        # 检查是否已经在运行
+        status_response = get_clash_service_status()
+        status_data = status_response.get_json()
+
+        if status_data.get('running'):
+            return jsonify({'error': 'Clash 服务已经在运行'}), 400
+
+        is_windows = platform.system() == 'Windows'
+
+        if is_windows:
+            return jsonify({
+                'error': 'Windows 系统请手动启动 Clash 服务',
+                'hint': '请运行 Clash/Mihomo 并确保 external-controller 配置为 127.0.0.1:9090'
+            }), 400
+        else:
+            # Linux: 尝试启动 clash 或 mihomo 服务
+            for service_name in ['clash', 'mihomo', 'clash-meta']:
+                try:
+                    result = subprocess.run(
+                        ['systemctl', 'start', service_name],
+                        capture_output=True,
+                        text=True,
+                        timeout=10
+                    )
+                    if result.returncode == 0:
+                        return jsonify({
+                            'message': f'Clash 服务启动成功 ({service_name})',
+                            'service': service_name
+                        })
+                except Exception:
+                    continue
+
+            return jsonify({
+                'error': '未找到 Clash 服务，请手动启动',
+                'hint': '请确保已安装 clash/mihomo 并配置为系统服务'
+            }), 500
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
