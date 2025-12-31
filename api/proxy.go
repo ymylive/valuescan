@@ -24,23 +24,23 @@ func NewProxyHandler(st *store.Store) *ProxyHandler {
 
 // ProxyNode Proxy node structure
 type ProxyNode struct {
-	ID             string  `json:"id"`
-	Name           string  `json:"name"`
-	Type           string  `json:"type"`
-	Server         string  `json:"server"`
-	Port           int     `json:"port"`
-	Cipher         string  `json:"cipher,omitempty"`
-	Password       string  `json:"password,omitempty"`
-	UUID           string  `json:"uuid,omitempty"`
-	AlterID        int     `json:"alterId,omitempty"`
-	Network        string  `json:"network,omitempty"`
-	TLS            bool    `json:"tls,omitempty"`
-	SkipCertVerify bool    `json:"skipCertVerify,omitempty"`
-	UDP            bool    `json:"udp,omitempty"`
-	Delay          int     `json:"delay,omitempty"`
-	LastTest       int64   `json:"lastTest,omitempty"`
-	Available      *bool   `json:"available,omitempty"`
-	SubscriptionID string  `json:"subscriptionId,omitempty"`
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	Type           string `json:"type"`
+	Server         string `json:"server"`
+	Port           int    `json:"port"`
+	Cipher         string `json:"cipher,omitempty"`
+	Password       string `json:"password,omitempty"`
+	UUID           string `json:"uuid,omitempty"`
+	AlterID        int    `json:"alterId,omitempty"`
+	Network        string `json:"network,omitempty"`
+	TLS            bool   `json:"tls,omitempty"`
+	SkipCertVerify bool   `json:"skipCertVerify,omitempty"`
+	UDP            bool   `json:"udp,omitempty"`
+	Delay          int    `json:"delay,omitempty"`
+	LastTest       int64  `json:"lastTest,omitempty"`
+	Available      *bool  `json:"available,omitempty"`
+	SubscriptionID string `json:"subscriptionId,omitempty"`
 }
 
 // Subscription Subscription structure
@@ -55,6 +55,18 @@ type Subscription struct {
 	Type           string `json:"type"`
 }
 
+// ProxyGroup Clash proxy group structure
+type ProxyGroup struct {
+	ID        string   `json:"id"`
+	Name      string   `json:"name"`
+	Type      string   `json:"type"` // select, url-test, fallback, load-balance
+	Proxies   []string `json:"proxies"`
+	URL       string   `json:"url,omitempty"`
+	Interval  int      `json:"interval,omitempty"`
+	Tolerance int      `json:"tolerance,omitempty"`
+	Strategy  string   `json:"strategy,omitempty"` // consistent-hashing, round-robin
+}
+
 // ClashConfig Clash configuration structure
 type ClashConfig struct {
 	Port               int            `json:"port"`
@@ -65,6 +77,7 @@ type ClashConfig struct {
 	ExternalController string         `json:"externalController"`
 	Secret             string         `json:"secret"`
 	Subscriptions      []Subscription `json:"subscriptions"`
+	ProxyGroups        []ProxyGroup   `json:"proxyGroups"`
 	SelectedProxy      string         `json:"selectedProxy,omitempty"`
 	AutoTest           bool           `json:"autoTest"`
 	AutoTestInterval   int            `json:"autoTestInterval"`
@@ -79,7 +92,7 @@ func (h *ProxyHandler) HandleGetConfig(c *gin.Context) {
 	// Get configuration from database
 	configData, err := h.store.UserConfig().Get(userID, "clash_config")
 	if err != nil {
-		// Return default configuration
+		// Return default configuration with default proxy groups
 		defaultConfig := ClashConfig{
 			Port:               7890,
 			SocksPort:          7891,
@@ -89,6 +102,7 @@ func (h *ProxyHandler) HandleGetConfig(c *gin.Context) {
 			ExternalController: "127.0.0.1:9090",
 			Secret:             "",
 			Subscriptions:      []Subscription{},
+			ProxyGroups:        getDefaultProxyGroups(),
 			AutoTest:           true,
 			AutoTestInterval:   30,
 			TestURL:            "http://www.gstatic.com/generate_204",
@@ -237,10 +251,73 @@ func (h *ProxyHandler) HandleGetStats(c *gin.Context) {
 	// TODO: Implement actual Clash stats retrieval
 	// For now, return mock data
 	c.JSON(http.StatusOK, gin.H{
-		"uploadTotal":    1024 * 1024 * 100,  // 100MB
-		"downloadTotal":  1024 * 1024 * 500,  // 500MB
-		"connections":    42,
-		"uploadSpeed":    1024 * 50,          // 50KB/s
-		"downloadSpeed":  1024 * 200,         // 200KB/s
+		"uploadTotal":   1024 * 1024 * 100, // 100MB
+		"downloadTotal": 1024 * 1024 * 500, // 500MB
+		"connections":   42,
+		"uploadSpeed":   1024 * 50,  // 50KB/s
+		"downloadSpeed": 1024 * 200, // 200KB/s
 	})
+}
+
+// getDefaultProxyGroups Get default proxy groups
+func getDefaultProxyGroups() []ProxyGroup {
+	return []ProxyGroup{
+		{
+			ID:       "auto",
+			Name:     "Auto Select",
+			Type:     "url-test",
+			Proxies:  []string{"DIRECT"},
+			URL:      "http://www.gstatic.com/generate_204",
+			Interval: 300,
+		},
+		{
+			ID:       "fallback",
+			Name:     "Fallback",
+			Type:     "fallback",
+			Proxies:  []string{"DIRECT"},
+			URL:      "http://www.gstatic.com/generate_204",
+			Interval: 300,
+		},
+		{
+			ID:      "select",
+			Name:    "Manual Select",
+			Type:    "select",
+			Proxies: []string{"DIRECT", "Auto Select", "Fallback"},
+		},
+		{
+			ID:       "loadbalance",
+			Name:     "Load Balance",
+			Type:     "load-balance",
+			Proxies:  []string{"DIRECT"},
+			URL:      "http://www.gstatic.com/generate_204",
+			Interval: 300,
+			Strategy: "consistent-hashing",
+		},
+	}
+}
+
+// HandleGetProxyGroups Get all proxy groups
+func (h *ProxyHandler) HandleGetProxyGroups(c *gin.Context) {
+	userID := c.GetString("user_id")
+
+	// Get configuration from database
+	configData, err := h.store.UserConfig().Get(userID, "clash_config")
+	if err != nil {
+		c.JSON(http.StatusOK, getDefaultProxyGroups())
+		return
+	}
+
+	var config ClashConfig
+	if err := json.Unmarshal([]byte(configData), &config); err != nil {
+		logger.Errorf("Failed to parse Clash config: %v", err)
+		c.JSON(http.StatusOK, getDefaultProxyGroups())
+		return
+	}
+
+	if len(config.ProxyGroups) == 0 {
+		c.JSON(http.StatusOK, getDefaultProxyGroups())
+		return
+	}
+
+	c.JSON(http.StatusOK, config.ProxyGroups)
 }

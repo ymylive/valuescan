@@ -207,6 +207,16 @@ func (s *Server) setupRoutes() {
 				proxy.POST("/nodes/:id/test", proxyHandler.HandleTestNode)
 				proxy.POST("/nodes/test-all", proxyHandler.HandleTestAllNodes)
 				proxy.GET("/stats", proxyHandler.HandleGetStats)
+
+				// Proxy groups routes
+				proxy.GET("/groups", proxyHandler.HandleGetProxyGroups)
+				proxy.POST("/groups", proxyHandler.HandleSaveProxyGroups)
+				proxy.PUT("/groups/:id", proxyHandler.HandleUpdateProxyGroup)
+				proxy.DELETE("/groups/:id", proxyHandler.HandleDeleteProxyGroup)
+				proxy.POST("/groups/generate", proxyHandler.HandleGenerateProxyGroups)
+
+				// Export Clash config
+				proxy.GET("/export", proxyHandler.HandleExportClashConfig)
 			}
 		}
 	}
