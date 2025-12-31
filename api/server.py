@@ -3979,7 +3979,40 @@ def update_clash_subscription():
                 config['rules'] = rules
         store.save_config(config)
 
-        return jsonify({'nodes': nodes, 'groups': groups, 'rules': rules or [], 'count': len(nodes)})
+        apply_error = None
+        try:
+            from api.clash_exporter import generate_clash_yaml
+
+            clash_config_path = os.getenv(
+                "VALUESCAN_CLASH_CONFIG_PATH",
+                "/root/.config/clash/config.yaml",
+            )
+            yaml_content = generate_clash_yaml(config, nodes)
+            Path(clash_config_path).parent.mkdir(parents=True, exist_ok=True)
+            Path(clash_config_path).write_text(yaml_content, encoding="utf-8")
+
+            clash_api = os.getenv("VALUESCAN_CLASH_API_URL", "http://127.0.0.1:9090")
+            try:
+                resp = requests.put(
+                    f"{clash_api.rstrip('/')}/configs",
+                    json={"path": clash_config_path},
+                    timeout=10,
+                )
+                if resp.status_code >= 400:
+                    apply_error = f"Clash reload failed: {resp.status_code}"
+            except Exception as e:
+                apply_error = f"Clash reload failed: {e}"
+        except Exception as e:
+            apply_error = f"Clash config apply failed: {e}"
+
+        return jsonify({
+            'nodes': nodes,
+            'groups': groups,
+            'rules': rules or [],
+            'count': len(nodes),
+            'applied': apply_error is None,
+            'applyError': apply_error,
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
