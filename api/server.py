@@ -4068,19 +4068,53 @@ def test_clash_node():
 @app.route('/api/clash/stats', methods=['GET'])
 def get_clash_stats():
     """
-    获取 Clash 统计信息
+    ?????? Clash ????????????
     """
     try:
+        import requests
+        from api.clash_store import ClashStore
+
+        store = ClashStore()
+        config = store.get_config()
+        controller = config.get('externalController', '127.0.0.1:9090')
+        if controller.startswith('http://') or controller.startswith('https://'):
+            base_url = controller
+        else:
+            base_url = f"http://{controller}"
+
+        secret = (config.get('secret') or '').strip()
+        headers = {}
+        if secret:
+            headers['Authorization'] = f"Bearer {secret}"
+
+        traffic = {}
+        connections_payload = {}
+        try:
+            traffic_resp = requests.get(f"{base_url}/traffic", headers=headers, timeout=5)
+            if traffic_resp.ok:
+                traffic = traffic_resp.json()
+        except Exception:
+            traffic = {}
+
+        try:
+            connections_resp = requests.get(f"{base_url}/connections", headers=headers, timeout=5)
+            if connections_resp.ok:
+                connections_payload = connections_resp.json()
+        except Exception:
+            connections_payload = {}
+
+        connections_list = connections_payload.get('connections') or []
         stats = {
-            'uploadTotal': 0,
-            'downloadTotal': 0,
-            'connections': 0,
-            'uploadSpeed': 0,
-            'downloadSpeed': 0
+            'uploadTotal': connections_payload.get('uploadTotal', 0),
+            'downloadTotal': connections_payload.get('downloadTotal', 0),
+            'connections': len(connections_list),
+            'uploadSpeed': traffic.get('up', 0),
+            'downloadSpeed': traffic.get('down', 0)
         }
         return jsonify(stats)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
 
 
 @app.route('/api/clash/groups', methods=['GET'])
