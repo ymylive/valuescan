@@ -18,12 +18,12 @@ logger = logging.getLogger(__name__)
 
 # 默认配置
 AI_LEVELS_ENABLED = os.getenv("VALUESCAN_AI_LEVELS_ENABLED", "1") == "1"
-AI_LEVELS_API_KEY = os.getenv("VALUESCAN_AI_LEVELS_API_KEY", "sk-chat2api").strip()
+AI_LEVELS_API_KEY = os.getenv("VALUESCAN_AI_LEVELS_API_KEY", "Qq159741").strip()
 AI_LEVELS_API_URL = os.getenv(
     "VALUESCAN_AI_LEVELS_API_URL",
-    "https://chat.cornna.xyz/chatgpt/v1/chat/completions"
+    "https://chat.cornna.xyz/gemini/v1/chat/completions"
 ).strip()
-AI_LEVELS_MODEL = os.getenv("VALUESCAN_AI_LEVELS_MODEL", "gpt-5.2").strip()
+AI_LEVELS_MODEL = os.getenv("VALUESCAN_AI_LEVELS_MODEL", "gemini-3-flash-preview-search").strip()
 
 
 def _load_config() -> Dict[str, Any]:

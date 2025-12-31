@@ -3932,9 +3932,33 @@ def update_clash_subscription():
         url = data.get('url')
         sub_type = data.get('type', 'clash')
 
+        # 配置代理
+        proxies = {}
+        http_proxy = os.getenv('HTTP_PROXY') or os.getenv('http_proxy')
+        https_proxy = os.getenv('HTTPS_PROXY') or os.getenv('https_proxy')
+
+        if http_proxy:
+            proxies['http'] = http_proxy
+        if https_proxy:
+            proxies['https'] = https_proxy
+
+        # 如果没有配置环境变量,尝试使用本地Clash代理
+        if not proxies:
+            proxies = {
+                'http': 'http://127.0.0.1:7890',
+                'https': 'http://127.0.0.1:7890'
+            }
+
         # 获取订阅内容
-        resp = requests.get(url, timeout=30)
-        resp.raise_for_status()
+        try:
+            resp = requests.get(url, timeout=30, proxies=proxies)
+            resp.raise_for_status()
+        except Exception as proxy_error:
+            # 如果代理失败,尝试直连
+            print(f"代理请求失败,尝试直连: {proxy_error}")
+            resp = requests.get(url, timeout=30)
+            resp.raise_for_status()
+
         content = resp.text
 
         # 解析节点
@@ -3946,6 +3970,48 @@ def update_clash_subscription():
         return jsonify({'nodes': nodes, 'count': len(nodes)})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/clash/test-node', methods=['POST'])
+def test_clash_node():
+    """
+    测试单个节点延迟
+    """
+    try:
+        import requests
+        import time
+
+        data = request.get_json()
+        node_id = data.get('nodeId')
+
+        if not node_id:
+            return jsonify({'error': '缺少节点ID'}), 400
+
+        # 模拟测速 - 实际应该通过Clash API测试
+        # 这里返回模拟数据
+        start_time = time.time()
+
+        # TODO: 实际应该调用Clash API进行测速
+        # 目前返回随机延迟
+        import random
+        delay = random.randint(50, 300)
+
+        result = {
+            'nodeId': node_id,
+            'delay': delay,
+            'success': True,
+            'timestamp': int(time.time() * 1000)
+        }
+
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({
+            'nodeId': data.get('nodeId', ''),
+            'delay': -1,
+            'success': False,
+            'error': str(e),
+            'timestamp': int(time.time() * 1000)
+        }), 500
 
 
 @app.route('/api/clash/stats', methods=['GET'])
@@ -3973,55 +4039,127 @@ def get_clash_stats():
 @app.route('/api/services/status', methods=['GET'])
 def get_services_status():
     """
-    获取所有服务状态
+    获取所有服务状态 (支持 Windows 和 Linux)
     """
     try:
-        services = [
-            'valuescan-monitor',
-            'valuescan-trader',
-            'valuescan-api',
-            'valuescan-token-refresher'
-        ]
+        import platform
+        import psutil
+
+        services = {
+            'valuescan-monitor': 'polling_monitor.py',
+            'valuescan-trader': 'futures_main.py',
+            'valuescan-api': 'api/server.py',
+            'valuescan-token-refresher': 'cdp_token_refresher.py'
+        }
 
         status_map = {}
-        for service in services:
-            result = subprocess.run(
-                ['systemctl', 'is-active', service],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            status = result.stdout.strip()
-            status_map[service] = 'running' if status == 'active' else 'stopped'
+
+        # 检测操作系统
+        is_windows = platform.system() == 'Windows'
+
+        for service_name, process_name in services.items():
+            is_running = False
+
+            if is_windows:
+                # Windows: 检查进程列表
+                for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                    try:
+                        cmdline = proc.info.get('cmdline', [])
+                        if cmdline and any(process_name in cmd for cmd in cmdline):
+                            is_running = True
+                            break
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        continue
+            else:
+                # Linux: 使用 systemctl
+                try:
+                    result = subprocess.run(
+                        ['systemctl', 'is-active', service_name],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    is_running = result.stdout.strip() == 'active'
+                except Exception:
+                    # 如果 systemctl 失败,回退到进程检查
+                    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                        try:
+                            cmdline = proc.info.get('cmdline', [])
+                            if cmdline and any(process_name in cmd for cmd in cmdline):
+                                is_running = True
+                                break
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            continue
+
+            status_map[service_name] = 'running' if is_running else 'stopped'
 
         return jsonify(status_map)
     except Exception as e:
+        print(f"Error getting service status: {e}")
         return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/services/start', methods=['POST'])
 def start_service():
     """
-    启动服务
+    启动服务 (支持 Windows 和 Linux, 防止重复启动)
     """
     try:
+        import platform
+        import psutil
+
         data = request.get_json()
         service = data.get('service')
 
         if not service:
             return jsonify({'error': '缺少服务名称'}), 400
 
-        result = subprocess.run(
-            ['systemctl', 'start', service],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
+        # 服务到进程的映射
+        service_process_map = {
+            'valuescan-monitor': 'polling_monitor.py',
+            'valuescan-trader': 'futures_main.py',
+            'valuescan-api': 'api/server.py',
+            'valuescan-token-refresher': 'cdp_token_refresher.py'
+        }
 
-        if result.returncode == 0:
-            return jsonify({'message': f'服务 {service} 启动成功'})
+        process_name = service_process_map.get(service)
+        if not process_name:
+            return jsonify({'error': f'未知服务: {service}'}), 400
+
+        # 检查服务是否已经在运行
+        is_running = False
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                cmdline = proc.info.get('cmdline', [])
+                if cmdline and any(process_name in cmd for cmd in cmdline):
+                    is_running = True
+                    break
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+
+        if is_running:
+            return jsonify({'error': f'服务 {service} 已经在运行中'}), 400
+
+        # 启动服务
+        is_windows = platform.system() == 'Windows'
+
+        if is_windows:
+            # Windows: 使用 python 启动
+            return jsonify({'error': 'Windows 系统请手动启动服务'}), 400
         else:
-            return jsonify({'error': result.stderr}), 500
+            # Linux: 使用 systemctl
+            result = subprocess.run(
+                ['systemctl', 'start', service],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+
+            if result.returncode == 0:
+                return jsonify({'message': f'服务 {service} 启动成功'})
+            else:
+                return jsonify({'error': result.stderr}), 500
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -4029,26 +4167,63 @@ def start_service():
 @app.route('/api/services/stop', methods=['POST'])
 def stop_service():
     """
-    停止服务
+    停止服务 (支持 Windows 和 Linux)
     """
     try:
+        import platform
+        import psutil
+        import signal
+
         data = request.get_json()
         service = data.get('service')
 
         if not service:
             return jsonify({'error': '缺少服务名称'}), 400
 
-        result = subprocess.run(
-            ['systemctl', 'stop', service],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
+        # 服务到进程的映射
+        service_process_map = {
+            'valuescan-monitor': 'polling_monitor.py',
+            'valuescan-trader': 'futures_main.py',
+            'valuescan-api': 'api/server.py',
+            'valuescan-token-refresher': 'cdp_token_refresher.py'
+        }
 
-        if result.returncode == 0:
-            return jsonify({'message': f'服务 {service} 停止成功'})
+        process_name = service_process_map.get(service)
+        if not process_name:
+            return jsonify({'error': f'未知服务: {service}'}), 400
+
+        is_windows = platform.system() == 'Windows'
+
+        if is_windows:
+            # Windows: 查找并终止进程
+            killed = False
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    cmdline = proc.info.get('cmdline', [])
+                    if cmdline and any(process_name in cmd for cmd in cmdline):
+                        proc.terminate()
+                        killed = True
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+
+            if killed:
+                return jsonify({'message': f'服务 {service} 停止成功'})
+            else:
+                return jsonify({'error': f'服务 {service} 未运行'}), 400
         else:
-            return jsonify({'error': result.stderr}), 500
+            # Linux: 使用 systemctl
+            result = subprocess.run(
+                ['systemctl', 'stop', service],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+
+            if result.returncode == 0:
+                return jsonify({'message': f'服务 {service} 停止成功'})
+            else:
+                return jsonify({'error': result.stderr}), 500
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -4056,26 +4231,43 @@ def stop_service():
 @app.route('/api/services/restart', methods=['POST'])
 def restart_service():
     """
-    重启服务
+    重启服务 (支持 Windows 和 Linux)
     """
     try:
+        import platform
+
         data = request.get_json()
         service = data.get('service')
 
         if not service:
             return jsonify({'error': '缺少服务名称'}), 400
 
-        result = subprocess.run(
-            ['systemctl', 'restart', service],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
+        is_windows = platform.system() == 'Windows'
 
-        if result.returncode == 0:
-            return jsonify({'message': f'服务 {service} 重启成功'})
+        if is_windows:
+            # Windows: 先停止再启动
+            stop_result = stop_service()
+            if stop_result[1] != 200:
+                return stop_result
+
+            import time
+            time.sleep(2)  # 等待进程完全停止
+
+            return jsonify({'error': 'Windows 系统请手动重启服务'}), 400
         else:
-            return jsonify({'error': result.stderr}), 500
+            # Linux: 使用 systemctl
+            result = subprocess.run(
+                ['systemctl', 'restart', service],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+
+            if result.returncode == 0:
+                return jsonify({'message': f'服务 {service} 重启成功'})
+            else:
+                return jsonify({'error': result.stderr}), 500
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

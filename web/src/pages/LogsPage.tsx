@@ -5,6 +5,10 @@ import { Button } from '../components/Common/Button';
 import { Input } from '../components/Common/Input';
 import { logger } from '../services/loggerService';
 import { LogLevel, LogEntry, LogFilter } from '../types/logger';
+import api from '../services/api';
+
+type LogSource = 'frontend' | 'backend';
+type BackendService = 'signal' | 'trader' | 'api' | 'token-refresher';
 
 const LogsPage: React.FC = () => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -13,6 +17,9 @@ const LogsPage: React.FC = () => {
   const [selectedLevel, setSelectedLevel] = useState<LogLevel | ''>('');
   const [stats, setStats] = useState<any>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [logSource, setLogSource] = useState<LogSource>('frontend');
+  const [backendService, setBackendService] = useState<BackendService>('signal');
+  const [backendLogs, setBackendLogs] = useState<LogEntry[]>([]);
 
   useEffect(() => {
     loadLogs();
@@ -25,16 +32,68 @@ const LogsPage: React.FC = () => {
       }, 3000);
       return () => clearInterval(interval);
     }
-  }, [filter, autoRefresh]);
+  }, [filter, autoRefresh, logSource, backendService]);
+
+  const loadBackendLogs = async () => {
+    try {
+      const response = await api.get(`/logs/${backendService}?lines=2000`) as any;
+      if (response.logs && Array.isArray(response.logs)) {
+        // 转换后端日志格式为前端格式
+        const convertedLogs: LogEntry[] = response.logs.map((log: any) => ({
+          id: `${log.timestamp}-${Math.random()}`,
+          timestamp: log.timestamp,
+          level: convertPriorityToLevel(log.level),
+          component: log.component,
+          message: log.message,
+          data: log.data
+        }));
+        setBackendLogs(convertedLogs);
+      }
+    } catch (error) {
+      console.error('Failed to load backend logs:', error);
+      setBackendLogs([]);
+    }
+  };
+
+  const convertPriorityToLevel = (priority: string): LogLevel => {
+    // syslog priority to LogLevel mapping
+    const p = parseInt(priority);
+    if (p <= 3) return LogLevel.ERROR;  // 0-3: emerg, alert, crit, err
+    if (p === 4) return LogLevel.WARN;   // 4: warning
+    if (p === 6) return LogLevel.INFO;   // 6: info
+    return LogLevel.DEBUG;               // 7: debug
+  };
 
   const loadLogs = () => {
-    const filtered = logger.getLogs(filter);
-    setLogs(filtered);
+    if (logSource === 'frontend') {
+      const filtered = logger.getLogs(filter);
+      setLogs(filtered);
+    } else {
+      loadBackendLogs();
+    }
   };
 
   const loadStats = () => {
-    const statistics = logger.getStats();
-    setStats(statistics);
+    if (logSource === 'frontend') {
+      const statistics = logger.getStats();
+      setStats(statistics);
+    } else {
+      // 计算后端日志统计
+      const byLevel = {
+        [LogLevel.DEBUG]: 0,
+        [LogLevel.INFO]: 0,
+        [LogLevel.WARN]: 0,
+        [LogLevel.ERROR]: 0,
+      };
+      backendLogs.forEach(log => {
+        byLevel[log.level]++;
+      });
+      setStats({
+        total: backendLogs.length,
+        byLevel,
+        byComponent: {}
+      });
+    }
   };
 
   const handleSearch = () => {
@@ -101,6 +160,44 @@ const LogsPage: React.FC = () => {
         <div className="flex items-center gap-3">
           <FileText className="text-blue-500" size={32} />
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">系统日志</h2>
+
+          {/* Log Source Selector */}
+          <div className="flex gap-2 ml-4">
+            <button
+              onClick={() => setLogSource('frontend')}
+              className={`px-4 py-2 rounded-lg transition-colors ${
+                logSource === 'frontend'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+              }`}
+            >
+              前端日志
+            </button>
+            <button
+              onClick={() => setLogSource('backend')}
+              className={`px-4 py-2 rounded-lg transition-colors ${
+                logSource === 'backend'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+              }`}
+            >
+              后端日志
+            </button>
+          </div>
+
+          {/* Backend Service Selector */}
+          {logSource === 'backend' && (
+            <select
+              value={backendService}
+              onChange={(e) => setBackendService(e.target.value as BackendService)}
+              className="px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg"
+            >
+              <option value="signal">信号监控</option>
+              <option value="trader">交易服务</option>
+              <option value="api">API服务</option>
+              <option value="token-refresher">Token刷新</option>
+            </select>
+          )}
         </div>
 
         <div className="flex gap-3">
@@ -191,16 +288,16 @@ const LogsPage: React.FC = () => {
       {/* Logs List */}
       <GlassCard className="p-6">
         <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
-          日志列表 ({logs.length})
+          日志列表 ({logSource === 'frontend' ? logs.length : backendLogs.length})
         </h3>
 
-        {logs.length === 0 ? (
+        {(logSource === 'frontend' ? logs : backendLogs).length === 0 ? (
           <div className="text-center py-8 text-gray-500 dark:text-gray-400">
             暂无日志
           </div>
         ) : (
           <div className="space-y-2 max-h-[600px] overflow-y-auto">
-            {logs.map((log) => (
+            {(logSource === 'frontend' ? logs : backendLogs).map((log) => (
               <div
                 key={log.id}
                 className={`p-4 rounded-lg border ${getLevelBgColor(log.level)} border-gray-200 dark:border-gray-700`}

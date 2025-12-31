@@ -46,6 +46,44 @@ BEIJING_TZ = timezone(timedelta(hours=8))
 _PRO_CHART_LOCK = threading.Lock()
 
 
+def _get_telegram_proxies():
+    """
+    获取Telegram API请求的代理配置
+    优先级: 环境变量 > config.py配置 > 本地Clash代理
+    """
+    import os
+
+    proxies = {}
+
+    # 1. 尝试从环境变量获取
+    http_proxy = os.getenv('HTTP_PROXY') or os.getenv('http_proxy')
+    https_proxy = os.getenv('HTTPS_PROXY') or os.getenv('https_proxy')
+
+    if http_proxy:
+        proxies['http'] = http_proxy
+    if https_proxy:
+        proxies['https'] = https_proxy
+
+    # 2. 如果环境变量没有,尝试从config.py获取
+    if not proxies:
+        try:
+            from config import HTTP_PROXY as CONFIG_HTTP_PROXY
+            if CONFIG_HTTP_PROXY:
+                proxies['http'] = CONFIG_HTTP_PROXY
+                proxies['https'] = CONFIG_HTTP_PROXY
+        except ImportError:
+            pass
+
+    # 3. 如果都没有,尝试使用本地Clash代理
+    if not proxies:
+        proxies = {
+            'http': 'http://127.0.0.1:7890',
+            'https': 'http://127.0.0.1:7890'
+        }
+
+    return proxies
+
+
 def cleanup_chart_files():
     """
     清理可能生成的临时图表文件
@@ -191,8 +229,11 @@ def send_telegram_message(
     if reply_to_message_id:
         payload["reply_to_message_id"] = reply_to_message_id
 
+    # 配置代理
+    proxies = _get_telegram_proxies()
+
     try:
-        response = requests.post(url, json=payload, timeout=10)
+        response = requests.post(url, json=payload, timeout=10, proxies=proxies)
         if response.status_code == 200:
             logger.info("  ✅ Telegram 消息发送成功")
             
@@ -248,8 +289,11 @@ def send_telegram_photo(photo_data, caption=None, pin_message=False):
         data['caption'] = caption
         data['parse_mode'] = 'HTML'
 
+    # 配置代理
+    proxies = _get_telegram_proxies()
+
     try:
-        response = requests.post(url, data=data, files=files, timeout=30)
+        response = requests.post(url, data=data, files=files, timeout=30, proxies=proxies)
         if response.status_code == 200:
             logger.info("  ✅ Telegram 图片发送成功")
 
@@ -340,7 +384,8 @@ def edit_message_with_photo(message_id, photo_data, caption=None):
                 logger.info(f"  🔄 等待 {delay} 秒后重试编辑消息 (第 {attempt + 1} 次尝试)")
                 time.sleep(delay)
 
-            response = requests.post(url, data=data, files=files, timeout=30)
+            proxies = _get_telegram_proxies()
+            response = requests.post(url, data=data, files=files, timeout=30, proxies=proxies)
             
             if response.status_code == 200:
                 logger.info(f"  ✅ Telegram 消息编辑成功 (ID: {message_id})")
@@ -403,8 +448,10 @@ def _pin_telegram_message(message_id):
         "disable_notification": False  # 发送通知提醒用户
     }
 
+    proxies = _get_telegram_proxies()
+
     try:
-        response = requests.post(url, json=payload, timeout=10)
+        response = requests.post(url, json=payload, timeout=10, proxies=proxies)
         if response.status_code == 200:
             logger.info(f"  📌 消息已置顶 (ID: {message_id})")
             return True
@@ -1750,8 +1797,10 @@ def edit_message_caption(message_id, caption=None):
         data["caption"] = caption
         data["parse_mode"] = "HTML"
 
+    proxies = _get_telegram_proxies()
+
     try:
-        response = requests.post(url, data=data, timeout=30)
+        response = requests.post(url, data=data, timeout=30, proxies=proxies)
         if response.status_code == 200:
             logger.info(f"  ? Telegram ???????? (ID: {message_id})")
             return True
