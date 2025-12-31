@@ -1,5 +1,5 @@
 import React from 'react';
-import { ExternalLink, Wifi, Copy, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
+import { ExternalLink, Wifi, Copy, CheckCircle, AlertCircle, RefreshCw, Plus, Link as LinkIcon } from 'lucide-react';
 import { GlassCard } from '../components/Common/GlassCard';
 import { Button } from '../components/Common/Button';
 
@@ -10,11 +10,23 @@ interface ClashServiceStatus {
   error?: string;
 }
 
+interface Subscription {
+  url: string;
+  type: 'clash' | 'base64';
+  name: string;
+}
+
 const ProxyPage: React.FC = () => {
   const [copied, setCopied] = React.useState(false);
   const [serviceStatus, setServiceStatus] = React.useState<ClashServiceStatus | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [checking, setChecking] = React.useState(true);
+  const [showSubscriptionModal, setShowSubscriptionModal] = React.useState(false);
+  const [subscriptionUrl, setSubscriptionUrl] = React.useState('');
+  const [subscriptionType, setSubscriptionType] = React.useState<'clash' | 'base64'>('clash');
+  const [subscriptionName, setSubscriptionName] = React.useState('');
+  const [updating, setUpdating] = React.useState(false);
+  const [nodeCount, setNodeCount] = React.useState(0);
 
   const clashApiUrl = `${window.location.protocol}//${window.location.host}/clash-api`;
   const metacubexUrl = 'https://metacubex.github.io/metacubexd/';
@@ -73,6 +85,43 @@ const ProxyPage: React.FC = () => {
     window.open(metacubexUrl, '_blank');
   };
 
+  // 更新订阅
+  const handleUpdateSubscription = async () => {
+    if (!subscriptionUrl.trim()) {
+      alert('请输入订阅链接');
+      return;
+    }
+
+    setUpdating(true);
+    try {
+      const response = await fetch('/api/clash/subscription/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: subscriptionUrl,
+          type: subscriptionType,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setNodeCount(data.count || 0);
+        alert(`订阅更新成功！解析到 ${data.count} 个节点`);
+        setShowSubscriptionModal(false);
+        setSubscriptionUrl('');
+        setSubscriptionName('');
+      } else {
+        alert(data.error || '订阅更新失败');
+      }
+    } catch (error) {
+      console.error('Failed to update subscription:', error);
+      alert('订阅更新失败');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -81,14 +130,23 @@ const ProxyPage: React.FC = () => {
           <Wifi className="text-green-500" size={32} />
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">代理节点管理</h2>
         </div>
-        <Button
-          onClick={checkServiceStatus}
-          disabled={checking}
-          className="flex items-center gap-2"
-        >
-          <RefreshCw size={18} className={checking ? 'animate-spin' : ''} />
-          刷新状态
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            onClick={() => setShowSubscriptionModal(true)}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700"
+          >
+            <LinkIcon size={18} />
+            订阅管理
+          </Button>
+          <Button
+            onClick={checkServiceStatus}
+            disabled={checking}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw size={18} className={checking ? 'animate-spin' : ''} />
+            刷新状态
+          </Button>
+        </div>
       </div>
 
       {/* Service Status Alert */}
@@ -232,6 +290,112 @@ const ProxyPage: React.FC = () => {
           </div>
         </div>
       </GlassCard>
+
+      {/* Subscription Modal */}
+      {showSubscriptionModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                  订阅管理
+                </h3>
+                <button
+                  onClick={() => setShowSubscriptionModal(false)}
+                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {/* Subscription Name */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    订阅名称（可选）
+                  </label>
+                  <input
+                    type="text"
+                    value={subscriptionName}
+                    onChange={(e) => setSubscriptionName(e.target.value)}
+                    placeholder="例如：我的订阅"
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                {/* Subscription URL */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    订阅链接 *
+                  </label>
+                  <input
+                    type="text"
+                    value={subscriptionUrl}
+                    onChange={(e) => setSubscriptionUrl(e.target.value)}
+                    placeholder="https://example.com/subscription"
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                {/* Subscription Type */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    订阅类型
+                  </label>
+                  <div className="flex gap-4">
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        value="clash"
+                        checked={subscriptionType === 'clash'}
+                        onChange={(e) => setSubscriptionType(e.target.value as 'clash' | 'base64')}
+                        className="mr-2"
+                      />
+                      <span className="text-gray-900 dark:text-white">Clash 订阅</span>
+                    </label>
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        value="base64"
+                        checked={subscriptionType === 'base64'}
+                        onChange={(e) => setSubscriptionType(e.target.value as 'clash' | 'base64')}
+                        className="mr-2"
+                      />
+                      <span className="text-gray-900 dark:text-white">Base64 订阅</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Info */}
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                  <p className="text-sm text-blue-800 dark:text-blue-200">
+                    <strong>提示：</strong> 输入订阅链接后点击"更新订阅"，系统会自动解析节点并保存到本地。
+                  </p>
+                </div>
+
+                {/* Buttons */}
+                <div className="flex gap-3 justify-end">
+                  <Button
+                    onClick={() => setShowSubscriptionModal(false)}
+                    className="bg-gray-500 hover:bg-gray-600"
+                  >
+                    取消
+                  </Button>
+                  <Button
+                    onClick={handleUpdateSubscription}
+                    disabled={updating || !subscriptionUrl.trim()}
+                    className="bg-blue-600 hover:bg-blue-700"
+                  >
+                    {updating ? '更新中...' : '更新订阅'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
