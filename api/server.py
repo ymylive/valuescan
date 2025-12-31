@@ -2640,22 +2640,47 @@ def get_logs(service: str):
         'signal': 'valuescan-signal',
         'trader': 'valuescan-trader',
         'proxy': 'proxy-checker',
-        'xray': 'xray'
+        'xray': 'xray',
+        'api': 'valuescan-api',
+        'token-refresher': 'valuescan-token-refresher'
     }
-    
+
     if service not in service_map:
         return jsonify({'error': 'Invalid service'}), 400
-    
+
     lines = request.args.get('lines', 100, type=int)
-    lines = min(lines, 500)  # 最多500行
-    
+    lines = min(lines, 2000)  # 最多2000行，与前端日志限制一致
+
     try:
         result = subprocess.run(
-            ['journalctl', '-u', service_map[service], '--no-pager', '-n', str(lines), '--output=short'],
+            ['journalctl', '-u', service_map[service], '--no-pager', '-n', str(lines), '--output=json'],
             capture_output=True, text=True, timeout=10
         )
-        logs = result.stdout or result.stderr or '暂无日志'
-        return jsonify({'logs': logs, 'service': service})
+
+        if result.returncode != 0:
+            return jsonify({'error': result.stderr or '获取日志失败'}), 500
+
+        # 解析 JSON 格式的日志
+        log_entries = []
+        for line in result.stdout.strip().split('\n'):
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+                log_entries.append({
+                    'timestamp': int(entry.get('__REALTIME_TIMESTAMP', 0)) // 1000,  # 转换为毫秒
+                    'level': entry.get('PRIORITY', '6'),  # syslog priority
+                    'component': service,
+                    'message': entry.get('MESSAGE', ''),
+                    'data': {
+                        'unit': entry.get('_SYSTEMD_UNIT', ''),
+                        'pid': entry.get('_PID', '')
+                    }
+                })
+            except json.JSONDecodeError:
+                continue
+
+        return jsonify({'logs': log_entries, 'service': service, 'count': len(log_entries)})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -3937,6 +3962,120 @@ def get_clash_stats():
             'downloadSpeed': 0
         }
         return jsonify(stats)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
+# 服务管理 API
+# ============================================================================
+
+@app.route('/api/services/status', methods=['GET'])
+def get_services_status():
+    """
+    获取所有服务状态
+    """
+    try:
+        services = [
+            'valuescan-monitor',
+            'valuescan-trader',
+            'valuescan-api',
+            'valuescan-token-refresher'
+        ]
+
+        status_map = {}
+        for service in services:
+            result = subprocess.run(
+                ['systemctl', 'is-active', service],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            status = result.stdout.strip()
+            status_map[service] = 'running' if status == 'active' else 'stopped'
+
+        return jsonify(status_map)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/services/start', methods=['POST'])
+def start_service():
+    """
+    启动服务
+    """
+    try:
+        data = request.get_json()
+        service = data.get('service')
+
+        if not service:
+            return jsonify({'error': '缺少服务名称'}), 400
+
+        result = subprocess.run(
+            ['systemctl', 'start', service],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+
+        if result.returncode == 0:
+            return jsonify({'message': f'服务 {service} 启动成功'})
+        else:
+            return jsonify({'error': result.stderr}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/services/stop', methods=['POST'])
+def stop_service():
+    """
+    停止服务
+    """
+    try:
+        data = request.get_json()
+        service = data.get('service')
+
+        if not service:
+            return jsonify({'error': '缺少服务名称'}), 400
+
+        result = subprocess.run(
+            ['systemctl', 'stop', service],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+
+        if result.returncode == 0:
+            return jsonify({'message': f'服务 {service} 停止成功'})
+        else:
+            return jsonify({'error': result.stderr}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/services/restart', methods=['POST'])
+def restart_service():
+    """
+    重启服务
+    """
+    try:
+        data = request.get_json()
+        service = data.get('service')
+
+        if not service:
+            return jsonify({'error': '缺少服务名称'}), 400
+
+        result = subprocess.run(
+            ['systemctl', 'restart', service],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+
+        if result.returncode == 0:
+            return jsonify({'message': f'服务 {service} 重启成功'})
+        else:
+            return jsonify({'error': result.stderr}), 500
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

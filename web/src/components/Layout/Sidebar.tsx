@@ -8,6 +8,7 @@ import {
   Wifi,
   TrendingUp,
   FileText,
+  Settings,
   X
 } from 'lucide-react';
 import { cn } from '../Common/GlassCard';
@@ -42,6 +43,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     { to: '/positions', icon: TrendingUp, label: '持仓监控' },
     { to: '/proxy', icon: Wifi, label: '代理节点' },
     { to: '/logs', icon: FileText, label: '日志监控' },
+    { to: '/services', icon: Settings, label: '服务管理' },
     { to: '/configuration', icon: Sliders, label: '系统配置' },
   ];
 
