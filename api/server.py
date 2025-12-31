@@ -3964,11 +3964,13 @@ def update_clash_subscription():
 
         # 解析节点和策略组
         if sub_type == 'clash':
-            nodes, groups, rules = parse_clash_subscription(content)
+            nodes, groups, rules, proxy_providers, rule_providers = parse_clash_subscription(content)
         else:
             nodes = parse_base64_subscription(content)
             groups = []
             rules = None
+            proxy_providers = None
+            rule_providers = None
 
         store = ClashStore()
         store.save_nodes(nodes)
@@ -3977,6 +3979,10 @@ def update_clash_subscription():
             config['proxyGroups'] = groups
             if rules is not None:
                 config['rules'] = rules
+            if proxy_providers is not None:
+                config['proxyProviders'] = proxy_providers
+            if rule_providers is not None:
+                config['ruleProviders'] = rule_providers
         store.save_config(config)
 
         apply_error = None

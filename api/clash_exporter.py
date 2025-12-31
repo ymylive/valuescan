@@ -3,6 +3,7 @@
 Clash 配置导出器
 """
 from typing import List, Dict, Any
+import yaml
 
 
 def generate_clash_yaml(config: Dict[str, Any], nodes: List[Dict[str, Any]]) -> str:
@@ -33,6 +34,11 @@ def generate_clash_yaml(config: Dict[str, Any], nodes: List[Dict[str, Any]]) -> 
     lines.append("")
 
     # 策略组
+    proxy_providers = config.get('proxyProviders')
+    if proxy_providers is not None:
+        lines.extend(_dump_yaml_mapping("proxy-providers", proxy_providers))
+        lines.append("")
+
     lines.append("proxy-groups:")
     proxy_groups = config.get('proxyGroups')
     if proxy_groups is None:
@@ -44,106 +50,49 @@ def generate_clash_yaml(config: Dict[str, Any], nodes: List[Dict[str, Any]]) -> 
     lines.append("")
 
     # 规则
+    rule_providers = config.get('ruleProviders')
+    if rule_providers is not None:
+        lines.extend(_dump_yaml_mapping("rule-providers", rule_providers))
+        lines.append("")
+
     rules = config.get('rules')
     if rules is None:
         lines.extend(_generate_default_rules())
     else:
-        lines.extend(_generate_rules(rules))
+        lines.extend(_dump_yaml_list_with_key("rules", rules))
 
     return "\n".join(lines)
 
 
 def _generate_proxy_yaml(node: Dict[str, Any]) -> List[str]:
-    """生成单个代理节点的 YAML"""
-    lines = []
-    lines.append(f"  - name: {node.get('name', 'Proxy')}")
-    lines.append(f"    type: {node.get('type', 'ss')}")
-    lines.append(f"    server: {node.get('server', '')}")
-    lines.append(f"    port: {node.get('port', 0)}")
-
-    # 类型特定字段
-    node_type = node.get('type', 'ss')
-    if node_type in ['ss', 'shadowsocks']:
-        # cipher 是必需字段，提供默认值
-        cipher = node.get('cipher', 'aes-256-gcm')
-        lines.append(f"    cipher: {cipher}")
-        # password 也是必需字段
-        password = node.get('password', '')
-        lines.append(f"    password: \"{password}\"")
-    elif node_type == 'vmess':
-        # vmess 必需字段
-        uuid = node.get('uuid', '')
-        lines.append(f"    uuid: {uuid}")
-        alterId = node.get('alterId', 0)
-        lines.append(f"    alterId: {alterId}")
-        cipher = node.get('cipher', 'auto')
-        lines.append(f"    cipher: {cipher}")
-        if node.get('network'):
-            lines.append(f"    network: {node['network']}")
-    elif node_type == 'vless':
-        # vless 必需字段
-        uuid = node.get('uuid', '')
-        lines.append(f"    uuid: {uuid}")
-        if node.get('flow'):
-            lines.append(f"    flow: {node['flow']}")
-    elif node_type == 'trojan':
-        password = node.get('password', '')
-        lines.append(f"    password: \"{password}\"")
-
-    # 通用可选字段
-    if node.get('tls'):
-        lines.append("    tls: true")
-    if node.get('skipCertVerify'):
-        lines.append("    skip-cert-verify: true")
-    if node.get('udp'):
-        lines.append("    udp: true")
-
-    return lines
+    """Generate proxy YAML lines."""
+    dumped = yaml.safe_dump([node], allow_unicode=True, sort_keys=False)
+    return [f"  {line}" if line.strip() else line for line in dumped.splitlines()]
 
 
 def _generate_proxy_group_yaml(group: Dict[str, Any]) -> List[str]:
-    """生成策略组的 YAML"""
-    lines = []
-    lines.append(f"  - name: {group.get('name', 'Proxy Group')}")
-    lines.append(f"    type: {group.get('type', 'select')}")
+    """Generate proxy group YAML lines."""
+    dumped = yaml.safe_dump([group], allow_unicode=True, sort_keys=False)
+    return [f"  {line}" if line.strip() else line for line in dumped.splitlines()]
 
-    # 代理列表
-    if isinstance(group.get('proxies'), list):
-        lines.append("    proxies:")
-        for proxy in group.get('proxies', []):
-            lines.append(f"      - {proxy}")
-    elif isinstance(group.get('use'), list):
-        lines.append("    use:")
-        for provider in group.get('use', []):
-            lines.append(f"      - {provider}")
 
-    # 类型特定字段
-    group_type = group.get('type', 'select')
-    if group_type in ['url-test', 'fallback', 'load-balance']:
-        if group.get('url'):
-            lines.append(f"    url: {group['url']}")
-        if group.get('interval'):
-            lines.append(f"    interval: {group['interval']}")
-
-    # 额外字段
-    if group_type == 'url-test' and group.get('tolerance'):
-        lines.append(f"    tolerance: {group['tolerance']}")
-
-    if group_type == 'load-balance' and group.get('strategy'):
-        lines.append(f"    strategy: {group['strategy']}")
-
+def _dump_yaml_mapping(name: str, mapping: Any) -> List[str]:
+    if mapping == {}:
+        return [f"{name}: {{}}"]
+    dumped = yaml.safe_dump(mapping, allow_unicode=True, sort_keys=False)
+    lines = [f"{name}:"]
+    lines.extend([f"  {line}" if line.strip() else line for line in dumped.splitlines()])
     return lines
 
 
-def _generate_rules(rules: Any) -> List[str]:
-    """ç”Ÿæˆè®¢é˜…è§„åˆ™"""
-    lines = ["rules:"]
-    if isinstance(rules, list):
-        for rule in rules:
-            lines.append(f"  - {rule}")
-    else:
-        lines.append(f"  - {rules}")
+def _dump_yaml_list_with_key(name: str, items: Any) -> List[str]:
+    if items == []:
+        return [f"{name}: []"]
+    dumped = yaml.safe_dump(items, allow_unicode=True, sort_keys=False)
+    lines = [f"{name}:"]
+    lines.extend([f"  {line}" if line.strip() else line for line in dumped.splitlines()])
     return lines
+
 
 
 def _generate_default_rules() -> List[str]:

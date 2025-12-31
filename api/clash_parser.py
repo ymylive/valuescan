@@ -9,13 +9,21 @@ from typing import List, Dict, Any, Tuple, Optional
 
 def parse_clash_subscription(
     content: str,
-) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], Optional[List[Any]]]:
+) -> Tuple[
+    List[Dict[str, Any]],
+    List[Dict[str, Any]],
+    Optional[List[Any]],
+    Optional[Dict[str, Any]],
+    Optional[Dict[str, Any]],
+]:
     """解析 Clash 订阅，返回 (节点列表, 策略组列表)"""
     try:
         config = yaml.safe_load(content)
         nodes = config.get('proxies', []) if config else []
         groups = config.get('proxy-groups', []) if config else []
         rules = None
+        proxy_providers = None
+        rule_providers = None
         if config and 'rules' in config:
             raw_rules = config.get('rules')
             if isinstance(raw_rules, list):
@@ -24,10 +32,13 @@ def parse_clash_subscription(
                 rules = []
             else:
                 rules = [str(raw_rules)]
-        return nodes, groups, rules
+        if config:
+            proxy_providers = config.get('proxy-providers')
+            rule_providers = config.get('rule-providers')
+        return nodes, groups, rules, proxy_providers, rule_providers
     except Exception:
         pass
-    return [], [], None
+    return [], [], None, None, None
 
 def parse_base64_subscription(content: str) -> List[Dict[str, Any]]:
     """解析 Base64 订阅（V2Ray/Shadowsocks）"""
