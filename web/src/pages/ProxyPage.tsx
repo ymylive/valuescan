@@ -21,6 +21,7 @@ import { Modal } from '../components/Common/Modal';
 import { clashService } from '../services/clashService';
 import { ProxyNode, Subscription, ClashStats } from '../types/clash';
 import { logger } from '../services/loggerService';
+import ProxyGroupCard from '../components/Proxy/ProxyGroupCard';
 
 const ProxyPage: React.FC = () => {
   const { t } = useTranslation();
@@ -489,30 +490,13 @@ const ProxyPage: React.FC = () => {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {proxyGroups.map(group => (
-                <div key={group.id} className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                      <h4 className="font-medium text-gray-900 dark:text-white">{group.name}</h4>
-                      <p className={`text-sm ${
-                        group.type === 'select' ? 'text-blue-500' :
-                        group.type === 'url-test' ? 'text-green-500' :
-                        group.type === 'fallback' ? 'text-yellow-500' :
-                        'text-purple-500'
-                      }`}>
-                        {group.type === 'select' ? '手动选择' :
-                         group.type === 'url-test' ? '自动测速' :
-                         group.type === 'fallback' ? '故障转移' :
-                         '负载均衡'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
-                    <div>节点数: {group.proxies?.length || 0}</div>
-                    {group.url && <div>测试URL: {group.url}</div>}
-                    {group.interval && <div>测试间隔: {group.interval}秒</div>}
-                  </div>
-                </div>
+                <ProxyGroupCard
+                  key={group.id}
+                  group={group}
+                  nodes={nodes}
+                  onEdit={() => {}}
+                  onDelete={() => {}}
+                />
               ))}
             </div>
           )}
