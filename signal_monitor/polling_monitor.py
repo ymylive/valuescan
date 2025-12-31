@@ -609,7 +609,7 @@ def _fetch_from_endpoint(
         code = payload.get("code")
         # 4000: Token已过期, 4002: 用户已下线 (也表示token失效)
         if code in (4000, 4002):
-            logger.error(f"[{source_name}] Token 已过期或失效 (code {code})")
+            logger.info(f"[{source_name}] 检测到Token过期信号 (code {code}),将触发刷新")
             return None, "expired"
 
         if code != 200:
