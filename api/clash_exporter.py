@@ -34,8 +34,8 @@ def generate_clash_yaml(config: Dict[str, Any], nodes: List[Dict[str, Any]]) -> 
 
     # 策略组
     lines.append("proxy-groups:")
-    proxy_groups = config.get('proxyGroups', [])
-    if not proxy_groups:
+    proxy_groups = config.get('proxyGroups')
+    if proxy_groups is None:
         proxy_groups = _get_default_proxy_groups()
 
     for group in proxy_groups:
@@ -44,7 +44,11 @@ def generate_clash_yaml(config: Dict[str, Any], nodes: List[Dict[str, Any]]) -> 
     lines.append("")
 
     # 规则
-    lines.extend(_generate_default_rules())
+    rules = config.get('rules')
+    if rules is None:
+        lines.extend(_generate_default_rules())
+    else:
+        lines.extend(_generate_rules(rules))
 
     return "\n".join(lines)
 
@@ -104,9 +108,14 @@ def _generate_proxy_group_yaml(group: Dict[str, Any]) -> List[str]:
     lines.append(f"    type: {group.get('type', 'select')}")
 
     # 代理列表
-    lines.append("    proxies:")
-    for proxy in group.get('proxies', ['DIRECT']):
-        lines.append(f"      - {proxy}")
+    if isinstance(group.get('proxies'), list):
+        lines.append("    proxies:")
+        for proxy in group.get('proxies', []):
+            lines.append(f"      - {proxy}")
+    elif isinstance(group.get('use'), list):
+        lines.append("    use:")
+        for provider in group.get('use', []):
+            lines.append(f"      - {provider}")
 
     # 类型特定字段
     group_type = group.get('type', 'select')
@@ -123,6 +132,17 @@ def _generate_proxy_group_yaml(group: Dict[str, Any]) -> List[str]:
     if group_type == 'load-balance' and group.get('strategy'):
         lines.append(f"    strategy: {group['strategy']}")
 
+    return lines
+
+
+def _generate_rules(rules: Any) -> List[str]:
+    """ç”Ÿæˆè®¢é˜…è§„åˆ™"""
+    lines = ["rules:"]
+    if isinstance(rules, list):
+        for rule in rules:
+            lines.append(f"  - {rule}")
+    else:
+        lines.append(f"  - {rules}")
     return lines
 
 

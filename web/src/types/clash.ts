@@ -45,6 +45,7 @@ export interface ClashConfig {
   secret: string;
   subscriptions: Subscription[];
   proxyGroups?: ProxyGroup[]; // 策略组列表
+  rules?: string[]; // 订阅规则
   selectedProxy?: string; // 当前选中的代理节点ID
   autoTest: boolean; // 自动测速
   autoTestInterval: number; // 自动测速间隔（分钟）

@@ -3927,6 +3927,7 @@ def update_clash_subscription():
     try:
         import requests
         from api.clash_parser import parse_clash_subscription, parse_base64_subscription
+        from api.clash_store import ClashStore
 
         data = request.get_json()
         url = data.get('url')
@@ -3963,12 +3964,22 @@ def update_clash_subscription():
 
         # 解析节点和策略组
         if sub_type == 'clash':
-            nodes, groups = parse_clash_subscription(content)
+            nodes, groups, rules = parse_clash_subscription(content)
         else:
             nodes = parse_base64_subscription(content)
             groups = []
+            rules = None
 
-        return jsonify({'nodes': nodes, 'groups': groups, 'count': len(nodes)})
+        store = ClashStore()
+        store.save_nodes(nodes)
+        config = store.get_config()
+        if sub_type == 'clash':
+            config['proxyGroups'] = groups
+            if rules is not None:
+                config['rules'] = rules
+        store.save_config(config)
+
+        return jsonify({'nodes': nodes, 'groups': groups, 'rules': rules or [], 'count': len(nodes)})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

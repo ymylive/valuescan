@@ -43,7 +43,10 @@ class ClashStore:
     def get_proxy_groups(self) -> List[Dict[str, Any]]:
         """获取策略组列表"""
         config = self.get_config()
-        return config.get('proxyGroups', self._default_proxy_groups())
+        groups = config.get('proxyGroups')
+        if groups is None:
+            return self._default_proxy_groups()
+        return groups
 
     def save_proxy_groups(self, groups: List[Dict[str, Any]]) -> None:
         """保存策略组列表"""
