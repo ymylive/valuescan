@@ -24,8 +24,10 @@ import { logger } from '../services/loggerService';
 
 const ProxyPage: React.FC = () => {
   const { t } = useTranslation();
+  const [activeTab, setActiveTab] = useState<'nodes' | 'groups'>('nodes');
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [nodes, setNodes] = useState<ProxyNode[]>([]);
+  const [proxyGroups, setProxyGroups] = useState<any[]>([]);
   const [selectedNode, setSelectedNode] = useState<ProxyNode | null>(null);
   const [stats, setStats] = useState<ClashStats | null>(null);
   const [loading, setLoading] = useState(false);
@@ -54,11 +56,13 @@ const ProxyPage: React.FC = () => {
       const subs = clashService.getSubscriptions();
       const allNodes = await clashService.getNodes();
       const selected = await clashService.getSelectedNode();
+      const groups = await clashService.getProxyGroups();
 
       setSubscriptions(subs);
       setNodes(allNodes);
       setSelectedNode(selected);
-      logger.info('ProxyPage', '代理数据加载成功', { subscriptions: subs.length, nodes: allNodes.length });
+      setProxyGroups(groups);
+      logger.info('ProxyPage', '代理数据加载成功', { subscriptions: subs.length, nodes: allNodes.length, groups: groups.length });
     } catch (error) {
       logger.error('ProxyPage', '代理数据加载失败', error as Error);
       console.error('Failed to load data:', error);
@@ -172,6 +176,38 @@ const ProxyPage: React.FC = () => {
     return 'text-red-500';
   };
 
+  // 策略组相关函数
+  const handleGenerateGroups = async () => {
+    setLoading(true);
+    try {
+      const groups = await clashService.generateProxyGroups();
+      setProxyGroups(groups);
+      await clashService.saveProxyGroups(groups);
+      alert('策略组生成成功');
+    } catch (error) {
+      console.error('Failed to generate groups:', error);
+      alert('生成策略组失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExportConfig = async () => {
+    try {
+      const yaml = await clashService.exportClashConfig();
+      const blob = new Blob([yaml], { type: 'text/yaml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'clash-config.yaml';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to export config:', error);
+      alert('导出配置失败');
+    }
+  };
+
   const getDelayText = (delay?: number) => {
     if (delay === undefined) return '未测试';
     return `${delay}ms`;
@@ -187,22 +223,69 @@ const ProxyPage: React.FC = () => {
         </div>
 
         <div className="flex gap-3">
-          <Button
-            onClick={handleTestAllNodes}
-            disabled={testing || nodes.length === 0}
-            className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600"
-          >
-            <Zap className={testing ? 'animate-pulse' : ''} size={18} />
-            {testing ? '测速中...' : '全部测速'}
-          </Button>
-          <Button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 bg-green-500 hover:bg-green-600"
-          >
-            <Plus size={18} />
-            添加订阅
-          </Button>
+          {activeTab === 'nodes' && (
+            <>
+              <Button
+                onClick={handleTestAllNodes}
+                disabled={testing || nodes.length === 0}
+                className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600"
+              >
+                <Zap className={testing ? 'animate-pulse' : ''} size={18} />
+                {testing ? '测速中...' : '全部测速'}
+              </Button>
+              <Button
+                onClick={() => setShowAddModal(true)}
+                className="flex items-center gap-2 bg-green-500 hover:bg-green-600"
+              >
+                <Plus size={18} />
+                添加订阅
+              </Button>
+            </>
+          )}
+          {activeTab === 'groups' && (
+            <>
+              <Button
+                onClick={handleGenerateGroups}
+                disabled={loading}
+                className="flex items-center gap-2 bg-purple-500 hover:bg-purple-600"
+              >
+                <RefreshCw size={18} />
+                生成策略组
+              </Button>
+              <Button
+                onClick={handleExportConfig}
+                className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600"
+              >
+                <Download size={18} />
+                导出配置
+              </Button>
+            </>
+          )}
         </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-4 border-b border-gray-200 dark:border-gray-700">
+        <button
+          onClick={() => setActiveTab('nodes')}
+          className={`px-4 py-2 font-medium transition-colors ${
+            activeTab === 'nodes'
+              ? 'text-blue-500 border-b-2 border-blue-500'
+              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+          }`}
+        >
+          代理节点
+        </button>
+        <button
+          onClick={() => setActiveTab('groups')}
+          className={`px-4 py-2 font-medium transition-colors ${
+            activeTab === 'groups'
+              ? 'text-blue-500 border-b-2 border-blue-500'
+              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+          }`}
+        >
+          策略组
+        </button>
       </div>
 
       {/* Stats */}
@@ -262,9 +345,12 @@ const ProxyPage: React.FC = () => {
         </GlassCard>
       )}
 
-      {/* Subscriptions */}
-      <GlassCard className="p-6">
-        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">订阅列表</h3>
+      {/* Content based on active tab */}
+      {activeTab === 'nodes' && (
+        <>
+          {/* Subscriptions */}
+          <GlassCard className="p-6">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">订阅列表</h3>
 
         {subscriptions.length === 0 ? (
           <div className="text-center py-8 text-gray-500 dark:text-gray-400">
@@ -388,6 +474,50 @@ const ProxyPage: React.FC = () => {
           </div>
         )}
       </GlassCard>
+        </>
+      )}
+
+      {/* Proxy Groups Tab */}
+      {activeTab === 'groups' && (
+        <GlassCard className="p-6">
+          <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">策略组列表</h3>
+
+          {proxyGroups.length === 0 ? (
+            <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+              暂无策略组，点击"生成策略组"开始
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {proxyGroups.map(group => (
+                <div key={group.id} className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1">
+                      <h4 className="font-medium text-gray-900 dark:text-white">{group.name}</h4>
+                      <p className={`text-sm ${
+                        group.type === 'select' ? 'text-blue-500' :
+                        group.type === 'url-test' ? 'text-green-500' :
+                        group.type === 'fallback' ? 'text-yellow-500' :
+                        'text-purple-500'
+                      }`}>
+                        {group.type === 'select' ? '手动选择' :
+                         group.type === 'url-test' ? '自动测速' :
+                         group.type === 'fallback' ? '故障转移' :
+                         '负载均衡'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
+                    <div>节点数: {group.proxies?.length || 0}</div>
+                    {group.url && <div>测试URL: {group.url}</div>}
+                    {group.interval && <div>测试间隔: {group.interval}秒</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </GlassCard>
+      )}
 
       {/* Add Subscription Modal */}
       <Modal

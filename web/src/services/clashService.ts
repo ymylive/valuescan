@@ -419,6 +419,61 @@ class ClashService {
   formatSpeed(bytesPerSecond: number): string {
     return this.formatBytes(bytesPerSecond) + '/s';
   }
+
+  // ==================== 策略组管理 ====================
+
+  // 获取策略组列表
+  async getProxyGroups(): Promise<any[]> {
+    try {
+      const groups = await api.get('/clash/groups') as any;
+      return groups || [];
+    } catch (error) {
+      console.error('Failed to fetch proxy groups:', error);
+      return [];
+    }
+  }
+
+  // 保存策略组列表
+  async saveProxyGroups(groups: any[]): Promise<void> {
+    try {
+      await api.post('/clash/groups', { groups });
+    } catch (error) {
+      console.error('Failed to save proxy groups:', error);
+      throw error;
+    }
+  }
+
+  // 自动生成策略组
+  async generateProxyGroups(): Promise<any[]> {
+    try {
+      const result = await api.post('/clash/groups/generate', {}) as any;
+      return result.groups || [];
+    } catch (error) {
+      console.error('Failed to generate proxy groups:', error);
+      throw error;
+    }
+  }
+
+  // 导出 Clash 配置
+  async exportClashConfig(): Promise<string> {
+    try {
+      const response = await fetch('/api/clash/export', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('导出失败');
+      }
+
+      return await response.text();
+    } catch (error) {
+      console.error('Failed to export Clash config:', error);
+      throw error;
+    }
+  }
 }
 
 export const clashService = new ClashService();
