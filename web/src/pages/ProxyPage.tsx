@@ -22,6 +22,7 @@ import { clashService } from '../services/clashService';
 import { ProxyNode, Subscription, ClashStats } from '../types/clash';
 import { logger } from '../services/loggerService';
 import ProxyGroupCard from '../components/Proxy/ProxyGroupCard';
+import ProxyGroupModal from '../components/Proxy/ProxyGroupModal';
 
 const ProxyPage: React.FC = () => {
   const { t } = useTranslation();
@@ -34,6 +35,8 @@ const ProxyPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [testing, setTesting] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showGroupModal, setShowGroupModal] = useState(false);
+  const [editingGroup, setEditingGroup] = useState<any>(null);
   const [filterText, setFilterText] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'delay'>('name');
 
@@ -193,6 +196,48 @@ const ProxyPage: React.FC = () => {
     }
   };
 
+  const handleAddGroup = () => {
+    setEditingGroup(null);
+    setShowGroupModal(true);
+  };
+
+  const handleEditGroup = (group: any) => {
+    setEditingGroup(group);
+    setShowGroupModal(true);
+  };
+
+  const handleDeleteGroup = async (groupId: string) => {
+    if (!confirm('确定要删除这个策略组吗？')) return;
+
+    try {
+      const newGroups = proxyGroups.filter(g => g.id !== groupId);
+      setProxyGroups(newGroups);
+      await clashService.saveProxyGroups(newGroups);
+      alert('删除成功');
+    } catch (error) {
+      console.error('Failed to delete group:', error);
+      alert('删除失败');
+    }
+  };
+
+  const handleSaveGroup = async (group: any) => {
+    try {
+      let newGroups;
+      if (editingGroup) {
+        newGroups = proxyGroups.map(g => g.id === group.id ? group : g);
+      } else {
+        newGroups = [...proxyGroups, group];
+      }
+      setProxyGroups(newGroups);
+      await clashService.saveProxyGroups(newGroups);
+      setShowGroupModal(false);
+      alert('保存成功');
+    } catch (error) {
+      console.error('Failed to save group:', error);
+      alert('保存失败');
+    }
+  };
+
   const handleExportConfig = async () => {
     try {
       const yaml = await clashService.exportClashConfig();
@@ -245,6 +290,13 @@ const ProxyPage: React.FC = () => {
           )}
           {activeTab === 'groups' && (
             <>
+              <Button
+                onClick={handleAddGroup}
+                className="flex items-center gap-2 bg-green-500 hover:bg-green-600"
+              >
+                <Plus size={18} />
+                添加策略组
+              </Button>
               <Button
                 onClick={handleGenerateGroups}
                 disabled={loading}
@@ -494,14 +546,23 @@ const ProxyPage: React.FC = () => {
                   key={group.id}
                   group={group}
                   nodes={nodes}
-                  onEdit={() => {}}
-                  onDelete={() => {}}
+                  onEdit={handleEditGroup}
+                  onDelete={handleDeleteGroup}
                 />
               ))}
             </div>
           )}
         </GlassCard>
       )}
+
+      {/* Proxy Group Modal */}
+      <ProxyGroupModal
+        isOpen={showGroupModal}
+        onClose={() => setShowGroupModal(false)}
+        onSave={handleSaveGroup}
+        group={editingGroup}
+        nodes={nodes}
+      />
 
       {/* Add Subscription Modal */}
       <Modal
