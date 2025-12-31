@@ -214,7 +214,8 @@ def _collect_recent_signals(lookback_hours: float = 48.0) -> Dict[str, Any]:
 
     for msg in messages:
         msg_type = msg.get("type") or msg.get("messageType")
-        symbol = msg.get("symbol", "").upper().replace("USDT", "").replace("PERP", "")
+        symbol_raw = msg.get("symbol") or ""
+        symbol = symbol_raw.upper().replace("USDT", "").replace("PERP", "") if symbol_raw else ""
         content = msg.get("content", "") or msg.get("message", "")
         msg_time = msg.get("createTime") or msg.get("timestamp") or 0
 

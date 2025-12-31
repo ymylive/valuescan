@@ -765,6 +765,24 @@ def main():
         forward_signal = None  # type: ignore[assignment]
         ENABLE_IPC_FORWARDING = False  # type: ignore[assignment]
 
+    # 显示AI服务配置状态
+    logger.info("=" * 50)
+    logger.info("AI 服务配置状态:")
+    try:
+        from config import (
+            ENABLE_AI_KEY_LEVELS,
+            ENABLE_AI_OVERLAYS,
+            ENABLE_AI_SIGNAL_ANALYSIS,
+            ENABLE_AI_MARKET_ANALYSIS,
+        )
+        logger.info(f"  🤖 AI主力位分析: {'✅ 已启用' if ENABLE_AI_KEY_LEVELS else '❌ 未启用'}")
+        logger.info(f"  🎨 AI辅助线绘制: {'✅ 已启用' if ENABLE_AI_OVERLAYS else '❌ 未启用'}")
+        logger.info(f"  💬 AI单币简评: {'✅ 已启用' if ENABLE_AI_SIGNAL_ANALYSIS else '❌ 未启用'}")
+        logger.info(f"  📊 AI市场分析: {'✅ 已启用' if ENABLE_AI_MARKET_ANALYSIS else '❌ 未启用'}")
+    except ImportError:
+        logger.warning("  ⚠️  无法加载AI服务配置（config.py可能不存在）")
+    logger.info("=" * 50)
+
     # 导入异动榜单缓存
     movement_cache = None
     try:
