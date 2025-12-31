@@ -529,10 +529,13 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
               onChange={(e) => handleChange('enable_ai_key_levels', e.target.checked)}
               className="w-5 h-5 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
             />
-            <label htmlFor="enable_ai_key_levels" className="text-gray-700 dark:text-gray-300">
-              使用 AI 输出的主力位/辅助线坐标
+            <label htmlFor="enable_ai_key_levels" className="text-gray-700 dark:text-gray-300 font-medium">
+              启用 AI 主力位分析（开启后忽视本地算法）
             </label>
           </div>
+          <p className="text-xs text-gray-500 ml-8 -mt-2">
+            使用 AI 分析并输出主力位坐标，替代本地算法计算
+          </p>
 
           <div className="flex items-center gap-3">
             <input
@@ -542,10 +545,13 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
               onChange={(e) => handleChange('enable_ai_overlays', e.target.checked)}
               className="w-5 h-5 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
             />
-            <label htmlFor="enable_ai_overlays" className="text-gray-700 dark:text-gray-300">
-              使用本地算法计算主力位/辅助线
+            <label htmlFor="enable_ai_overlays" className="text-gray-700 dark:text-gray-300 font-medium">
+              启用 AI 辅助线绘制（开启后忽视本地算法）
             </label>
           </div>
+          <p className="text-xs text-gray-500 ml-8 -mt-2">
+            使用 AI 生成图表叠加层和辅助线，替代本地算法绘制
+          </p>
 
           <div className="flex items-center gap-3">
             <input
