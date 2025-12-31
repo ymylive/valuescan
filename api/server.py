@@ -4032,6 +4032,79 @@ def get_clash_stats():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/clash/groups', methods=['GET'])
+def get_clash_proxy_groups():
+    """
+    获取策略组列表
+    """
+    try:
+        from api.clash_store import ClashStore
+        store = ClashStore()
+        groups = store.get_proxy_groups()
+        return jsonify(groups)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/clash/groups', methods=['POST'])
+def save_clash_proxy_groups():
+    """
+    保存策略组列表
+    """
+    try:
+        from api.clash_store import ClashStore
+        data = request.get_json()
+        groups = data.get('groups', [])
+
+        store = ClashStore()
+        store.save_proxy_groups(groups)
+
+        return jsonify({'message': 'Proxy groups saved successfully', 'count': len(groups)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/clash/groups/generate', methods=['POST'])
+def generate_clash_proxy_groups():
+    """
+    根据节点自动生成策略组
+    """
+    try:
+        from api.clash_store import ClashStore
+        from api.clash_exporter import generate_proxy_groups_from_nodes
+
+        store = ClashStore()
+        nodes = store.get_nodes()
+        groups = generate_proxy_groups_from_nodes(nodes)
+
+        return jsonify({'groups': groups, 'count': len(groups)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/clash/export', methods=['GET'])
+def export_clash_config():
+    """
+    导出 Clash YAML 配置
+    """
+    try:
+        from api.clash_store import ClashStore
+        from api.clash_exporter import generate_clash_yaml
+
+        store = ClashStore()
+        config = store.get_config()
+        nodes = store.get_nodes()
+
+        yaml_content = generate_clash_yaml(config, nodes)
+
+        response = make_response(yaml_content)
+        response.headers['Content-Type'] = 'text/yaml'
+        response.headers['Content-Disposition'] = 'attachment; filename=clash-config.yaml'
+        return response
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 # ============================================================================
 # 服务管理 API
 # ============================================================================

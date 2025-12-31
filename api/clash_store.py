@@ -40,6 +40,17 @@ class ClashStore:
         """保存节点列表"""
         self.nodes_file.write_text(json.dumps(nodes, ensure_ascii=False, indent=2), encoding='utf-8')
 
+    def get_proxy_groups(self) -> List[Dict[str, Any]]:
+        """获取策略组列表"""
+        config = self.get_config()
+        return config.get('proxyGroups', self._default_proxy_groups())
+
+    def save_proxy_groups(self, groups: List[Dict[str, Any]]) -> None:
+        """保存策略组列表"""
+        config = self.get_config()
+        config['proxyGroups'] = groups
+        self.save_config(config)
+
     def _default_config(self) -> Dict[str, Any]:
         """默认配置"""
         return {
@@ -51,8 +62,45 @@ class ClashStore:
             'externalController': '127.0.0.1:9090',
             'secret': '',
             'subscriptions': [],
+            'proxyGroups': self._default_proxy_groups(),
             'autoTest': True,
             'autoTestInterval': 30,
             'testUrl': 'http://www.gstatic.com/generate_204',
             'testTimeout': 5
         }
+
+    def _default_proxy_groups(self) -> List[Dict[str, Any]]:
+        """默认策略组"""
+        return [
+            {
+                'id': 'auto',
+                'name': 'Auto Select',
+                'type': 'url-test',
+                'proxies': ['DIRECT'],
+                'url': 'http://www.gstatic.com/generate_204',
+                'interval': 300
+            },
+            {
+                'id': 'fallback',
+                'name': 'Fallback',
+                'type': 'fallback',
+                'proxies': ['DIRECT'],
+                'url': 'http://www.gstatic.com/generate_204',
+                'interval': 300
+            },
+            {
+                'id': 'select',
+                'name': 'Manual Select',
+                'type': 'select',
+                'proxies': ['DIRECT', 'Auto Select', 'Fallback']
+            },
+            {
+                'id': 'loadbalance',
+                'name': 'Load Balance',
+                'type': 'load-balance',
+                'proxies': ['DIRECT'],
+                'url': 'http://www.gstatic.com/generate_204',
+                'interval': 300,
+                'strategy': 'consistent-hashing'
+            }
+        ]
