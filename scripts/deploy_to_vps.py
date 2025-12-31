@@ -27,6 +27,7 @@ VPS_PATH = os.environ.get("VALUESCAN_VPS_PATH", "/root/valuescan")
 VPS_BRANCH = os.environ.get("VALUESCAN_VPS_BRANCH", "").strip()
 FORCE_RESET = os.environ.get("VALUESCAN_VPS_FORCE_RESET", "").strip() == "1"
 SYNC_MODE = os.environ.get("VALUESCAN_VPS_SYNC_MODE", "git").strip().lower()
+UPLOAD_PATHS_RAW = os.environ.get("VALUESCAN_VPS_UPLOAD_PATHS", "").strip()
 
 LOCAL_ROOT = Path(__file__).resolve().parent.parent
 SKIP_DIR_PREFIXES = [
@@ -177,6 +178,11 @@ def _collect_changed_paths() -> list[Path]:
             paths.append(Path(payload))
     return paths
 
+def _parse_upload_paths(raw: str) -> list[Path]:
+    if not raw:
+        return []
+    return [Path(p.strip()) for p in raw.split(",") if p.strip()]
+
 def main():
     # 设置 Windows 控制台编码
     if sys.platform == 'win32':
@@ -218,6 +224,7 @@ def main():
         sys.exit(1)
 
     branch = VPS_BRANCH or get_current_branch(ssh) or "master"
+    upload_paths_override = _parse_upload_paths(UPLOAD_PATHS_RAW)
 
     steps = []
     if SYNC_MODE in {"upload", "upload-min"}:
@@ -243,7 +250,9 @@ def main():
         print(f"[{i}/{len(steps)}] {desc}...")
         if desc == "上传本地代码":
             upload_paths = None
-            if SYNC_MODE == "upload-min":
+            if upload_paths_override:
+                upload_paths = upload_paths_override
+            elif SYNC_MODE == "upload-min":
                 upload_paths = _collect_changed_paths()
                 if not upload_paths:
                     upload_paths = None
