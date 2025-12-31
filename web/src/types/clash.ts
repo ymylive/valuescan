@@ -44,6 +44,7 @@ export interface ClashConfig {
   externalController: string;
   secret: string;
   subscriptions: Subscription[];
+  proxyGroups?: ProxyGroup[]; // 策略组列表
   selectedProxy?: string; // 当前选中的代理节点ID
   autoTest: boolean; // 自动测速
   autoTestInterval: number; // 自动测速间隔（分钟）
@@ -51,13 +52,19 @@ export interface ClashConfig {
   testTimeout: number; // 测速超时（秒）
 }
 
+// 策略组类型
+export type ProxyGroupType = 'select' | 'url-test' | 'fallback' | 'load-balance';
+
 // 代理组
 export interface ProxyGroup {
+  id: string;
   name: string;
-  type: 'select' | 'url-test' | 'fallback' | 'load-balance';
-  proxies: string[];
-  url?: string;
-  interval?: number;
+  type: ProxyGroupType;
+  proxies: string[]; // 节点ID列表
+  url?: string; // 测试URL (url-test, fallback)
+  interval?: number; // 测试间隔(秒) (url-test, fallback)
+  tolerance?: number; // 容差(ms) (url-test)
+  strategy?: 'consistent-hashing' | 'round-robin'; // 负载均衡策略 (load-balance)
 }
 
 // Clash 统计信息
