@@ -1,0 +1,6 @@
+{
+  "enabled": true,
+  "api_key": "Qq159741",
+  "api_url": "https://chat.cornna.xyz/gemini/v1/chat/completions",
+  "model": "gemini-3-flash-preview-search"
+}

@@ -1,0 +1,14 @@
+[Unit]
+Description=ValueScan Service Watchdog
+After=network.target valuescan-signal.service valuescan-trader.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/valuescan
+ExecStart=/usr/bin/python3.9 /opt/valuescan/valuescan_watchdog.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

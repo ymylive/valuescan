@@ -1,0 +1,31 @@
+            def chart_ready_callback(task_id, symbol, chart_data):
+                """图表生成完成后的回调 - 编辑已发送的消息添加图片"""
+                try:
+                    if chart_data:
+                        # 添加小幅随机延迟避免多个编辑请求冲突
+                        import random
+                        delay = random.uniform(0.5, 2.0)  # 0.5-2秒随机延迟
+                        logger.info(f"📊 图表生成完成，等待 {delay:.1f}秒后编辑融合信号: ${symbol} (任务ID: {task_id})")
+                        time.sleep(delay)
+                        
+                        # 编辑已发送的消息，将其替换为图片消息
+                        edit_result = edit_message_with_photo(
+                            message_id,
+                            chart_data, 
+                            caption=message  # 使用完整的融合信号文字作为图片说明
+                        )
+                        if edit_result:
+                            logger.info(f"✅ 融合信号消息编辑成功（添加图片）: ${symbol}")
+                        else:
+                            logger.warning(f"⚠️ 消息编辑失败，但文字消息已发送: ${symbol}")
+                    else:
+                        logger.warning(f"⚠️ 图表生成失败，保持文字消息: ${symbol}")
+                except Exception as e:
+                    logger.error(f"❌ 图表回调处理异常: {e}")
+            
+            # 提交异步图表生成任务
+            task_id = generate_tradingview_chart_async(symbol, callback=chart_ready_callback)
+            logger.info(f"🔄 已启动异步图表生成，完成后编辑消息: ${symbol} (任务ID: {task_id})")
+            
+        except Exception as e:
+            logger.warning(f"⚠️ 异步图表生成启动失败: {e}")

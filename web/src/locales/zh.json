@@ -1,0 +1,46 @@
+{
+  "common": {
+    "dashboard": "仪表盘",
+    "traders": "交易员",
+    "strategies": "策略工坊",
+    "models": "AI 模型",
+    "exchanges": "交易所",
+    "debates": "辩论竞技场",
+    "settings": "系统设置",
+    "logout": "退出登录",
+    "status": "状态",
+    "actions": "操作",
+    "save": "保存",
+    "cancel": "取消",
+    "delete": "删除",
+    "edit": "编辑",
+    "create": "创建",
+    "enabled": "已启用",
+    "disabled": "已禁用",
+    "running": "运行中",
+    "stopped": "已停止",
+    "loading": "加载中...",
+    "success": "成功",
+    "error": "错误"
+  },
+  "dashboard": {
+    "totalEquity": "总权益",
+    "activeTraders": "活跃交易员",
+    "totalPnL": "总盈亏",
+    "winRate": "胜率"
+  },
+  "traders": {
+    "newTrader": "新建交易员",
+    "name": "名称",
+    "strategy": "策略",
+    "model": "模型",
+    "exchange": "交易所",
+    "leverage": "杠杆",
+    "balance": "余额"
+  },
+  "theme": {
+    "light": "白日模式",
+    "dark": "暗黑模式",
+    "auto": "自动模式"
+  }
+}

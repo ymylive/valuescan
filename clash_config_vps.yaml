@@ -1,0 +1,230 @@
+port: 7890
+socks-port: 7891
+allow-lan: false
+mode: rule
+log-level: info
+external-controller: 127.0.0.1:9090
+
+proxies:
+  - name: 距离下次重置剩余：26 天
+    type: vmess
+    server: 127.0.0.1
+    port: 53
+    uuid: 5329da8a-b102-46e6-a8f8-a163d00499b8
+    alterId: 0
+    network: ws
+  - name: 🇭🇰 香港红豆沙 | DDNS
+    type: vless
+    server: hk02-d58b751b-f79d-4fa8-86fa-9f6bc5a3b826.genshinimpact.cyou
+    port: 443
+    tls: true
+  - name: 🇭🇰 香港红豆沙 | IPV4
+    type: vless
+    server: 219.76.131.128
+    port: 443
+    tls: true
+  - name: 🇯🇵 日本关东煮 | DDNS
+    type: vless
+    server: jp01.5392a812-9a56-456f-b89a-9e5b4208168a.genshinimpact.cyou
+    port: 8443
+    tls: true
+  - name: 🇯🇵 日本关东煮 | IPv4
+    type: vless
+    server: 43.207.72.194
+    port: 8443
+    tls: true
+  - name: 🇯🇵 日本关东煮 | IPv6
+    type: vless
+    server: 2406:da14:a0e:de3d:9fbd:9734:8467:e080
+    port: 8443
+    tls: true
+  - name: 🇯🇵 日本章鱼烧 | DDNS
+    type: vless
+    server: jp02.cbd12403-7946-4bbc-8127-2d9e5f1d50bc.genshinimpact.cyou
+    port: 8443
+    tls: true
+  - name: 🇯🇵 日本章鱼烧 | IPv4
+    type: vless
+    server: 18.176.60.16
+    port: 8443
+    tls: true
+  - name: 🇯🇵 日本章鱼烧 | IPv6
+    type: vless
+    server: 2406:da14:1d00:6e9f:f9f9:5bb4:cd73:fefc
+    port: 8443
+    tls: true
+  - name: 🇸🇬 狮城肉骨茶 | DDNS
+    type: vless
+    server: sg01.ebf263c3-0b7e-4e71-87b9-26978dc121c4.genshinimpact.cyou
+    port: 8443
+    tls: true
+  - name: 🇸🇬 狮城肉骨茶 | IPv4
+    type: vless
+    server: 13.250.104.241
+    port: 8443
+    tls: true
+  - name: 🇸🇬 狮城肉骨茶 | IPv6
+    type: vless
+    server: 2406:da18:1bcb:43f:cd59:f142:ae51:c2ff
+    port: 8443
+    tls: true
+  - name: 🇸🇬 狮城肉脞面 | DDNS
+    type: vless
+    server: sg02.05e57c23-bae7-41a0-aeef-8e75566fc3dd.genshinimpact.cyou
+    port: 8443
+    tls: true
+  - name: 🇸🇬 狮城肉脞面 | IPv4
+    type: vless
+    server: 13.213.67.15
+    port: 8443
+    tls: true
+  - name: 🇸🇬 狮城肉脞面 | IPv6
+    type: vless
+    server: 2406:da18:292:9f9b:af15:69fe:587:4d8b
+    port: 8443
+    tls: true
+  - name: 🇭🇰 香港碗仔翅 | DDNS
+    type: vless
+    server: hk01-1ebdfa20-50d7-443b-839c-68ce9afd7b62.genshinimpact.cyou
+    port: 443
+    tls: true
+  - name: 🇭🇰 香港碗仔翅 | IPv4
+    type: vless
+    server: 141.11.90.156
+    port: 443
+    tls: true
+  - name: 🇭🇰 香港碗仔翅 | IPv6
+    type: vless
+    server: 2401:b60:5:2c7::a
+    port: 443
+    tls: true
+  - name: 🇺🇸 美国汉堡包
+    type: vless
+    server: saas.sin.fan
+    port: 80
+  - name: 🇺🇸 美国苹果派
+    type: vless
+    server: saas.sin.fan
+    port: 80
+
+proxy-groups:
+  - name: Auto Select
+    type: url-test
+    proxies:
+      - DIRECT
+      - 距离下次重置剩余：26 天
+      - 🇭🇰 香港红豆沙 | DDNS
+      - 🇭🇰 香港红豆沙 | IPV4
+      - 🇯🇵 日本关东煮 | DDNS
+      - 🇯🇵 日本关东煮 | IPv4
+      - 🇯🇵 日本关东煮 | IPv6
+      - 🇯🇵 日本章鱼烧 | DDNS
+      - 🇯🇵 日本章鱼烧 | IPv4
+      - 🇯🇵 日本章鱼烧 | IPv6
+      - 🇸🇬 狮城肉骨茶 | DDNS
+      - 🇸🇬 狮城肉骨茶 | IPv4
+      - 🇸🇬 狮城肉骨茶 | IPv6
+      - 🇸🇬 狮城肉脞面 | DDNS
+      - 🇸🇬 狮城肉脞面 | IPv4
+      - 🇸🇬 狮城肉脞面 | IPv6
+      - 🇭🇰 香港碗仔翅 | DDNS
+      - 🇭🇰 香港碗仔翅 | IPv4
+      - 🇭🇰 香港碗仔翅 | IPv6
+      - 🇺🇸 美国汉堡包
+      - 🇺🇸 美国苹果派
+    url: http://www.gstatic.com/generate_204
+    interval: 300
+  - name: Fallback
+    type: fallback
+    proxies:
+      - DIRECT
+      - 距离下次重置剩余：26 天
+      - 🇭🇰 香港红豆沙 | DDNS
+      - 🇭🇰 香港红豆沙 | IPV4
+      - 🇯🇵 日本关东煮 | DDNS
+      - 🇯🇵 日本关东煮 | IPv4
+      - 🇯🇵 日本关东煮 | IPv6
+      - 🇯🇵 日本章鱼烧 | DDNS
+      - 🇯🇵 日本章鱼烧 | IPv4
+      - 🇯🇵 日本章鱼烧 | IPv6
+      - 🇸🇬 狮城肉骨茶 | DDNS
+      - 🇸🇬 狮城肉骨茶 | IPv4
+      - 🇸🇬 狮城肉骨茶 | IPv6
+      - 🇸🇬 狮城肉脞面 | DDNS
+      - 🇸🇬 狮城肉脞面 | IPv4
+      - 🇸🇬 狮城肉脞面 | IPv6
+      - 🇭🇰 香港碗仔翅 | DDNS
+      - 🇭🇰 香港碗仔翅 | IPv4
+      - 🇭🇰 香港碗仔翅 | IPv6
+      - 🇺🇸 美国汉堡包
+      - 🇺🇸 美国苹果派
+    url: http://www.gstatic.com/generate_204
+    interval: 300
+  - name: Manual Select
+    type: select
+    proxies:
+      - DIRECT
+      - Auto Select
+      - Fallback
+      - 距离下次重置剩余：26 天
+      - 🇭🇰 香港红豆沙 | DDNS
+      - 🇭🇰 香港红豆沙 | IPV4
+      - 🇯🇵 日本关东煮 | DDNS
+      - 🇯🇵 日本关东煮 | IPv4
+      - 🇯🇵 日本关东煮 | IPv6
+      - 🇯🇵 日本章鱼烧 | DDNS
+      - 🇯🇵 日本章鱼烧 | IPv4
+      - 🇯🇵 日本章鱼烧 | IPv6
+      - 🇸🇬 狮城肉骨茶 | DDNS
+      - 🇸🇬 狮城肉骨茶 | IPv4
+      - 🇸🇬 狮城肉骨茶 | IPv6
+      - 🇸🇬 狮城肉脞面 | DDNS
+      - 🇸🇬 狮城肉脞面 | IPv4
+      - 🇸🇬 狮城肉脞面 | IPv6
+      - 🇭🇰 香港碗仔翅 | DDNS
+      - 🇭🇰 香港碗仔翅 | IPv4
+      - 🇭🇰 香港碗仔翅 | IPv6
+      - 🇺🇸 美国汉堡包
+      - 🇺🇸 美国苹果派
+  - name: Load Balance
+    type: load-balance
+    proxies:
+      - 距离下次重置剩余：26 天
+      - 🇭🇰 香港红豆沙 | DDNS
+      - 🇭🇰 香港红豆沙 | IPV4
+      - 🇯🇵 日本关东煮 | DDNS
+      - 🇯🇵 日本关东煮 | IPv4
+      - 🇯🇵 日本关东煮 | IPv6
+      - 🇯🇵 日本章鱼烧 | DDNS
+      - 🇯🇵 日本章鱼烧 | IPv4
+      - 🇯🇵 日本章鱼烧 | IPv6
+      - 🇸🇬 狮城肉骨茶 | DDNS
+      - 🇸🇬 狮城肉骨茶 | IPv4
+      - 🇸🇬 狮城肉骨茶 | IPv6
+      - 🇸🇬 狮城肉脞面 | DDNS
+      - 🇸🇬 狮城肉脞面 | IPv4
+      - 🇸🇬 狮城肉脞面 | IPv6
+      - 🇭🇰 香港碗仔翅 | DDNS
+      - 🇭🇰 香港碗仔翅 | IPv4
+      - 🇭🇰 香港碗仔翅 | IPv6
+      - 🇺🇸 美国汉堡包
+      - 🇺🇸 美国苹果派
+    url: http://www.gstatic.com/generate_204
+    interval: 300
+    strategy: consistent-hashing
+
+rules:
+  # LAN
+  - DOMAIN-SUFFIX,local,DIRECT
+  - IP-CIDR,127.0.0.0/8,DIRECT
+  - IP-CIDR,172.16.0.0/12,DIRECT
+  - IP-CIDR,192.168.0.0/16,DIRECT
+  - IP-CIDR,10.0.0.0/8,DIRECT
+  - IP-CIDR,17.0.0.0/8,DIRECT
+  - IP-CIDR,100.64.0.0/10,DIRECT
+
+  # China
+  - GEOIP,CN,DIRECT
+
+  # Final
+  - MATCH,Manual Select

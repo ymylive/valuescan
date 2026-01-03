@@ -1,0 +1,41 @@
+-- Logs begin at Tue 2025-12-23 07:48:19 UTC, end at Wed 2025-12-31 09:36:16 UTC. --
+Dec 31 09:35:18 serce7ki842oekt systemd[1]: Stopping ValueScan Token Auto Refresher (Chromium UI)...
+Dec 31 09:35:18 serce7ki842oekt systemd[1]: valuescan-token-refresher.service: Succeeded.
+Dec 31 09:35:18 serce7ki842oekt systemd[1]: Stopped ValueScan Token Auto Refresher (Chromium UI).
+Dec 31 09:35:18 serce7ki842oekt systemd[1]: Started ValueScan Token Auto Refresher (Chromium UI).
+Dec 31 09:35:18 serce7ki842oekt python3.9[459307]: 2025-12-31 09:35:18 [INFO] ==================================================
+Dec 31 09:35:18 serce7ki842oekt python3.9[459307]: 2025-12-31 09:35:18 [INFO] Starting CDP token refresh loop
+Dec 31 09:35:18 serce7ki842oekt python3.9[459307]: 2025-12-31 09:35:18 [INFO] Refresh interval: 0.8 hours
+Dec 31 09:35:18 serce7ki842oekt python3.9[459307]: 2025-12-31 09:35:18 [INFO] Safety buffer: 300 seconds
+Dec 31 09:35:18 serce7ki842oekt python3.9[459307]: 2025-12-31 09:35:18 [INFO] ==================================================
+Dec 31 09:35:18 serce7ki842oekt python3.9[459307]: 2025-12-31 09:35:18 [INFO] Token missing or expired, refreshing...
+Dec 31 09:35:18 serce7ki842oekt python3.9[459307]: 2025-12-31 09:35:18 [INFO] Starting CDP login...
+Dec 31 09:35:18 serce7ki842oekt python3.9[459307]: 2025-12-31 09:35:18 [INFO] Page URL: https://www.valuescan.io/AIGEMs/longInflowAlert
+Dec 31 09:35:18 serce7ki842oekt python3.9[459307]: 2025-12-31 09:35:18 [INFO] Navigating to login page...
+Dec 31 09:35:21 serce7ki842oekt python3.9[459307]: 2025-12-31 09:35:21 [INFO] Current URL: https://www.valuescan.io/login
+Dec 31 09:35:21 serce7ki842oekt python3.9[459307]: 2025-12-31 09:35:21 [INFO] Filling email...
+Dec 31 09:35:22 serce7ki842oekt python3.9[459307]: 2025-12-31 09:35:22 [INFO] Email: not_found
+Dec 31 09:35:22 serce7ki842oekt python3.9[459307]: 2025-12-31 09:35:22 [INFO] Filling password...
+Dec 31 09:35:23 serce7ki842oekt python3.9[459307]: 2025-12-31 09:35:23 [INFO] Password: ok
+Dec 31 09:35:24 serce7ki842oekt python3.9[459307]: 2025-12-31 09:35:24 [INFO] Clicking login...
+Dec 31 09:35:24 serce7ki842oekt python3.9[459307]: 2025-12-31 09:35:24 [INFO] Click: clicked_button
+Dec 31 09:35:24 serce7ki842oekt python3.9[459307]: 2025-12-31 09:35:24 [INFO] Waiting for login...
+Dec 31 09:35:25 serce7ki842oekt python3.9[459307]: 2025-12-31 09:35:25 [INFO] Waiting... 0s, URL: https://www.valuescan.io/login
+Dec 31 09:35:30 serce7ki842oekt python3.9[459307]: 2025-12-31 09:35:30 [INFO] Waiting... 5s, URL: https://www.valuescan.io/login
+Dec 31 09:35:35 serce7ki842oekt python3.9[459307]: 2025-12-31 09:35:35 [INFO] Waiting... 10s, URL: https://www.valuescan.io/login
+Dec 31 09:35:40 serce7ki842oekt python3.9[459307]: 2025-12-31 09:35:40 [INFO] Waiting... 15s, URL: https://www.valuescan.io/login
+Dec 31 09:35:45 serce7ki842oekt python3.9[459307]: 2025-12-31 09:35:45 [INFO] Waiting... 20s, URL: https://www.valuescan.io/login
+Dec 31 09:35:45 serce7ki842oekt python3.9[459307]: 2025-12-31 09:35:45 [WARNING] CAPTCHA detected on page - manual intervention may be required
+Dec 31 09:35:45 serce7ki842oekt python3.9[459307]: 2025-12-31 09:35:45 [INFO] Login form still present on page
+Dec 31 09:35:50 serce7ki842oekt python3.9[459307]: 2025-12-31 09:35:50 [INFO] Waiting... 25s, URL: https://www.valuescan.io/login
+Dec 31 09:35:55 serce7ki842oekt python3.9[459307]: 2025-12-31 09:35:55 [INFO] Waiting... 30s, URL: https://www.valuescan.io/login
+Dec 31 09:35:55 serce7ki842oekt python3.9[459307]: 2025-12-31 09:35:55 [WARNING] CAPTCHA detected on page - manual intervention may be required
+Dec 31 09:35:55 serce7ki842oekt python3.9[459307]: 2025-12-31 09:35:55 [INFO] Login form still present on page
+Dec 31 09:36:00 serce7ki842oekt python3.9[459307]: 2025-12-31 09:36:00 [INFO] Waiting... 35s, URL: https://www.valuescan.io/login
+Dec 31 09:36:05 serce7ki842oekt python3.9[459307]: 2025-12-31 09:36:05 [INFO] Waiting... 40s, URL: https://www.valuescan.io/login
+Dec 31 09:36:05 serce7ki842oekt python3.9[459307]: 2025-12-31 09:36:05 [WARNING] CAPTCHA detected on page - manual intervention may be required
+Dec 31 09:36:05 serce7ki842oekt python3.9[459307]: 2025-12-31 09:36:05 [INFO] Login form still present on page
+Dec 31 09:36:10 serce7ki842oekt python3.9[459307]: 2025-12-31 09:36:10 [INFO] Waiting... 45s, URL: https://www.valuescan.io/login
+Dec 31 09:36:15 serce7ki842oekt python3.9[459307]: 2025-12-31 09:36:15 [INFO] Waiting... 50s, URL: https://www.valuescan.io/login
+Dec 31 09:36:15 serce7ki842oekt python3.9[459307]: 2025-12-31 09:36:15 [WARNING] CAPTCHA detected on page - manual intervention may be required
+Dec 31 09:36:15 serce7ki842oekt python3.9[459307]: 2025-12-31 09:36:15 [INFO] Login form still present on page

@@ -1,0 +1,46 @@
+{
+  "common": {
+    "dashboard": "Dashboard",
+    "traders": "Traders",
+    "strategies": "Strategies",
+    "models": "AI Models",
+    "exchanges": "Exchanges",
+    "debates": "Debate Arena",
+    "settings": "Settings",
+    "logout": "Logout",
+    "status": "Status",
+    "actions": "Actions",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "running": "Running",
+    "stopped": "Stopped",
+    "loading": "Loading...",
+    "success": "Success",
+    "error": "Error"
+  },
+  "dashboard": {
+    "totalEquity": "Total Equity",
+    "activeTraders": "Active Traders",
+    "totalPnL": "Total P&L",
+    "winRate": "Win Rate"
+  },
+  "traders": {
+    "newTrader": "New Trader",
+    "name": "Name",
+    "strategy": "Strategy",
+    "model": "Model",
+    "exchange": "Exchange",
+    "leverage": "Leverage",
+    "balance": "Balance"
+  },
+  "theme": {
+    "light": "Day Mode",
+    "dark": "Night Mode",
+    "auto": "Auto Mode"
+  }
+}

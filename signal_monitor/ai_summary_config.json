@@ -1,0 +1,8 @@
+{
+  "enabled": true,
+  "interval_hours": 1,
+  "api_key": "sk-chat2api",
+  "api_url": "https://chat.cornna.xyz/chatgpt/v1/chat/completions",
+  "model": "gpt-5.2",
+  "lookback_hours": 1
+}

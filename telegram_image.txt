@@ -1,0 +1,20 @@
+87:def cleanup_chart_files():
+98:        files = glob.glob("output/chart_*.png")
+99:        files.extend(glob.glob("output/test_chart_*.png"))
+281:        'photo': ('chart.png', photo_data, 'image/png')
+307:            cleanup_chart_files()  # 发送后清理临时文件
+311:            cleanup_chart_files()  # 失败也要清理
+315:        cleanup_chart_files()  # 异常也要清理
+344:        'media': ('chart.png', photo_data, 'image/png')
+392:                cleanup_chart_files()
+411:                cleanup_chart_files()
+417:                cleanup_chart_files()
+425:            cleanup_chart_files()
+1728:        enable_chart = getattr(signal_config, "ENABLE_TRADINGVIEW_CHART", True)
+1730:        enable_chart = True
+1732:    if enable_chart:
+1734:            from chart_generator import generate_tradingview_chart_async
+1737:            def chart_ready_callback(task_id, symbol, chart_data):
+1740:                    if chart_data:
+1750:                            chart_data, 
+1763:            task_id = generate_tradingview_chart_async(symbol, callback=chart_ready_callback)

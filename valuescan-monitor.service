@@ -1,0 +1,28 @@
+[Unit]
+Description=ValueScan Signal Monitor Service
+Documentation=https://github.com/ymylive/valuescan
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/valuescan/signal_monitor
+ExecStart=/usr/bin/python3.9 /root/valuescan/signal_monitor/start_with_chrome.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=valuescan-monitor
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
+Environment=DISPLAY=:99
+EnvironmentFile=-/root/valuescan/config/valuescan.env
+Environment=VALUESCAN_AUTO_RELOGIN=1
+Environment=VALUESCAN_AUTO_RELOGIN_COOLDOWN=1800
+
+# Resource limits
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
