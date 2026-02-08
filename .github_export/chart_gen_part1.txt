@@ -1,0 +1,50 @@
+"""
+TradingView 图表生成模块
+使用 chart-img.com API 生成 TradingView 图表图片
+支持同步和异步生成模式
+"""
+
+import requests
+import os
+import threading
+import time
+from io import BytesIO
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from logger import logger
+
+# 默认配置（将在 config.py 中设置）
+DEFAULT_API_KEY = "123456789abcdef0123456789abcdef"
+DEFAULT_LAYOUT_ID = "oeTZqtUR"
+DEFAULT_CHART_WIDTH = 800
+DEFAULT_CHART_HEIGHT = 600
+DEFAULT_TIMEOUT = 90
+
+# 异步图表生成配置
+_executor = None
+_chart_tasks = {}  # {task_id: {'status': 'processing', 'result': None, 'callback': func}}
+_task_counter = 0
+_lock = threading.Lock()
+
+
+class AsyncChartManager:
+    """异步图表生成管理器"""
+    
+    @staticmethod
+    def initialize(max_workers=3):
+        """初始化线程池"""
+        global _executor
+        if _executor is None:
+            _executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="ChartGen")
+            logger.info(f"📊 异步图表生成器已初始化 (工作线程: {max_workers})")
+    
+    @staticmethod
+    def shutdown():
+        """关闭线程池"""
+        global _executor
+        if _executor:
+            _executor.shutdown(wait=True)
+            _executor = None
+            logger.info("📊 异步图表生成器已关闭")
+    
+    @staticmethod
+    def get_task_status(task_id):

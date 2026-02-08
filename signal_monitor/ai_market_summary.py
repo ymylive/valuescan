@@ -1,947 +1,1255 @@
 #!/usr/bin/env python3
-"""
-AI 市场宏观分析模块
+"""AI market summary helpers."""
 
-功能：
-1. 收集 BTC/ETH OHLCV K线数据
-2. 收集市场快照数据（价格/成交额/市值）
-3. 收集 OI 排行数据
-4. 收集加密货币新闻
-5. 收集 ValueScan 信号数据
-6. 使用 AI 综合分析市场宏观走向
-7. 生成专业市场分析报告
-8. 定时发送到 Telegram
-"""
+from __future__ import annotations
 
 import json
-import logging
 import os
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
-from market_data_sources import fetch_market_snapshot, fetch_news, fetch_trending
+try:
+    from logger import logger
+except Exception:
+    import logging
 
-logger = logging.getLogger(__name__)
+    logger = logging.getLogger(__name__)
 
-# 北京时区
-BEIJING_TZ = timezone(timedelta(hours=8))
+try:
+    from .ai_api_utils import (
+        AI_PROTOCOL_RESPONSES,
+        build_payload,
+        override_responses_token_key,
+        parse_compatible_content,
+        parse_responses_body,
+        resolve_protocol_and_url,
+        resolve_responses_token_key_override,
+        should_force_responses_stream,
+    )
+except Exception:
+    from ai_api_utils import (  # type: ignore[import-not-found]
+        AI_PROTOCOL_RESPONSES,
+        build_payload,
+        override_responses_token_key,
+        parse_compatible_content,
+        parse_responses_body,
+        resolve_protocol_and_url,
+        resolve_responses_token_key_override,
+        should_force_responses_stream,
+    )
 
-# 配置
-AI_SUMMARY_ENABLED = os.getenv("VALUESCAN_AI_SUMMARY_ENABLED", "0") == "1"
-AI_SUMMARY_INTERVAL_HOURS = float(os.getenv("VALUESCAN_AI_SUMMARY_INTERVAL_HOURS", "1"))
-AI_SUMMARY_API_KEY = os.getenv("VALUESCAN_AI_SUMMARY_API_KEY", "sk-chat2api").strip()
-AI_SUMMARY_API_URL = os.getenv(
-    "VALUESCAN_AI_SUMMARY_API_URL",
-    "https://chat.cornna.xyz/chatgpt/v1/chat/completions"
-).strip()
-AI_SUMMARY_MODEL = os.getenv("VALUESCAN_AI_SUMMARY_MODEL", "gpt-5.2").strip()
+try:
+    from .market_data_sources import fetch_market_snapshot, fetch_trending
+except Exception:
+    from market_data_sources import fetch_market_snapshot, fetch_trending  # type: ignore[import-not-found]
 
-# 数据收集时间范围（小时）- 改为2天（48小时）
-SIGNAL_LOOKBACK_HOURS = float(os.getenv("VALUESCAN_SIGNAL_LOOKBACK_HOURS", "48"))
+try:
+    from .fundamentals_sources import fetch_macro_snapshot
+except Exception:
+    from fundamentals_sources import fetch_macro_snapshot  # type: ignore[import-not-found]
+try:
+    from .ai_request_queue import call_ai_with_queue
+except Exception:
+    from ai_request_queue import call_ai_with_queue  # type: ignore[import-not-found]
 
+BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = BASE_DIR.parent / "data"
+STATE_PATH = DATA_DIR / "market_summary_state.json"
+SUMMARY_OUTPUT_PATH = DATA_DIR / "market_summary_latest.json"
 
-def _get_language() -> str:
-    lang = (os.getenv("VALUESCAN_LANGUAGE") or os.getenv("LANGUAGE") or "").strip().lower()
-    if not lang:
-        try:
-            import config as signal_config
-            lang = getattr(signal_config, "LANGUAGE", "").strip().lower()
-        except Exception:
-            lang = ""
-    if lang not in ("zh", "en"):
-        lang = "zh"
-    return lang
-
-# Binance Futures API
-BINANCE_FUTURES_BASE = "https://fapi.binance.com"
-
-# 代理配置 - Clash 代理在 7890 端口
-PROXY_URL = os.getenv("VALUESCAN_PROXY") or os.getenv("HTTP_PROXY") or "http://127.0.0.1:7890"
-
-def _get_proxies():
-    """获取代理配置"""
-    if PROXY_URL:
-        return {"http": PROXY_URL, "https": PROXY_URL}
-    return None
-
-# 加密新闻 API（可选）
-CRYPTO_NEWS_API_KEY = os.getenv("CRYPTO_NEWS_API_KEY", "").strip()
-
-# 主要分析币种
-MAJOR_COINS = ["BTC", "ETH"]
-
-# 上次总结时间
-_last_summary_time: float = 0.0
-
-
-def _load_config() -> Dict[str, Any]:
-    """从配置文件加载 AI 总结配置（AI简评专用）"""
-    config_path = Path(__file__).parent / "ai_summary_config.json"
-    if config_path.exists():
-        try:
-            return json.loads(config_path.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-    return {}
+AI_SUMMARY_ENABLED = os.getenv("AI_SUMMARY_ENABLED", "1").lower() in ("1", "true", "yes", "on")
+AI_SUMMARY_API_KEY = os.getenv("AI_SUMMARY_API_KEY", "").strip()
+AI_SUMMARY_API_URL = os.getenv("AI_SUMMARY_API_URL", "").strip()
+AI_SUMMARY_MODEL = os.getenv("AI_SUMMARY_MODEL", "").strip()
+DEFAULT_MARKET_SYMBOLS = ["BTC", "ETH", "BNB", "SOL"]
 
 
-def _load_market_config() -> Dict[str, Any]:
-    """从配置文件加载 AI 市场分析配置"""
-    config_path = Path(__file__).parent / "ai_market_summary_config.json"
-    if config_path.exists():
-        try:
-            return json.loads(config_path.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-    # 如果不存在，尝试从旧配置迁移
-    return _load_config()
-
-
-def _save_config(config: Dict[str, Any]) -> bool:
-    """保存 AI 总结配置（AI简评专用）"""
-    config_path = Path(__file__).parent / "ai_summary_config.json"
+def _load_config(path: Path) -> Dict[str, Any]:
+    if not path.exists():
+        return {}
     try:
-        config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
-        return True
-    except Exception as e:
-        logger.error("保存 AI 总结配置失败: %s", e)
-        return False
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
-def _save_market_config(config: Dict[str, Any]) -> bool:
-    """保存 AI 市场分析配置"""
-    config_path = Path(__file__).parent / "ai_market_summary_config.json"
-    try:
-        config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
-        return True
-    except Exception as e:
-        logger.error("保存 AI 市场分析配置失败: %s", e)
-        return False
+def _merge_defaults(overrides: Dict[str, Any], defaults: Dict[str, Any]) -> Dict[str, Any]:
+    merged = dict(defaults)
+    merged.update({k: v for k, v in overrides.items() if v is not None})
+    return merged
 
 
 def get_ai_summary_config() -> Dict[str, Any]:
-    """获取 AI 总结配置（AI简评专用）"""
-    file_config = _load_config()
-    return {
-        "enabled": file_config.get("enabled", AI_SUMMARY_ENABLED),
-        "interval_hours": file_config.get("interval_hours", AI_SUMMARY_INTERVAL_HOURS),
-        "api_key": file_config.get("api_key", AI_SUMMARY_API_KEY),
-        "api_url": file_config.get("api_url", AI_SUMMARY_API_URL),
-        "model": file_config.get("model", AI_SUMMARY_MODEL),
-        "lookback_hours": file_config.get("lookback_hours", SIGNAL_LOOKBACK_HOURS),
+    """Return AI summary config without legacy dependencies."""
+    defaults = {
+        "enabled": AI_SUMMARY_ENABLED,
+        "api_key": AI_SUMMARY_API_KEY,
+        "api_url": AI_SUMMARY_API_URL,
+        "model": AI_SUMMARY_MODEL,
+        "api_protocol": os.getenv("AI_SUMMARY_API_PROTOCOL", "auto").strip(),
     }
+    config_path = BASE_DIR / "ai_summary_config.json"
+    return _merge_defaults(_load_config(config_path), defaults)
 
 
 def get_ai_market_config() -> Dict[str, Any]:
-    """获取 AI 市场分析配置"""
-    file_config = _load_market_config()
-    return {
-        "enabled": file_config.get("enabled", AI_SUMMARY_ENABLED),
-        "interval_hours": file_config.get("interval_hours", AI_SUMMARY_INTERVAL_HOURS),
-        "api_key": file_config.get("api_key", AI_SUMMARY_API_KEY),
-        "api_url": file_config.get("api_url", AI_SUMMARY_API_URL),
-        "model": file_config.get("model", AI_SUMMARY_MODEL),
-        "lookback_hours": file_config.get("lookback_hours", SIGNAL_LOOKBACK_HOURS),
+    """Return AI market config without legacy dependencies."""
+    defaults = {
+        "enabled": True,
+        "api_key": AI_SUMMARY_API_KEY,
+        "api_url": AI_SUMMARY_API_URL,
+        "model": AI_SUMMARY_MODEL,
+        "api_protocol": os.getenv("AI_MARKET_API_PROTOCOL", "auto").strip(),
+        "summary_mode": "market",
+        "market_label": "TOTAL_MKT",
+        "market_symbols": ",".join(DEFAULT_MARKET_SYMBOLS),
+        "market_symbol_limit": 12,
     }
-
-
-def _load_overlays_config() -> Dict[str, Any]:
-    """从配置文件加载 AI Overlays 配置"""
-    config_path = Path(__file__).parent / "ai_overlays_config.json"
-    if config_path.exists():
-        try:
-            return json.loads(config_path.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-    # 如果不存在，回退到 ai_summary_config.json
-    return _load_config()
+    config_path = BASE_DIR / "ai_market_summary_config.json"
+    return _merge_defaults(_load_config(config_path), defaults)
 
 
 def get_ai_overlays_config() -> Dict[str, Any]:
-    """获取 AI Overlays（画线）配置"""
-    file_config = _load_overlays_config()
-    return {
-        "enabled": file_config.get("enabled", AI_SUMMARY_ENABLED),
-        "api_key": file_config.get("api_key", AI_SUMMARY_API_KEY),
-        "api_url": file_config.get("api_url", AI_SUMMARY_API_URL),
-        "model": file_config.get("model", AI_SUMMARY_MODEL),
+    """Return AI overlays config without legacy dependencies."""
+    defaults = {
+        "enabled": True,
+        "api_key": AI_SUMMARY_API_KEY,
+        "api_url": AI_SUMMARY_API_URL,
+        "model": AI_SUMMARY_MODEL,
+        "api_protocol": os.getenv("AI_OVERLAYS_API_PROTOCOL", "auto").strip(),
     }
+    config_path = BASE_DIR / "ai_overlays_config.json"
+    return _merge_defaults(_load_config(config_path), defaults)
 
 
-
-def update_ai_summary_config(config: Dict[str, Any]) -> bool:
-    """更新 AI 总结配置（AI简评专用）"""
-    return _save_config(config)
-
-
-def update_ai_market_config(config: Dict[str, Any]) -> bool:
-    """更新 AI 市场分析配置"""
-    return _save_market_config(config)
-
-
-def _collect_recent_signals(lookback_hours: float = 48.0) -> Dict[str, Any]:
-    """
-    收集最近的 ValueScan 信号数据（默认2天）
-
-    Returns:
-        包含各类信号和币种推荐的字典
-    """
-    from database import MessageDatabase
-
-    cutoff_time = time.time() - (lookback_hours * 3600)
-    cutoff_ms = int(cutoff_time * 1000)
-
-    try:
-        db = MessageDatabase()
-        messages = db.get_recent_messages_for_ai(limit=500, since_timestamp_ms=cutoff_ms)
-    except Exception as e:
-        logger.warning("获取最近消息失败: %s", e)
-        messages = []
-
-    # 分类信号
-    bullish_signals = []  # 看涨信号
-    bearish_signals = []  # 看跌信号
-    arbitrage_signals = []  # 套利机会
-    whale_signals = []  # 大户动向
-    other_signals = []  # 其他信号
-
-    # 币种信号统计 {symbol: {"bullish": count, "bearish": count, "whale": count, "latest_time": timestamp}}
-    coin_signal_stats = {}
-
-    for msg in messages:
-        msg_type = msg.get("type") or msg.get("messageType")
-        symbol_raw = msg.get("symbol") or ""
-        symbol = symbol_raw.upper().replace("USDT", "").replace("PERP", "") if symbol_raw else ""
-        content = msg.get("content", "") or msg.get("message", "")
-        msg_time = msg.get("createTime") or msg.get("timestamp") or 0
-
-        if not symbol:
-            continue
-
-        signal_info = {
-            "symbol": symbol,
-            "type": msg_type,
-            "content": content[:200] if content else "",
-            "time": msg_time,
-        }
-
-        # 初始化币种统计
-        if symbol not in coin_signal_stats:
-            coin_signal_stats[symbol] = {
-                "bullish": 0,
-                "bearish": 0,
-                "whale": 0,
-                "arbitrage": 0,
-                "latest_time": 0,
-                "signals": []
-            }
-
-        # 更新最新时间
-        if msg_time > coin_signal_stats[symbol]["latest_time"]:
-            coin_signal_stats[symbol]["latest_time"] = msg_time
-
-        # 根据类型分类并统计
-        if msg_type in (108, 110, 111, 100, 101):  # 大单买入、资金流入、看涨信号等
-            bullish_signals.append(signal_info)
-            coin_signal_stats[symbol]["bullish"] += 1
-            coin_signal_stats[symbol]["signals"].append({"type": "bullish", "time": msg_time})
-        elif msg_type in (109, 112, 102, 103):  # 大单卖出、资金流出、看跌信号等
-            bearish_signals.append(signal_info)
-            coin_signal_stats[symbol]["bearish"] += 1
-            coin_signal_stats[symbol]["signals"].append({"type": "bearish", "time": msg_time})
-        elif msg_type in (113, 114):  # 套利相关
-            arbitrage_signals.append(signal_info)
-            coin_signal_stats[symbol]["arbitrage"] += 1
-        elif msg_type in (115, 116):  # 大户动向
-            whale_signals.append(signal_info)
-            coin_signal_stats[symbol]["whale"] += 1
-            coin_signal_stats[symbol]["signals"].append({"type": "whale", "time": msg_time})
-        else:
-            other_signals.append(signal_info)
-
-    # 生成币种推荐
-    bullish_coins = []  # 看涨币种
-    bearish_coins = []  # 看跌币种
-    opportunity_coins = []  # 机会币种（有巨鲸活动或套利机会）
-
-    for symbol, stats in coin_signal_stats.items():
-        total_signals = stats["bullish"] + stats["bearish"] + stats["whale"] + stats["arbitrage"]
-        if total_signals < 2:  # 至少2个信号才考虑
-            continue
-
-        bullish_score = stats["bullish"] * 1.0 + stats["whale"] * 0.5
-        bearish_score = stats["bearish"] * 1.0
-
-        coin_info = {
-            "symbol": symbol,
-            "bullish_count": stats["bullish"],
-            "bearish_count": stats["bearish"],
-            "whale_count": stats["whale"],
-            "arbitrage_count": stats["arbitrage"],
-            "total_signals": total_signals,
-            "score": bullish_score - bearish_score,
-            "latest_time": stats["latest_time"]
-        }
-
-        # 看涨币种：看涨信号明显多于看跌信号
-        if bullish_score >= bearish_score * 1.5 and stats["bullish"] >= 2:
-            bullish_coins.append(coin_info)
-
-        # 看跌币种：看跌信号明显多于看涨信号
-        elif bearish_score >= bullish_score * 1.5 and stats["bearish"] >= 2:
-            bearish_coins.append(coin_info)
-
-        # 机会币种：有巨鲸活动或套利机会
-        if stats["whale"] >= 2 or stats["arbitrage"] >= 2:
-            opportunity_coins.append(coin_info)
-
-    # 按信号数量和得分排序
-    bullish_coins.sort(key=lambda x: (x["total_signals"], x["score"]), reverse=True)
-    bearish_coins.sort(key=lambda x: (x["total_signals"], -x["score"]), reverse=True)
-    opportunity_coins.sort(key=lambda x: (x["whale_count"] + x["arbitrage_count"], x["total_signals"]), reverse=True)
-
-    return {
-        "bullish": bullish_signals,
-        "bearish": bearish_signals,
-        "arbitrage": arbitrage_signals,
-        "whale": whale_signals,
-        "other": other_signals,
-        "total_count": len(messages),
-        "lookback_hours": lookback_hours,
-        # 币种推荐
-        "recommended_bullish": bullish_coins[:5],  # 前5个看涨币种
-        "recommended_bearish": bearish_coins[:5],  # 前5个看跌币种
-        "recommended_opportunity": opportunity_coins[:5],  # 前5个机会币种
-    }
+def _get_ai_proxies() -> Optional[Dict[str, str]]:
+    proxy_url = (
+        os.getenv("NOFX_AI_PROXY")
+        or os.getenv("NOFX_PROXY")
+        or os.getenv("HTTPS_PROXY")
+        or os.getenv("HTTP_PROXY")
+        or ""
+    ).strip()
+    if not proxy_url:
+        try:
+            from config import HTTP_PROXY as CONFIG_HTTP_PROXY
+        except Exception:
+            CONFIG_HTTP_PROXY = ""
+        if isinstance(CONFIG_HTTP_PROXY, str) and CONFIG_HTTP_PROXY.strip():
+            proxy_url = CONFIG_HTTP_PROXY.strip()
+    if not proxy_url:
+        try:
+            from config import AI_SUMMARY_PROXY as CONFIG_AI_SUMMARY_PROXY
+        except Exception:
+            CONFIG_AI_SUMMARY_PROXY = ""
+        if isinstance(CONFIG_AI_SUMMARY_PROXY, str) and CONFIG_AI_SUMMARY_PROXY.strip():
+            proxy_url = CONFIG_AI_SUMMARY_PROXY.strip()
+    if not proxy_url:
+        return None
+    return {"http": proxy_url, "https": proxy_url}
 
 
-def _collect_movement_data() -> Dict[str, Any]:
-    """收集异动榜单数据"""
-    try:
-        from movement_list_cache import get_movement_list_cache
-        cache = get_movement_list_cache()
-        
-        alpha_symbols = cache.get_symbols_with_alpha()
-        fomo_symbols = cache.get_symbols_with_fomo()
-        
-        return {
-            "alpha_coins": list(alpha_symbols)[:20],
-            "fomo_coins": list(fomo_symbols)[:20],
-        }
-    except Exception as e:
-        logger.warning("获取异动榜单失败: %s", e)
-        return {"alpha_coins": [], "fomo_coins": []}
-
-
-def _fetch_binance_klines(symbol: str, interval: str = "1h", limit: int = 24) -> List[Dict[str, Any]]:
-    """
-    从 Binance Futures API 获取 K 线数据
-    
-    Args:
-        symbol: 币种符号（如 BTCUSDT）
-        interval: K线周期（1m, 5m, 15m, 1h, 4h, 1d）
-        limit: 获取数量
-    
-    Returns:
-        K线数据列表
-    """
-    if not symbol.endswith("USDT"):
-        symbol = f"{symbol}USDT"
-    
-    url = f"{BINANCE_FUTURES_BASE}/fapi/v1/klines"
-    params = {
-        "symbol": symbol.upper(),
-        "interval": interval,
-        "limit": limit,
-    }
-    
-    try:
-        proxies = _get_proxies()
-        resp = requests.get(url, params=params, timeout=15, proxies=proxies)
-        if resp.status_code == 200:
-            data = resp.json()
-            klines = []
-            for k in data:
-                klines.append({
-                    "open_time": k[0],
-                    "open": float(k[1]),
-                    "high": float(k[2]),
-                    "low": float(k[3]),
-                    "close": float(k[4]),
-                    "volume": float(k[5]),
-                    "close_time": k[6],
-                    "quote_volume": float(k[7]),
-                    "trades": int(k[8]),
-                })
-            return klines
-        else:
-            logger.debug("Binance API 返回 %d: %s", resp.status_code, symbol)
-            return []
-    except Exception as e:
-        logger.debug("Binance API 请求失败 (%s): %s", symbol, e)
-        return []
-
-
-def _analyze_klines(klines: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """
-    分析 K 线数据，计算技术指标
-    
-    Returns:
-        包含趋势、波动率等分析结果
-    """
-    if not klines or len(klines) < 2:
+def _load_state(path: Path) -> Dict[str, Any]:
+    if not path.exists():
         return {}
-    
-    closes = [k["close"] for k in klines]
-    highs = [k["high"] for k in klines]
-    lows = [k["low"] for k in klines]
-    volumes = [k["volume"] for k in klines]
-    
-    # 价格变化
-    latest_close = closes[-1]
-    first_close = closes[0]
-    price_change_pct = ((latest_close - first_close) / first_close) * 100
-    
-    # 最高最低价
-    period_high = max(highs)
-    period_low = min(lows)
-    price_range_pct = ((period_high - period_low) / period_low) * 100
-    
-    # 平均成交量
-    avg_volume = sum(volumes) / len(volumes)
-    latest_volume = volumes[-1]
-    volume_ratio = latest_volume / avg_volume if avg_volume > 0 else 1
-    
-    # 简单趋势判断（基于收盘价）
-    up_candles = sum(1 for i in range(1, len(closes)) if closes[i] > closes[i-1])
-    down_candles = len(closes) - 1 - up_candles
-    
-    # MA5 和 MA10
-    ma5 = sum(closes[-5:]) / 5 if len(closes) >= 5 else latest_close
-    ma10 = sum(closes[-10:]) / 10 if len(closes) >= 10 else latest_close
-    
-    trend = "bullish" if ma5 > ma10 and price_change_pct > 0 else "bearish" if ma5 < ma10 and price_change_pct < 0 else "neutral"
-    
-    return {
-        "latest_price": latest_close,
-        "price_change_pct": round(price_change_pct, 2),
-        "period_high": period_high,
-        "period_low": period_low,
-        "price_range_pct": round(price_range_pct, 2),
-        "avg_volume": avg_volume,
-        "volume_ratio": round(volume_ratio, 2),
-        "up_candles": up_candles,
-        "down_candles": down_candles,
-        "ma5": round(ma5, 2),
-        "ma10": round(ma10, 2),
-        "trend": trend,
-    }
-
-
-def _fetch_binance_open_interest(symbol: str) -> Optional[float]:
-    base = symbol.upper().replace("$", "")
-    if not base.endswith("USDT"):
-        base = f"{base}USDT"
-    url = f"{BINANCE_FUTURES_BASE}/fapi/v1/openInterest"
     try:
-        resp = requests.get(url, params={"symbol": base}, timeout=10)
-        if resp.status_code == 200:
-            data = resp.json()
-            return float(data.get("openInterest", 0) or 0)
-    except Exception as e:
-        logger.debug("获取 OI 失败: %s", e)
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_state(path: Path, payload: Dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    tmp_path.write_text(json.dumps(payload, ensure_ascii=True, separators=(",", ":")), encoding="utf-8")
+    os.replace(tmp_path, path)
+
+
+def _normalize_symbols(raw: Optional[object]) -> List[str]:
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        tokens = [t.strip().upper() for t in raw.replace(";", ",").split(",")]
+        return [t for t in tokens if t]
+    if isinstance(raw, (list, tuple, set)):
+        out = []
+        for item in raw:
+            if not item:
+                continue
+            out.append(str(item).strip().upper())
+        return [t for t in out if t]
+    return []
+
+
+def _summary_due(state: Dict[str, Any], interval_hours: float) -> bool:
+    try:
+        last_ts = float(state.get("last_ts", 0) or 0)
+    except Exception:
+        last_ts = 0.0
+    if interval_hours <= 0:
+        return True
+    return (time.time() - last_ts) >= (interval_hours * 3600)
+
+
+def _format_levels(items: Any, max_items: int = 5) -> str:
+    if not isinstance(items, list):
+        return "?"
+    out: List[str] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        price = item.get("price")
+        if not isinstance(price, (int, float)):
+            continue
+        strength = item.get("strength")
+        if isinstance(strength, (int, float)):
+            out.append(f"{_format_market_value(price)} ({int(strength)})")
+        else:
+            out.append(_format_market_value(price))
+        if len(out) >= max_items:
+            break
+    return ", ".join(out) if out else "?"
+
+
+def _format_market_value(value: Any, digits: int = 4) -> str:
+    if not isinstance(value, (int, float)):
+        return "?"
+    v = float(value)
+    abs_v = abs(v)
+    if abs_v >= 1e12:
+        return f"{v / 1e12:.2f}T"
+    if abs_v >= 1e9:
+        return f"{v / 1e9:.2f}B"
+    if abs_v >= 1e6:
+        return f"{v / 1e6:.2f}M"
+    if abs_v >= 1e3:
+        return f"{v / 1e3:.2f}K"
+    return f"{v:.{digits}f}"
+
+
+def _format_number(value: Any, digits: int = 4) -> str:
+    return _format_market_value(value, digits=digits)
+
+
+def _format_list(items: Any, digits: int = 4) -> str:
+    if not isinstance(items, list):
+        return "?"
+    out: List[str] = []
+    for item in items:
+        if isinstance(item, (int, float)):
+            out.append(_format_number(item, digits=digits))
+        elif isinstance(item, str):
+            out.append(item)
+    return ", ".join(out) if out else "?"
+
+
+def _format_pct(value: Any, digits: int = 2) -> str:
+    if not isinstance(value, (int, float)):
+        return "?"
+    return f"{value:+.{digits}f}%"
+
+
+def _format_ratio(value: Any, digits: int = 2) -> str:
+    if not isinstance(value, (int, float)):
+        return "?"
+    return f"{value * 100:.{digits}f}%"
+
+
+def _format_as_of(value: Any) -> str:
+    if not value:
+        return ""
+    dt = None
+    if isinstance(value, (int, float)):
+        try:
+            dt = datetime.fromtimestamp(float(value), tz=timezone.utc)
+        except Exception:
+            dt = None
+    elif isinstance(value, str):
+        try:
+            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except Exception:
+            return value.strip()
+    if not dt:
+        return str(value)
+    return dt.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M UTC+8")
+
+
+def _format_movers(items: Any, max_items: int = 3) -> str:
+    if not isinstance(items, list):
+        return "暂无"
+    out: List[str] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        symbol = item.get("symbol")
+        change = item.get("change")
+        if symbol and isinstance(change, (int, float)):
+            out.append(f"{symbol} {_format_pct(change)}")
+        if len(out) >= max_items:
+            break
+    return "、".join(out) if out else "暂无"
+
+
+def _get_basket_change(snapshot: Dict[str, Any], symbol: str) -> Optional[float]:
+    basket = snapshot.get("basket")
+    if not isinstance(basket, list):
+        return None
+    for item in basket:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("symbol") or "").upper() == symbol.upper():
+            change = item.get("price_change_percent")
+            if isinstance(change, (int, float)):
+                return float(change)
     return None
 
 
-def _collect_major_coin_data() -> Dict[str, Dict[str, Any]]:
-    """
-    收集 BTC 和 ETH 的综合数据
-    
-    Returns:
-        包含 K线分析、量化数据的字典
-    """
-    result = {}
-    
-    for symbol in MAJOR_COINS:
-        logger.info(f"收集 {symbol} 数据...")
-        coin_data = {
-            "symbol": symbol,
-            "klines_1h": {},
-            "klines_4h": {},
-            "klines_1d": {},
-            "market": {},
-            "open_interest": None,
-        }
-
-        # 收集不同周期K线数据
-        for interval, key in [("1h", "klines_1h"), ("4h", "klines_4h"), ("1d", "klines_1d")]:
-            klines = _fetch_binance_klines(symbol, interval, limit=24)
-            if klines:
-                coin_data[key] = _analyze_klines(klines)
-
-        # 市场数据（CMC/CG/CC 数据源）
-        market = fetch_market_snapshot(symbol)
-        if market:
-            coin_data["market"] = market
-
-        # Binance OI
-        coin_data["open_interest"] = _fetch_binance_open_interest(symbol)
-
-        result[symbol] = coin_data
-    
-    return result
+def _coerce_items(payload: Any) -> List[Dict[str, Any]]:
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if isinstance(payload, dict):
+        for key in ("items", "data", "events", "calendar", "releases"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                return [item for item in value if isinstance(item, dict)]
+    return []
 
 
-def _collect_quantitative_data(symbols: List[str]) -> Dict[str, Any]:
-    """
-    ?????????????????
+def _pick_item_title(item: Dict[str, Any]) -> Optional[str]:
+    for key in ("title", "event", "name", "release", "indicator", "description", "subject"):
+        value = item.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    if item.get("series_id") and item.get("date"):
+        return f"{item.get('series_id')} {item.get('date')}"
+    if item.get("release_id") and item.get("date"):
+        return f"{item.get('release_id')} {item.get('date')}"
+    return None
 
-    Args:
-        symbols: ????????
 
-    Returns:
-        ??????????
-    """
-    if not symbols:
-        return {"coins": [], "summary": {}}
+def _limit_titles(items: List[Dict[str, Any]], max_items: int = 3) -> List[str]:
+    titles: List[str] = []
+    for item in items:
+        title = _pick_item_title(item)
+        if title:
+            titles.append(title)
+        if len(titles) >= max_items:
+            break
+    return titles
 
-    symbols_to_fetch = list(set(symbols))[:10]
 
-    coin_data = []
-    bullish_coins = []
-    bearish_coins = []
-    high_volume_coins = []
+def _build_macro_event_note(snapshot: Dict[str, Any]) -> str:
+    macro_snapshot = snapshot.get("macro_snapshot") if isinstance(snapshot, dict) else {}
+    if not isinstance(macro_snapshot, dict):
+        macro_snapshot = {}
 
-    for sym in symbols_to_fetch:
-        data = fetch_market_snapshot(sym)
-        if not data:
-            continue
+    economic_data = macro_snapshot.get("economic_data") if isinstance(macro_snapshot.get("economic_data"), dict) else {}
+    major_events_payload = macro_snapshot.get("major_events") if isinstance(macro_snapshot.get("major_events"), dict) else {}
+    major_policies_payload = macro_snapshot.get("major_policies") if isinstance(macro_snapshot.get("major_policies"), dict) else {}
 
-        coin_info = {
-            "symbol": sym,
-            "price": data.get("price"),
-            "price_change_24h": data.get("price_change_percent"),
-            "volume_24h": data.get("volume_24h"),
-            "market_cap": data.get("market_cap"),
-        }
-        coin_data.append(coin_info)
+    if economic_data or major_events_payload or major_policies_payload:
+        econ_brief = economic_data.get("brief") if isinstance(economic_data.get("brief"), list) else []
+        event_brief = major_events_payload.get("brief") if isinstance(major_events_payload.get("brief"), list) else []
+        policy_brief = major_policies_payload.get("brief") if isinstance(major_policies_payload.get("brief"), list) else []
 
-        change = data.get("price_change_percent")
-        if isinstance(change, (int, float)):
-            if change >= 2:
-                bullish_coins.append(sym)
-            elif change <= -2:
-                bearish_coins.append(sym)
+        def _fmt(items: List[str]) -> str:
+            cleaned = [item for item in items if item]
+            return "、".join(cleaned) if cleaned else "暂无"
 
-        vol = data.get("volume_24h")
-        if isinstance(vol, (int, float)) and vol >= 1e8:
-            high_volume_coins.append(sym)
+        return (
+            f"重大事件: {_fmt(event_brief)}; "
+            f"即将发布数据: {_fmt(econ_brief[:2])}; "
+            f"已发布数据: {_fmt(econ_brief[2:]) or '暂无'}。"
+        )
 
+    major_events: List[str] = []
+    upcoming_data: List[str] = []
+    released_data: List[str] = []
+
+    macro = macro_snapshot.get("macro") if isinstance(macro_snapshot.get("macro"), dict) else {}
+    calendar_items = _coerce_items(macro.get("calendar"))
+    recent_items = _coerce_items(macro.get("recent_releases"))
+    if calendar_items:
+        upcoming_data.extend(_limit_titles(calendar_items, max_items=3))
+    if recent_items:
+        released_data.extend(_limit_titles(recent_items, max_items=3))
+
+    macro_fred = macro_snapshot.get("macro_fred") if isinstance(macro_snapshot.get("macro_fred"), dict) else {}
+    fred_upcoming = macro_fred.get("upcoming") if isinstance(macro_fred.get("upcoming"), list) else []
+    fred_series = macro_fred.get("series") if isinstance(macro_fred.get("series"), list) else []
+    if fred_upcoming:
+        upcoming_data.extend(_limit_titles([item for item in fred_upcoming if isinstance(item, dict)], max_items=3))
+    if fred_series:
+        released_data.extend(_limit_titles([item for item in fred_series if isinstance(item, dict)], max_items=3))
+
+    macro_gdelt = macro_snapshot.get("macro_gdelt") if isinstance(macro_snapshot.get("macro_gdelt"), dict) else {}
+    articles = macro_gdelt.get("articles") if isinstance(macro_gdelt.get("articles"), list) else []
+    if articles:
+        major_events.extend(_limit_titles([item for item in articles if isinstance(item, dict)], max_items=3))
+
+    def _fmt(items: List[str]) -> str:
+        cleaned = [item for item in items if item]
+        return "、".join(cleaned) if cleaned else "暂无"
+
+    return f"重大事件: {_fmt(major_events)}; 即将发布数据: {_fmt(upcoming_data)}; 已发布数据: {_fmt(released_data)}。"
+
+
+def _translate_trend_direction(value: Any) -> str:
+    mapping = {
+        "bullish": "偏多",
+        "bearish": "偏空",
+        "sideways": "震荡",
+    }
+    if not value:
+        return "未知"
+    return mapping.get(str(value).strip().lower(), "未知")
+
+
+def _translate_risk_level(value: Any) -> str:
+    mapping = {
+        "low": "低",
+        "medium": "中",
+        "high": "高",
+    }
+    if not value:
+        return "未知"
+    return mapping.get(str(value).strip().lower(), "未知")
+
+
+def _translate_action(value: Any) -> str:
+    mapping = {
+        "buy": "买入",
+        "sell": "卖出",
+        "hold": "持有",
+        "wait": "等待",
+    }
+    if not value:
+        return "未知"
+    return mapping.get(str(value).strip().lower(), "未知")
+
+
+def _format_summary_message(
+    symbol: str,
+    analysis: Dict[str, Any],
+    fundamental_note: Optional[str] = None,
+) -> str:
+    label_map = {
+        "TOTAL_MKT": "大盘",
+        "TOTAL_MARKET_CAP": "大盘",
+        "TOTAL_MKT_CAP": "大盘",
+        "GLOBAL": "大盘",
+        "MARKET": "大盘",
+    }
+    display_symbol = label_map.get(str(symbol).strip().upper(), symbol)
+    summary = (analysis.get("summary") or "").strip()
+    fundamental_view = analysis.get("fundamental_view") if isinstance(analysis.get("fundamental_view"), str) else ""
+    technical_view = analysis.get("technical_view") if isinstance(analysis.get("technical_view"), str) else ""
+    macro_view = analysis.get("macro_view") if isinstance(analysis.get("macro_view"), str) else ""
+    liquidity_view = analysis.get("liquidity_view") if isinstance(analysis.get("liquidity_view"), str) else ""
+    data_conflicts = analysis.get("data_conflicts") if isinstance(analysis.get("data_conflicts"), str) else ""
+    btc_eth_view = analysis.get("btc_eth_view") if isinstance(analysis.get("btc_eth_view"), str) else ""
+    btc_eth_suggestion = analysis.get("btc_eth_trade_suggestion") if isinstance(analysis.get("btc_eth_trade_suggestion"), dict) else {}
+
+    if not fundamental_view:
+        fundamental_view = "无"
+    if not technical_view:
+        technical_view = "无"
+    if not macro_view:
+        macro_view = "无"
+    if not liquidity_view:
+        liquidity_view = "无"
+    if not data_conflicts or data_conflicts in ("?", "??", "????", "N/A"):
+        data_conflicts = "无"
+    if not btc_eth_view:
+        btc_eth_view = "无"
+    if not summary:
+        summary = "无"
+
+
+    trend = analysis.get("trend") if isinstance(analysis.get("trend"), dict) else {}
+    direction = _translate_trend_direction(trend.get("direction"))
+    strength = trend.get("strength")
+    trend_line = f"{direction}"
+    if isinstance(strength, (int, float)):
+        trend_line = f"{trend_line} ({int(strength)}/100)"
+    trend_desc = trend.get("description") or ""
+    if trend_desc:
+        trend_line = f"{trend_line} - {trend_desc}"
+
+    key_levels = analysis.get("key_levels") if isinstance(analysis.get("key_levels"), dict) else {}
+    supports = _format_levels(key_levels.get("supports"))
+    resistances = _format_levels(key_levels.get("resistances"))
+
+    patterns = analysis.get("patterns") if isinstance(analysis.get("patterns"), dict) else {}
+    primary_pattern = patterns.get("primary")
+    pattern_desc = patterns.get("description") or ""
+    detected = patterns.get("detected")
+    pattern_line = None
+    if primary_pattern:
+        pattern_line = f"{primary_pattern}"
+        if pattern_desc:
+            pattern_line = f"{pattern_line} - {pattern_desc}"
+    elif isinstance(detected, list) and detected:
+        pattern_line = ", ".join(str(p) for p in detected if p)
+
+    sentiment = analysis.get("sentiment") if isinstance(analysis.get("sentiment"), dict) else {}
+    momentum = analysis.get("momentum") if isinstance(analysis.get("momentum"), dict) else {}
+    sentiment_line = None
+    if sentiment:
+        score = sentiment.get("score")
+        desc = sentiment.get("description") or ""
+        sentiment_line = f"{score if isinstance(score, (int, float)) else '?'}"
+        if desc:
+            sentiment_line = f"{sentiment_line} - {desc}"
+    momentum_line = None
+    if momentum:
+        score = momentum.get("score")
+        desc = momentum.get("description") or ""
+        momentum_line = f"{score if isinstance(score, (int, float)) else '?'}"
+        if desc:
+            momentum_line = f"{momentum_line} - {desc}"
+
+    risk = analysis.get("risk_assessment") if isinstance(analysis.get("risk_assessment"), dict) else {}
+    risk_line = None
+    if risk:
+        level = _translate_risk_level(risk.get("level"))
+        factors = risk.get("factors")
+        if isinstance(factors, list) and factors:
+            risk_line = f"{level} - {', '.join(str(f) for f in factors if f)}"
+        else:
+            risk_line = f"{level}"
+
+    suggestion = analysis.get("trading_suggestion") if isinstance(analysis.get("trading_suggestion"), dict) else {}
+    suggestion_lines: List[str] = []
+    if suggestion:
+        raw_action = str(suggestion.get("action") or "").strip().lower()
+        action = _translate_action(suggestion.get("action"))
+        entry_zone = suggestion.get("entry_zone")
+        stop_loss = suggestion.get("stop_loss")
+        take_profit = suggestion.get("take_profit")
+        reasoning = suggestion.get("reasoning") or ""
+        suggestion_lines.append(f"• 动作: {action}")
+        if isinstance(entry_zone, list) and len(entry_zone) >= 2:
+            suggestion_lines.append(
+                f"• 入场区间: {_format_number(entry_zone[0])} - {_format_number(entry_zone[1])}"
+            )
+        elif entry_zone is not None:
+            suggestion_lines.append(f"• 入场区间: {_format_number(entry_zone)}")
+        if raw_action not in ("wait", "hold", "等待", "观望", "持有"):
+            if stop_loss is not None:
+                suggestion_lines.append(f"• 止损: {_format_number(stop_loss)}")
+            if take_profit is not None:
+                suggestion_lines.append(f"• 止盈: {_format_list(take_profit)}")
+        if reasoning:
+            suggestion_lines.append(f"• 理由: {reasoning}")
+
+    btc_eth_lines: List[str] = []
+    if btc_eth_suggestion:
+        asset = str(btc_eth_suggestion.get("asset") or "").strip().upper() or "BTC/ETH"
+        raw_action = str(btc_eth_suggestion.get("action") or "").strip().lower()
+        action = _translate_action(btc_eth_suggestion.get("action"))
+        entry_zone = btc_eth_suggestion.get("entry_zone")
+        stop_loss = btc_eth_suggestion.get("stop_loss")
+        take_profit = btc_eth_suggestion.get("take_profit")
+        reasoning = btc_eth_suggestion.get("reasoning") or ""
+        btc_eth_lines.append(f"• 标的: {asset}")
+        btc_eth_lines.append(f"• 动作: {action}")
+        if isinstance(entry_zone, list) and len(entry_zone) >= 2:
+            btc_eth_lines.append(
+                f"• 入场区间: {_format_number(entry_zone[0])} - {_format_number(entry_zone[1])}"
+            )
+        elif entry_zone is not None:
+            btc_eth_lines.append(f"• 入场区间: {_format_number(entry_zone)}")
+        if raw_action not in ("wait", "hold", "等待", "观望", "持有"):
+            if stop_loss is not None:
+                btc_eth_lines.append(f"• 止损: {_format_number(stop_loss)}")
+            if take_profit is not None:
+                btc_eth_lines.append(f"• 止盈: {_format_list(take_profit)}")
+        if reasoning:
+            btc_eth_lines.append(f"• 理由: {reasoning}")
+
+    as_of_text = _format_as_of(analysis.get("_as_of") or analysis.get("as_of"))
+    section_sep = "━━━━━━━━━━━━━━━━"
+
+    macro_note_line = ""
+    if fundamental_note:
+        note = fundamental_note.strip()
+        if note.endswith("。"):
+            note = note[:-1]
+        macro_note_line = note.replace(";", "；")
+
+    lines = [f"📊【市场宏观】{display_symbol}"]
+    if as_of_text:
+        lines.append(f"🕒 更新时间：{as_of_text}")
+    lines.append(f"🧭 总览：{summary}")
+    lines.append(section_sep)
+
+    lines.append("🧩 核心观点")
+    lines.append(f"• 基本面：{fundamental_view}")
+    if macro_note_line:
+        lines.append(f"• 宏观事件：{macro_note_line}")
+    lines.append(f"• 技术面：{technical_view}")
+    lines.append(f"• 宏观：{macro_view}")
+    lines.append(f"• 流动性：{liquidity_view}")
+    lines.append(f"• 数据冲突：{data_conflicts}")
+    lines.append(f"• BTC/ETH 类别：{btc_eth_view}")
+    lines.append(section_sep)
+
+    lines.append("📌 结构")
+    lines.append(f"• 趋势：{trend_line}")
+    lines.append(f"• 支撑：{supports}")
+    lines.append(f"• 阻力：{resistances}")
+    if pattern_line:
+        lines.append(f"• 形态：{pattern_line}")
+    lines.append(section_sep)
+
+    lines.append("🌡️ 情绪与风险")
+    if sentiment_line:
+        lines.append(f"• 情绪：{sentiment_line}")
+    if momentum_line:
+        lines.append(f"• 动能：{momentum_line}")
+    if risk_line:
+        lines.append(f"• 风险：{risk_line}")
+
+    if suggestion_lines:
+        lines.append(section_sep)
+        lines.append("🎯 大盘交易建议")
+        lines.extend(suggestion_lines)
+
+    if btc_eth_lines:
+        lines.append(section_sep)
+        lines.append("🪙 BTC/ETH 入场")
+        lines.extend(btc_eth_lines)
+
+    return "\n".join(lines).strip()
+
+
+def _safe_float(value: Any) -> Optional[float]:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except Exception:
+        return None
+
+
+def _fetch_global_market_data() -> Dict[str, Any]:
+    url = "https://api.coingecko.com/api/v3/global"
+    try:
+        resp = requests.get(url, timeout=10)
+        if resp.status_code != 200:
+            return {}
+        payload = resp.json()
+    except Exception:
+        return {}
+
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, dict):
+        return {}
+
+    total_market_cap = _safe_float((data.get("total_market_cap") or {}).get("usd"))
+    total_volume = _safe_float((data.get("total_volume") or {}).get("usd"))
+    market_cap_change = _safe_float(data.get("market_cap_change_percentage_24h_usd"))
+    dominance = data.get("market_cap_percentage") if isinstance(data.get("market_cap_percentage"), dict) else {}
     return {
-        "coins": coin_data,
-        "summary": {
-            "bullish_price": bullish_coins,
-            "bearish_price": bearish_coins,
-            "high_volume": high_volume_coins,
+        "total_market_cap": total_market_cap,
+        "total_volume_24h": total_volume,
+        "market_cap_change_24h": market_cap_change,
+        "dominance": {
+            "btc": _safe_float(dominance.get("btc")),
+            "eth": _safe_float(dominance.get("eth")),
         },
     }
 
 
-def _fetch_crypto_news() -> List[Dict[str, Any]]:
-    """??????????????"""
-    news = []
+def _build_market_snapshot(config: Dict[str, Any]) -> Dict[str, Any]:
+    symbols = _normalize_symbols(config.get("market_symbols") or config.get("symbols")) or DEFAULT_MARKET_SYMBOLS[:]
     try:
-        news = fetch_news(limit=5)
-    except Exception as e:
-        logger.debug("?? CryptoCompare ?????: %s", e)
+        limit = int(config.get("market_symbol_limit", 12) or 12)
+    except Exception:
+        limit = 12
+    if limit > 0:
+        symbols = symbols[:limit]
 
-    trending = []
-    try:
-        trending = fetch_trending(limit=5)
-    except Exception as e:
-        logger.debug("??????????: %s", e)
-
-    if trending:
-        news.append({
-            "title": "Trending Coins",
-            "source": "Market",
-            "coins": trending,
-        })
-    return news
-
-
-def _build_macro_analysis_prompt(
-    major_coin_data: Dict[str, Dict[str, Any]],
-    oi_ranking: List[Dict[str, Any]],
-    signals: Dict[str, Any],
-    news: Optional[List[Dict[str, Any]]] = None,
-    language: str = "zh",
-) -> str:
-    """???????? Prompt"""
-    now = datetime.now(BEIJING_TZ)
-    lines: List[str] = []
-    sep = "\n"
-
-    if language == "en":
-        lines.append("You are a top crypto macro analyst. Produce a concise macro report based on the data.")
-        lines.append(f"**Analysis Time**: {now.strftime('%Y-%m-%d %H:%M')} (Beijing Time)")
-        lines.append("")
-        lines.append("BTC/ETH Core Data:")
-        for symbol in MAJOR_COINS:
-            data = major_coin_data.get(symbol, {})
-            lines.append("")
-            lines.append(f"### {symbol}")
-            for tf, key in [("1h", "klines_1h"), ("4h", "klines_4h"), ("1d", "klines_1d")]:
-                kl = data.get(key, {})
-                if kl:
-                    lines.append(
-                        f"{tf}: trend={kl.get('trend','N/A')}, price={kl.get('latest_price',0):.2f}, "
-                        f"change={kl.get('price_change_pct',0):.2f}%, range={kl.get('price_range_pct',0):.2f}%, "
-                        f"volume={kl.get('volume_ratio',1):.2f}x, MA5={kl.get('ma5',0):.2f}, MA10={kl.get('ma10',0):.2f}"
-                    )
-            market = data.get("market", {})
-            if market:
-                lines.append(
-                    f"Market: price=${market.get('price',0):.2f}, change_24h={market.get('price_change_percent',0):.2f}%, "
-                    f"volume_24h={market.get('volume_24h',0):.2f}, mcap={market.get('market_cap',0):.2f}, source={market.get('source','')}"
-                )
-            oi = data.get("open_interest")
-            if oi:
-                lines.append(f"Open Interest: {oi:.2f}")
-        lines.append("")
-        lines.append("Signals Summary:")
-        lines.append(
-            f"bullish={len(signals.get('bullish', []))}, "
-            f"bearish={len(signals.get('bearish', []))}, whale={len(signals.get('whale', []))}"
+    basket: List[Dict[str, Any]] = []
+    for symbol in symbols:
+        snapshot = fetch_market_snapshot(symbol)
+        if not isinstance(snapshot, dict):
+            continue
+        basket.append(
+            {
+                "symbol": symbol,
+                "price": _safe_float(snapshot.get("price")),
+                "price_change_percent": _safe_float(snapshot.get("price_change_percent")),
+                "volume_24h": _safe_float(snapshot.get("volume_24h")),
+                "market_cap": _safe_float(snapshot.get("market_cap")),
+            }
         )
-        if news:
-            lines.append("")
-            lines.append("News/Trends:")
-            for item in news[:5]:
-                title = item.get("title") or ""
-                lines.append(f"- {title}")
-        lines.append("")
-        lines.append("Return a short macro conclusion and risk bias.")
-        return sep.join(lines)
 
-    lines.append("你是顶级加密货币量化分析师和宏观策略师。基于以下数据生成专业的市场分析报告。")
-    lines.append(f"分析时间: {now.strftime('%Y-%m-%d %H:%M')} (北京时间)")
-    lines.append(f"数据周期: 最近{int(signals.get('lookback_hours', 48))}小时")
-    lines.append("")
-    lines.append("BTC/ETH 核心数据:")
-    for symbol in MAJOR_COINS:
-        data = major_coin_data.get(symbol, {})
-        lines.append("")
-        lines.append(f"{symbol} 数据")
-        for tf, key in [("1h", "klines_1h"), ("4h", "klines_4h"), ("1d", "klines_1d")]:
-            kl = data.get(key, {})
-            if kl:
-                lines.append(
-                    f"{tf}: 趋势={kl.get('trend','N/A')}, 价格={kl.get('latest_price',0):.2f}, "
-                    f"涨跌={kl.get('price_change_pct',0):.2f}%, 波幅={kl.get('price_range_pct',0):.2f}%, "
-                    f"成交量={kl.get('volume_ratio',1):.2f}x, MA5={kl.get('ma5',0):.2f}, MA10={kl.get('ma10',0):.2f}"
-                )
-        market = data.get("market", {})
-        if market:
-            lines.append(
-                f"市场数据: 价格=${market.get('price',0):.2f}, 24H涨跌={market.get('price_change_percent',0):.2f}%, "
-                f"24H成交量={market.get('volume_24h',0):.2f}, 市值={market.get('market_cap',0):.2f}, 数据源={market.get('source','')}"
-            )
-        oi = data.get("open_interest")
-        if oi:
-            lines.append(f"持仓量(OI): {oi:.2f}")
-    lines.append("")
-    lines.append("信号汇总:")
-    lines.append(f"看涨={len(signals.get('bullish', []))}个, 看跌={len(signals.get('bearish', []))}个, 巨鲸={len(signals.get('whale', []))}个")
+    changes = [item.get("price_change_percent") for item in basket if isinstance(item.get("price_change_percent"), (int, float))]
+    volumes = [item.get("volume_24h") for item in basket if isinstance(item.get("volume_24h"), (int, float))]
+    market_caps = [item.get("market_cap") for item in basket if isinstance(item.get("market_cap"), (int, float))]
 
-    # 添加币种推荐数据
-    bullish_coins = signals.get("recommended_bullish", [])
-    bearish_coins = signals.get("recommended_bearish", [])
-    opportunity_coins = signals.get("recommended_opportunity", [])
+    weight_sum = sum(market_caps) if market_caps else 0.0
+    weighted_change = None
+    if weight_sum > 0:
+        weighted_change = sum(
+            item.get("price_change_percent", 0) * item.get("market_cap", 0)
+            for item in basket
+            if isinstance(item.get("price_change_percent"), (int, float)) and isinstance(item.get("market_cap"), (int, float))
+        ) / weight_sum
+    elif changes:
+        weighted_change = sum(changes) / len(changes)
 
-    if bullish_coins:
-        lines.append("")
-        lines.append("看涨币种推荐（按信号强度排序）:")
-        for coin in bullish_coins[:3]:  # 只显示前3个
-            lines.append(
-                f"- {coin['symbol']}: 看涨信号{coin['bullish_count']}个, "
-                f"看跌信号{coin['bearish_count']}个, 巨鲸{coin['whale_count']}个"
-            )
+    breadth_up = sum(1 for item in basket if isinstance(item.get("price_change_percent"), (int, float)) and item.get("price_change_percent") > 0)
+    breadth_down = sum(1 for item in basket if isinstance(item.get("price_change_percent"), (int, float)) and item.get("price_change_percent") < 0)
+    breadth_flat = max(len(basket) - breadth_up - breadth_down, 0)
 
-    if bearish_coins:
-        lines.append("")
-        lines.append("看跌币种推荐（按信号强度排序）:")
-        for coin in bearish_coins[:3]:  # 只显示前3个
-            lines.append(
-                f"- {coin['symbol']}: 看跌信号{coin['bearish_count']}个, "
-                f"看涨信号{coin['bullish_count']}个"
-            )
+    volatility = None
+    if changes:
+        mean_val = sum(changes) / len(changes)
+        variance = sum((val - mean_val) ** 2 for val in changes) / len(changes)
+        volatility = variance ** 0.5
 
-    if opportunity_coins:
-        lines.append("")
-        lines.append("机会币种推荐（巨鲸活动/套利机会）:")
-        for coin in opportunity_coins[:3]:  # 只显示前3个
-            lines.append(
-                f"- {coin['symbol']}: 巨鲸{coin['whale_count']}个, "
-                f"套利{coin['arbitrage_count']}个, 总信号{coin['total_signals']}个"
-            )
+    top_movers = sorted(
+        basket,
+        key=lambda item: item.get("price_change_percent") if isinstance(item.get("price_change_percent"), (int, float)) else -1e9,
+        reverse=True,
+    )[:3]
+    bottom_movers = sorted(
+        basket,
+        key=lambda item: item.get("price_change_percent") if isinstance(item.get("price_change_percent"), (int, float)) else 1e9,
+    )[:3]
 
-    if news:
-        lines.append("")
-        lines.append("新闻/热点:")
-        for item in news[:5]:
-            title = item.get("title") or ""
-            lines.append(f"- {title}")
-    lines.append("")
-    lines.append("【分析要求】")
-    lines.append("生成一份精炼的市场分析报告，包含以下5个部分：")
-    lines.append("")
-    lines.append("1. 市场概况（60-80字）")
-    lines.append("   BTC/ETH价格、涨跌幅、持仓量，市场情绪")
-    lines.append("")
-    lines.append("2. 技术分析（80-100字）")
-    lines.append("   多周期趋势，关键支撑阻力位（格式：BTC支撑85000/83500，阻力90000/92500）")
-    lines.append("")
-    lines.append("3. 币种推荐（80-100字）")
-    lines.append("   基于信号数据，推荐2-3个看涨币种、2-3个看跌币种、2-3个机会币种")
-    lines.append("   格式：【看涨】BTC、ETH（理由）【看跌】DOGE（理由）【机会】LINK（理由）")
-    lines.append("")
-    lines.append("4. 趋势研判（60-80字）")
-    lines.append("   短期（1-3天）趋势：看多/看空/震荡，概率和触发条件")
-    lines.append("")
-    lines.append("5. 操作策略（60-80字）")
-    lines.append("   仓位建议、入场点位、止损位、目标位")
-    lines.append("")
-    lines.append("【格式要求】")
-    lines.append("1. 不使用markdown符号（不要*、#、-、>等）")
-    lines.append("2. 纯文本格式，段落间空行分隔")
-    lines.append("3. 重点用【】标注，如【核心观点】【风险警示】")
-    lines.append("4. 数据精确引用，如：BTC价格87576美元，涨幅0.69%")
-    lines.append("5. 总字数控制在400-500字")
-    lines.append("6. 言简意赅，专业深度，避免废话")
-    return sep.join(lines)
+    global_data = _fetch_global_market_data()
+    total_market_cap = global_data.get("total_market_cap") or (sum(market_caps) if market_caps else None)
+    total_volume = global_data.get("total_volume_24h") or (sum(volumes) if volumes else None)
+    market_index_value = total_market_cap
 
+    liquidity_ratio = None
+    if total_market_cap and total_volume:
+        liquidity_ratio = total_volume / total_market_cap
 
-def _call_ai_api(prompt: str, config: Dict[str, Any], language: str = "zh") -> Optional[str]:
-    """调用 AI API 生成分析"""
-    api_key = config.get("api_key", "")
-    api_url = config.get("api_url", AI_SUMMARY_API_URL)
-    model = config.get("model", AI_SUMMARY_MODEL)
+    macro_snapshot = fetch_macro_snapshot() or {}
+    trending = fetch_trending(limit=8)
 
-    if not api_key:
-        logger.error("AI API Key 未配置")
-        return None
-
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {api_key}",
+    return {
+        "as_of": datetime.now(timezone.utc).isoformat(),
+        "market_index": {
+            "name": "TOTAL_MARKET_CAP",
+            "value": market_index_value,
+            "change_24h": global_data.get("market_cap_change_24h"),
+            "unit": "USD",
+        },
+        "aggregate": {
+            "weighted_change_24h": weighted_change,
+            "volatility_24h": volatility,
+            "total_market_cap": total_market_cap,
+            "total_volume_24h": total_volume,
+            "liquidity_ratio": liquidity_ratio,
+            "market_cap_change_24h": global_data.get("market_cap_change_24h"),
+            "dominance": global_data.get("dominance"),
+        },
+        "breadth": {
+            "total": len(basket),
+            "up": breadth_up,
+            "down": breadth_down,
+            "flat": breadth_flat,
+        },
+        "top_movers": [
+            {"symbol": item.get("symbol"), "change": item.get("price_change_percent")}
+            for item in top_movers
+            if item.get("symbol")
+        ],
+        "bottom_movers": [
+            {"symbol": item.get("symbol"), "change": item.get("price_change_percent")}
+            for item in bottom_movers
+            if item.get("symbol")
+        ],
+        "basket": basket,
+        "macro_snapshot": macro_snapshot,
+        "trending": trending,
     }
 
-    system_prompt = (
-        "You are a professional crypto market analyst. Output plain text only, no markdown symbols."
-        if language == "en"
-        else "你是专业的加密货币市场分析师。只输出纯文本，不要使用任何markdown符号（不要用*、#、-、>等）。"
+
+
+
+def _build_market_prompt(snapshot: Dict[str, Any]) -> str:
+    payload_json = json.dumps(_compact_snapshot_for_prompt(snapshot), ensure_ascii=False)
+    lines = [
+        "你是专业的市场宏观分析师，只返回严格 JSON，所有描述性文本必须使用中文。",
+        "严禁输出英文或拼音；若无法中文表达，必须用中文说明“数据不足”。",
+        "需要 8-12 行要点，总结趋势/结构/动能/流动性/宏观/风险/冲突。",
+        "说明: key_levels/entry_zone/stop_loss/take_profit 主要给 BTC/ETH，其他币可留空。",
+        "btc_eth_trade_suggestion 必须给出 asset=BTC/ETH/BOTH。",
+        "action 只能是 buy/sell/hold/wait；stop_loss 和 take_profit 若不适用可为 null。",
+        "JSON schema (keys must match; enum values not translated):",
+        '{"trend":{"direction":"bullish/bearish/sideways","strength":0-100,"description":"..."},"key_levels":{"supports":[{"price":0,"strength":0-100,"reason":"..."}],"resistances":[{"price":0,"strength":0-100,"reason":"..."}]},"patterns":{"detected":[],"primary":null,"description":"..."},"sentiment":{"score":-100,"description":"..."},"momentum":{"score":-100,"description":"..."},"risk_assessment":{"level":"low/medium/high","factors":["..."]},"trading_suggestion":{"action":"buy/sell/hold/wait","entry_zone":[0,0],"stop_loss":0,"take_profit":[0,0],"reasoning":"..."},"btc_eth_trade_suggestion":{"asset":"BTC/ETH/BOTH","action":"buy/sell/hold/wait","entry_zone":[0,0],"stop_loss":0,"take_profit":[0,0],"reasoning":"..."},"summary":"...","fundamental_view":"...","technical_view":"...","macro_view":"...","liquidity_view":"...","data_conflicts":"...","btc_eth_view":"..."}',
+        "输入数据:",
+        payload_json,
+    ]
+    return "\n".join(lines)
+
+
+def _compact_snapshot_for_prompt(snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(snapshot, dict):
+        return {}
+    compact = dict(snapshot)
+    compact["macro_snapshot"] = _compact_macro_snapshot(snapshot.get("macro_snapshot"))
+    return compact
+
+
+def _compact_macro_snapshot(macro_snapshot: Any) -> Dict[str, Any]:
+    if not isinstance(macro_snapshot, dict):
+        return {}
+
+    out: Dict[str, Any] = {}
+
+    economic_data = macro_snapshot.get("economic_data")
+    if isinstance(economic_data, dict) and economic_data:
+        out["economic_data"] = economic_data
+
+    major_events = macro_snapshot.get("major_events")
+    if isinstance(major_events, dict) and major_events:
+        out["major_events"] = major_events
+
+    major_policies = macro_snapshot.get("major_policies")
+    if isinstance(major_policies, dict) and major_policies:
+        out["major_policies"] = major_policies
+
+    return out
+def _call_ai_summary_api(prompt: str, config: Dict[str, Any]) -> Optional[str]:
+    api_key = (config.get("api_key") or "").strip()
+    api_url = (config.get("api_url") or "").strip()
+    model = (config.get("model") or "").strip()
+    if not api_key or not api_url or not model:
+        return None
+
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
+    max_retries = int(os.getenv("NOFX_AI_API_RETRY", "1") or 1)
+    timeout_sec = int(os.getenv("NOFX_AI_API_TIMEOUT", "90") or 90)
+    connect_timeout = float(os.getenv("NOFX_AI_CONNECT_TIMEOUT", "15") or 15)
+    max_tokens = int(os.getenv("NOFX_AI_MARKET_MAX_TOKENS", "8000") or 8000)
+
+    protocol, resolved_url = resolve_protocol_and_url(api_url, config.get("api_protocol"))
+    stream = should_force_responses_stream(resolved_url, protocol)
+    payload = build_payload(
+        protocol,
+        resolved_url,
+        model,
+        "你是专业的市场宏观分析师，仅返回严格 JSON，所有描述性文本必须使用中文，禁止出现英文或拼音。",
+        prompt,
+        max_tokens,
+        0.3,
+        stream,
     )
 
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt},
-        ],
-        "max_tokens": 4000,  # 增加到4000以确保完整输出
-        "temperature": 0.7,
+    proxies = _get_ai_proxies()
+    use_env_proxy = os.getenv("NOFX_AI_TRUST_ENV", "0").lower() in ("1", "true", "yes", "on")
+    retry_statuses = {429, 500, 502, 503, 504}
+
+    for attempt in range(max_retries + 1):
+        try:
+            session = requests.Session()
+            session.trust_env = bool(use_env_proxy and not proxies)
+            if protocol == AI_PROTOCOL_RESPONSES:
+                headers["Accept"] = "text/event-stream" if stream else "application/json"
+            resp = session.post(
+                resolved_url,
+                headers=headers,
+                json=payload,
+                timeout=(connect_timeout, timeout_sec),
+                proxies=proxies,
+            )
+        except Exception as exc:
+            if attempt < max_retries:
+                logger.warning(
+                    "Market summary AI call error (attempt %s/%s): %s",
+                    attempt + 1,
+                    max_retries + 1,
+                    exc,
+                )
+                time.sleep(2 + attempt * 2)
+                continue
+            logger.warning("Market summary AI call error: %s", exc)
+            return None
+
+        if resp.status_code != 200:
+            if resp.status_code == 429:
+                raise RuntimeError(f"AI_429: {resp.text[:200]}")
+            if protocol == AI_PROTOCOL_RESPONSES and resp.status_code == 400:
+                override_key = resolve_responses_token_key_override(resp.text)
+                if override_key is not None:
+                    payload = override_responses_token_key(payload, override_key, max_tokens)
+                    resp = session.post(
+                        resolved_url,
+                        headers=headers,
+                        json=payload,
+                        timeout=(connect_timeout, timeout_sec),
+                        proxies=proxies,
+                    )
+            if resp.status_code != 200:
+                logger.warning("Market summary AI call failed: %s - %s", resp.status_code, resp.text[:200])
+                if attempt < max_retries and resp.status_code in retry_statuses:
+                    time.sleep(2 + attempt * 2)
+                    continue
+                return None
+
+        try:
+            if protocol == AI_PROTOCOL_RESPONSES:
+                content = parse_responses_body(resp.text)
+            else:
+                try:
+                    payload_json = resp.json()
+                except Exception:
+                    payload_json = None
+                content = parse_compatible_content(payload_json) if isinstance(payload_json, dict) else ""
+                if not content:
+                    content = (resp.text or "").strip()
+        except Exception as exc:
+            if attempt < max_retries:
+                logger.warning(
+                    "Market summary AI parse error (attempt %s/%s): %s",
+                    attempt + 1,
+                    max_retries + 1,
+                    exc,
+                )
+                time.sleep(2 + attempt * 2)
+                continue
+            logger.warning("Market summary AI parse error: %s", exc)
+            return None
+
+        if content:
+            return content.strip()
+        if attempt < max_retries:
+            time.sleep(2 + attempt * 2)
+            continue
+        return None
+
+
+def _parse_ai_summary(raw: str) -> Optional[Dict[str, Any]]:
+    if not raw:
+        return None
+    cleaned = raw.strip()
+    if cleaned.startswith("```"):
+        first_newline = cleaned.find("\n")
+        if first_newline != -1:
+            cleaned = cleaned[first_newline + 1 :]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3]
+        cleaned = cleaned.strip()
+    elif "```" in cleaned:
+        try:
+            import re
+
+            match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", cleaned, flags=re.S)
+            if match:
+                cleaned = match.group(1).strip()
+        except Exception:
+            pass
+
+    data = None
+    try:
+        data = json.loads(cleaned)
+    except Exception:
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            try:
+                data = json.loads(cleaned[start : end + 1])
+            except Exception:
+                data = None
+    if isinstance(data, dict):
+        return data
+    return None
+
+
+def _build_market_summary(config: Dict[str, Any]) -> Optional[Tuple[Dict[str, Any], Dict[str, Any]]]:
+    snapshot = _build_market_snapshot(config)
+    prompt = _build_market_prompt(snapshot)
+    raw = call_ai_with_queue(lambda: _call_ai_summary_api(prompt, config))
+    if not raw:
+        logger.warning("Market summary AI returned empty response.")
+        return None
+    analysis = _parse_ai_summary(raw)
+    if not analysis:
+        logger.warning("Market summary AI parse failed.")
+        return None
+    return analysis, snapshot
+
+
+def _build_fallback_market_analysis(snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    aggregate = snapshot.get("aggregate") if isinstance(snapshot.get("aggregate"), dict) else {}
+    market_index = snapshot.get("market_index") if isinstance(snapshot.get("market_index"), dict) else {}
+    breadth = snapshot.get("breadth") if isinstance(snapshot.get("breadth"), dict) else {}
+
+    total_market_cap = aggregate.get("total_market_cap") or market_index.get("value")
+    total_volume = aggregate.get("total_volume_24h")
+    market_cap_change = aggregate.get("market_cap_change_24h") or market_index.get("change_24h")
+    weighted_change = aggregate.get("weighted_change_24h")
+    volatility = aggregate.get("volatility_24h")
+    liquidity_ratio = aggregate.get("liquidity_ratio")
+
+    summary_parts: List[str] = []
+    if total_market_cap is not None:
+        summary_parts.append(f"总市值{_format_market_value(total_market_cap)}")
+    if market_cap_change is not None:
+        summary_parts.append(f"24H {_format_pct(market_cap_change)}")
+    breadth_total = breadth.get("total")
+    breadth_up = breadth.get("up")
+    breadth_down = breadth.get("down")
+    breadth_flat = breadth.get("flat")
+    if isinstance(breadth_total, int) and breadth_total > 0:
+        up = int(breadth_up or 0)
+        down = int(breadth_down or 0)
+        flat = int(breadth_flat or 0)
+        summary_parts.append(f"上涨{up}/{breadth_total} 下跌{down}/{breadth_total} 平盘{flat}")
+    if total_volume is not None:
+        summary_parts.append(f"24H成交{_format_market_value(total_volume)}")
+
+    dominance = aggregate.get("dominance") if isinstance(aggregate.get("dominance"), dict) else {}
+    btc_dom = dominance.get("btc") if isinstance(dominance.get("btc"), (int, float)) else None
+    eth_dom = dominance.get("eth") if isinstance(dominance.get("eth"), (int, float)) else None
+    dom_parts = []
+    if btc_dom is not None:
+        dom_parts.append(f"BTC {btc_dom:.2f}%")
+    if eth_dom is not None:
+        dom_parts.append(f"ETH {eth_dom:.2f}%")
+    if dom_parts:
+        summary_parts.append("主导率 " + " / ".join(dom_parts))
+
+    summary = "；".join(summary_parts) if summary_parts else "市场快照数据不足，暂无法给出完整结论。"
+
+    technical_bits: List[str] = []
+    if weighted_change is not None:
+        technical_bits.append(f"加权涨跌{_format_pct(weighted_change)}")
+    if volatility is not None:
+        technical_bits.append(f"波动{_format_pct(volatility)}")
+    top_movers = _format_movers(snapshot.get("top_movers"))
+    bottom_movers = _format_movers(snapshot.get("bottom_movers"))
+    if top_movers != "暂无":
+        technical_bits.append(f"领涨：{top_movers}")
+    if bottom_movers != "暂无":
+        technical_bits.append(f"领跌：{bottom_movers}")
+    technical_view = "；".join(technical_bits) if technical_bits else "数据不足"
+
+    if total_volume is not None and total_market_cap is not None and liquidity_ratio is not None:
+        liquidity_view = f"24H成交{_format_market_value(total_volume)}，换手比{_format_ratio(liquidity_ratio)}"
+    elif total_volume is not None:
+        liquidity_view = f"24H成交{_format_market_value(total_volume)}"
+    else:
+        liquidity_view = "数据不足"
+
+    btc_change = _get_basket_change(snapshot, "BTC")
+    eth_change = _get_basket_change(snapshot, "ETH")
+    btc_eth_parts: List[str] = []
+    if btc_change is not None:
+        btc_eth_parts.append(f"BTC 24H {_format_pct(btc_change)}")
+    if eth_change is not None:
+        btc_eth_parts.append(f"ETH 24H {_format_pct(eth_change)}")
+    btc_eth_view = "，".join(btc_eth_parts) if btc_eth_parts else "暂无"
+
+    direction = "sideways"
+    strength = 20
+    if isinstance(weighted_change, (int, float)):
+        if weighted_change >= 0.6:
+            direction = "bullish"
+        elif weighted_change <= -0.6:
+            direction = "bearish"
+        strength = int(max(20, min(90, abs(weighted_change) * 12)))
+
+    trend_desc_parts = []
+    if weighted_change is not None:
+        trend_desc_parts.append(f"加权{_format_pct(weighted_change)}")
+    if isinstance(breadth_total, int) and breadth_total > 0:
+        trend_desc_parts.append(f"广度{int(breadth_up or 0)}/{breadth_total}")
+    trend_desc = "，".join(trend_desc_parts)
+
+    sentiment = {}
+    if isinstance(breadth_total, int) and breadth_total > 0:
+        breadth_score = int(((int(breadth_up or 0) - int(breadth_down or 0)) / breadth_total) * 100)
+        sentiment = {"score": max(-100, min(100, breadth_score)), "description": f"上涨{breadth_up} 下跌{breadth_down}"}
+
+    momentum = {}
+    if isinstance(weighted_change, (int, float)):
+        momentum_score = int(max(-100, min(100, weighted_change * 10)))
+        momentum = {"score": momentum_score, "description": f"24H加权涨跌{_format_pct(weighted_change)}"}
+
+    risk_level = "medium"
+    risk_factors: List[str] = []
+    if isinstance(volatility, (int, float)):
+        if volatility >= 5:
+            risk_level = "high"
+            risk_factors.append("波动放大")
+        elif volatility <= 1.5:
+            risk_level = "low"
+            risk_factors.append("波动温和")
+    if isinstance(liquidity_ratio, (int, float)):
+        if liquidity_ratio < 0.02:
+            risk_factors.append("流动性偏低")
+        elif liquidity_ratio > 0.08:
+            risk_factors.append("流动性偏高")
+    if not risk_factors:
+        risk_factors = ["AI暂不可用，风险需自行评估"]
+
+    return {
+        "_as_of": snapshot.get("as_of"),
+        "summary": summary,
+        "fundamental_view": "AI暂不可用，以下为基于市场快照的简述。",
+        "technical_view": technical_view,
+        "macro_view": "宏观影响需结合事件数据进一步判读。",
+        "liquidity_view": liquidity_view,
+        "data_conflicts": "AI不可用，冲突待确认",
+        "btc_eth_view": btc_eth_view,
+        "trend": {
+            "direction": direction,
+            "strength": strength,
+            "description": trend_desc,
+        },
+        "key_levels": {"supports": [], "resistances": []},
+        "patterns": {"detected": [], "primary": None, "description": ""},
+        "sentiment": sentiment,
+        "momentum": momentum,
+        "risk_assessment": {"level": risk_level, "factors": risk_factors},
+        "trading_suggestion": {
+            "action": "wait",
+            "entry_zone": None,
+            "stop_loss": None,
+            "take_profit": None,
+            "reasoning": "AI暂不可用，先观望，等待更清晰信号。",
+        },
+        "btc_eth_trade_suggestion": {
+            "asset": "BTC/ETH",
+            "action": "wait",
+            "entry_zone": None,
+            "stop_loss": None,
+            "take_profit": None,
+            "reasoning": "AI暂不可用，先观望，等待更清晰信号。",
+        },
     }
 
+
+def _build_symbol_summary(symbol: str, config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     try:
-        # 显式禁用代理直接连接 AI API
-        logger.info(f"[AI Market] 调用 AI API: {api_url} (无代理)")
-        session = requests.Session()
-        session.trust_env = False
-        resp = session.post(api_url, headers=headers, json=payload, timeout=120)
-        if resp.status_code != 200:
-            logger.error("AI API 返回错误: %s - %s", resp.status_code, resp.text[:200])
-            return None
-        data = resp.json()
-        content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-        logger.info(f"[AI Market] AI API 返回成功，内容长度: {len(content) if content else 0}")
-        return content.strip() if content else None
-    except Exception as e:
-        logger.error("AI API 调用失败: %s", e)
+        from chart_pro_v10 import get_klines, get_orderbook
+        from market_data_sources import fetch_market_snapshot as _fetch_market_snapshot
+        from ai_market_analysis import get_ai_market_analysis
+    except Exception as exc:
+        logger.warning("Market summary imports failed: %s", exc)
         return None
 
+    df = get_klines(symbol, timeframe="1h", limit=200)
+    if df is None or getattr(df, "empty", True):
+        logger.warning("Market summary skipped %s: missing klines", symbol)
+        return None
 
-def _send_summary_to_telegram(summary: str, language: str = "zh") -> bool:
-    """发送总结到 Telegram"""
-    from telegram import send_telegram_message
-    
-    now = datetime.now(BEIJING_TZ)
-    if language == "en":
-        header = f"📊 AI Market Summary\n⏰ {now.strftime('%Y-%m-%d %H:%M')} (Beijing Time)\n\n"
-    else:
-        header = f"📊 AI 市场总结\n⏰ {now.strftime('%Y-%m-%d %H:%M')} (北京时间)\n\n"
-    
-    # 清理消息，移除 markdown 格式，使用纯文本
-    message = header + summary
-    # 移除 markdown 格式符号
-    message = message.replace("**", "")
-    message = message.replace("###", "")
-    message = message.replace("---", "")
-    # 移除可能导致 HTML 解析错误的标签
-    message = message.replace("<b>", "").replace("</b>", "")
-    message = message.replace("<i>", "").replace("</i>", "")
-    
-    # 使用纯文本模式发送，不使用 HTML 解析
-    result = send_telegram_message(message, pin_message=False, parse_mode=None)
-    return result is not None and result.get("success", False)
+    try:
+        current_price = float(df["close"].iloc[-1])
+    except Exception:
+        logger.warning("Market summary skipped %s: invalid price", symbol)
+        return None
+
+    orderbook = get_orderbook(symbol, limit=80)
+    market_data = _fetch_market_snapshot(symbol) or {}
+    analysis = get_ai_market_analysis(
+        symbol,
+        df,
+        current_price,
+        orderbook=orderbook,
+        market_data=market_data,
+        config=config,
+        language="zh",
+    )
+    if not analysis:
+        logger.warning("Market summary skipped %s: no analysis", symbol)
+        return None
+    return analysis
 
 
-def generate_market_summary(force: bool = False) -> Optional[str]:
-    """
-    生成专业的宏观市场分析报告
-
-    Args:
-        force: 是否强制生成（忽略时间间隔）
-
-    Returns:
-        生成的分析文本，失败返回 None
-    """
-    global _last_summary_time
-
-    # 使用AI市场分析的独立配置
+def generate_market_summary(force: bool = False) -> Optional[Dict[str, Any]]:
+    """Generate scheduled market summary payload."""
     config = get_ai_market_config()
-    language = _get_language()
-
-    if not config.get("enabled") and not force:
-        logger.debug("AI 市场总结功能未启用")
+    if not config.get("enabled"):
         return None
 
-    # 检查时间间隔
-    interval_seconds = config.get("interval_hours", 1) * 3600
-    now = time.time()
-    if not force and (now - _last_summary_time) < interval_seconds:
-        logger.debug("距离上次总结时间不足，跳过")
+    interval_hours = float(config.get("interval_hours", 1) or 1)
+    state = _load_state(STATE_PATH)
+    if not force and not _summary_due(state, interval_hours):
         return None
 
-    logger.info("=" * 60)
-    logger.info("🚀 开始生成 AI 宏观市场分析...")
-    logger.info("=" * 60)
+    mode = str(config.get("summary_mode") or config.get("mode") or "market").strip().lower()
+    market_label = str(config.get("market_label") or "TOTAL_MKT")
 
-    try:
-        # 1. 收集 BTC/ETH 核心数据（K线 + 量化数据）
-        logger.info("📊 [1/6] 收集 BTC/ETH 核心数据...")
-        major_coin_data = _collect_major_coin_data()
-        logger.info(f"   ✅ 收集到 {len(major_coin_data)} 个主流币数据")
-
-        # 2. 获取 OI 排行数据
-        logger.info("📈 [2/6] 获取 OI 排行数据...")
-        oi_ranking = []
-        logger.info(f"   ✅ OI 排行数据: {len(oi_ranking)} 条")
-
-        # 3. 收集 ValueScan 信号数据
-        lookback = config.get("lookback_hours", 1)
-        logger.info(f"🔍 [3/6] 收集最近 {lookback} 小时信号数据...")
-        signals = _collect_recent_signals(lookback)
-        total_signals = signals.get("total_count", 0)
-        logger.info(f"   ✅ 收集到 {total_signals} 个信号")
-
-        # 4. 获取新闻数据
-        logger.info("📰 [4/6] 获取市场新闻...")
-        news = _fetch_crypto_news()
-        logger.info(f"   ✅ 收集到 {len(news) if news else 0} 条新闻")
-
-        # 检查是否有足够数据
-        if not major_coin_data and not oi_ranking and total_signals == 0:
-            logger.warning("⚠️  没有足够的数据，跳过总结")
-            return None
-
-        # 5. 构建专业宏观分析 prompt
-        logger.info("🤖 [5/6] 调用 AI 生成分析...")
-        prompt = _build_macro_analysis_prompt(major_coin_data, oi_ranking, signals, news, language=language)
-
-        # 调用 AI
-        summary = _call_ai_api(prompt, config, language=language)
-        if not summary:
-            logger.error("❌ AI 生成分析失败")
-            return None
-
-        logger.info(f"   ✅ AI 分析生成成功 ({len(summary)} 字符)")
-        _last_summary_time = now
-
-        # 6. 发送到 Telegram
-        logger.info("📤 [6/6] 发送到 Telegram...")
-        if _send_summary_to_telegram(summary, language=language):
-            logger.info("   ✅ 市场分析已发送到 Telegram")
+    pin_message = mode in ("market", "macro", "global", "index")
+    if mode in ("market", "macro", "global", "index"):
+        result = _build_market_summary(config)
+        if result:
+            analysis, snapshot = result
+            analysis = dict(analysis)
+            analysis["_as_of"] = snapshot.get("as_of")
         else:
-            logger.warning("   ⚠️  市场分析发送到 Telegram 失败")
+            logger.warning("Market summary AI unavailable; using snapshot fallback.")
+            snapshot = _build_market_snapshot(config)
+            analysis = _build_fallback_market_analysis(snapshot)
+        items = [{"symbol": market_label, "analysis": analysis}]
+        message = _format_summary_message(
+            market_label,
+            analysis,
+            fundamental_note=_build_macro_event_note(snapshot),
+        )
+    else:
+        symbols = _normalize_symbols(config.get("symbols")) or DEFAULT_MARKET_SYMBOLS[:1]
+        items: List[Dict[str, Any]] = []
+        for symbol in symbols:
+            analysis = _build_symbol_summary(symbol, config)
+            if analysis:
+                items.append({"symbol": symbol, "analysis": analysis})
+        if not items:
+            return None
+        messages = [_format_summary_message(item["symbol"], item["analysis"]) for item in items]
+        message = "\n\n".join(msg for msg in messages if msg)
 
-        logger.info("=" * 60)
-        logger.info("✅ AI 宏观市场分析完成！")
-        logger.info("=" * 60)
-
-        return summary
-
-    except Exception as e:
-        logger.error(f"❌ 生成市场分析时出错: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return None
+    return {
+        "ts": time.time(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "message": message,
+        "items": items,
+        "pin_message": pin_message,
+    }
 
 
 def check_and_generate_summary() -> None:
-    """
-    检查是否需要生成总结（由 polling_monitor 定期调用）
-    """
-    # 使用AI市场分析的独立配置
-    config = get_ai_market_config()
-    if not config.get("enabled"):
+    """Best-effort summary generation hook (no-op when disabled)."""
+    try:
+        payload = generate_market_summary()
+    except Exception as exc:
+        logger.warning("Market summary generation failed: %s", exc)
         return
 
-    interval_seconds = config.get("interval_hours", 1) * 3600
-    now = time.time()
+    if not payload or not payload.get("message"):
+        return
 
-    if (now - _last_summary_time) >= interval_seconds:
-        generate_market_summary()
+    try:
+        from telegram import send_telegram_message
+    except Exception as exc:
+        logger.warning("Market summary send unavailable: %s", exc)
+        return
 
+    try:
+        send_telegram_message(payload["message"], parse_mode=None, pin_message=bool(payload.get("pin_message")))
+    except Exception as exc:
+        logger.warning("Market summary send failed: %s", exc)
+        return
 
-def main():
-    """测试入口"""
-    import argparse
-    
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(message)s",
-    )
-    
-    parser = argparse.ArgumentParser(description="AI 市场总结")
-    parser.add_argument("--force", action="store_true", help="强制生成总结")
-    parser.add_argument("--test", action="store_true", help="测试模式（不发送 Telegram）")
-    args = parser.parse_args()
-    
-    if args.test:
-        config = get_ai_summary_config()
-        print("当前配置:", json.dumps(config, ensure_ascii=False, indent=2))
-        
-        signals = _collect_recent_signals()
-        print(f"\n信号统计: {signals.get('total_count', 0)} 条")
-        print(f"  看涨: {len(signals.get('bullish', []))}")
-        print(f"  看跌: {len(signals.get('bearish', []))}")
-        
-        movements = _collect_movement_data()
-        print(f"\nAlpha 币种: {len(movements.get('alpha_coins', []))}")
-        print(f"FOMO 币种: {len(movements.get('fomo_coins', []))}")
-    else:
-        summary = generate_market_summary(force=args.force)
-        if summary:
-            print("\n生成的总结:\n")
-            print(summary)
-        else:
-            print("生成总结失败")
-
-
-if __name__ == "__main__":
-    main()
+    state = {"last_ts": payload.get("ts", time.time())}
+    try:
+        _save_state(STATE_PATH, state)
+        _save_state(SUMMARY_OUTPUT_PATH, payload)
+    except Exception as exc:
+        logger.warning("Market summary state save failed: %s", exc)

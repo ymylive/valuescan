@@ -4,11 +4,68 @@ AI只负责分析，不负责绘制
 """
 
 import json
+import os
+import time as _time_mod
 import requests
+
+try:
+    from .ai_api_utils import (
+        AI_PROTOCOL_RESPONSES,
+        build_payload,
+        override_responses_token_key,
+        parse_compatible_content,
+        parse_responses_body,
+        resolve_protocol_and_url,
+        resolve_responses_token_key_override,
+        should_force_responses_stream,
+    )
+except Exception:
+    from ai_api_utils import (  # type: ignore[import-not-found]
+        AI_PROTOCOL_RESPONSES,
+        build_payload,
+        override_responses_token_key,
+        parse_compatible_content,
+        parse_responses_body,
+        resolve_protocol_and_url,
+        resolve_responses_token_key_override,
+        should_force_responses_stream,
+    )
 from typing import Dict, List, Optional, Any
 import numpy as np
 import pandas as pd
 from logger import logger
+from macro_data import load_macro_data
+try:
+    from .ai_request_queue import call_ai_with_queue
+except Exception:
+    from ai_request_queue import call_ai_with_queue  # type: ignore[import-not-found]
+
+# 巨鲸数据模块
+
+try:
+    _NOFX_PROMPT_LIMIT = int(os.getenv("NOFX_AI_NOFX_LIMIT", "10") or 10)
+except ValueError:
+    _NOFX_PROMPT_LIMIT = 10
+
+try:
+    _NOFX_STRATEGY_LIMIT = int(os.getenv("NOFX_AI_NOFX_STRATEGY_LIMIT", "5") or 5)
+except ValueError:
+    _NOFX_STRATEGY_LIMIT = 5
+
+try:
+    from nofx_data_sources import (
+        fetch_nofx_competition,
+        fetch_nofx_public_strategies,
+        fetch_nofx_top_traders,
+    )
+except ImportError:
+    fetch_nofx_competition = None
+    fetch_nofx_public_strategies = None
+    fetch_nofx_top_traders = None
+
+# Analysis frequency control: {symbol: (monotonic_timestamp, cached_result)}
+_analysis_cache: Dict[str, tuple] = {}
+_ANALYSIS_CACHE_MAX = 200  # Max cached symbols to prevent unbounded growth
 
 
 def build_comprehensive_analysis_prompt(
@@ -24,13 +81,13 @@ def build_comprehensive_analysis_prompt(
     包含所有数据，让AI做深度分析
     增强版：添加更多市场数据（资金费率、持仓量、多空比、清算数据等）
     """
-    # 准备K线数据（完整200根）
+    # 准备K线数据（最近100根，减少Prompt大小）
     klines = []
     if 'timestamp' in df.columns:
-        ts_ms = (df['timestamp'].astype('int64') // 10**6).astype('int64')
-        for i, row in df.reset_index(drop=True).iterrows():
+        recent_df = df.tail(100).reset_index(drop=True)
+        ts_ms = (recent_df['timestamp'].astype('int64') // 10**6).astype('int64')
+        for i, row in recent_df.iterrows():
             klines.append({
-                'index': i,
                 'ts': int(ts_ms.iloc[i]),
                 'open': float(row['open']),
                 'high': float(row['high']),
@@ -106,6 +163,7 @@ def build_comprehensive_analysis_prompt(
 
     # 准备市场数据（增强版）
     market_summary = market_data or {}
+    macro_data = load_macro_data()
 
     # 添加价格变化统计
     price_changes = {
@@ -121,7 +179,29 @@ def build_comprehensive_analysis_prompt(
         'volume_trend': 'increasing' if df['volume'].iloc[-1] > df['volume'].tail(24).mean() else 'decreasing',
     }
 
-    # 构建完整数据包
+    # 巨鲸/资金流分析
+    source_data = None
+    if fetch_nofx_competition or fetch_nofx_top_traders or fetch_nofx_public_strategies:
+        source_payload = {}
+        try:
+            if fetch_nofx_competition:
+                data = fetch_nofx_competition(limit=_NOFX_PROMPT_LIMIT)
+                if data is not None:
+                    source_payload["competition"] = data
+            if fetch_nofx_top_traders:
+                data = fetch_nofx_top_traders(limit=_NOFX_PROMPT_LIMIT)
+                if data is not None:
+                    source_payload["top_traders"] = data
+            if fetch_nofx_public_strategies:
+                data = fetch_nofx_public_strategies(limit=_NOFX_STRATEGY_LIMIT)
+                if data is not None:
+                    source_payload["public_strategies"] = data
+        except Exception as exc:
+            logger.warning(f"External data fetch failed: {exc}")
+            source_payload = {}
+        if source_payload:
+            source_data = source_payload
+
     data_package = {
         'symbol': symbol,
         'current_price': current_price,
@@ -132,51 +212,57 @@ def build_comprehensive_analysis_prompt(
         },
         'price_changes': price_changes,
         'volume_analysis': volume_analysis,
-        'klines': klines,  # 完整200根K线
+        'source_data': source_data,
+        'klines': klines,
         'indicators': indicators,
         'orderbook': orderbook_summary,
         'market': market_summary,
+        'macro_data': macro_data,
     }
 
     data_json = json.dumps(data_package, ensure_ascii=False, indent=2)
 
-    if language == "en":
-        return f"""You are a professional quantitative analyst and technical analyst. Analyze the market data comprehensively.
+    language = (language or "zh").strip().lower()
+    if language not in ("en", "zh"):
+        language = "zh"
 
-**IMPORTANT**: You are ONLY responsible for ANALYSIS, NOT drawing lines. The system will draw lines based on your analysis.
+    return f"""You are a professional quantitative and technical analyst. Provide a macro market analysis. All descriptive text in the output MUST be in Chinese.
+Translate any English macro/news/event titles into Chinese before using them in descriptive fields.
 
+IMPORTANT: This is macro market analysis, not a single-signal brief. You are responsible only for analysis; the system draws lines.
 Input data (JSON):
 {data_json}
 
-Your task:
-1. Analyze market structure and trend
-2. Identify key support and resistance levels (with reasoning)
-3. Evaluate market sentiment and momentum
-4. Assess risk and opportunity
-5. Provide trading suggestions
+You must cover and clearly separate:
+A. Fundamentals: tokenomics/onchain/project/sentiment and impact, plus major events and upcoming/released data from macro_data.
+B. Technicals: structure/trend/patterns/indicators/key levels.
+C. Flow & liquidity: orderbook, fund flow, volume, volatility.
+D. Macro & market: macro_data/market context, market regime and sentiment.
+E. Risk & opportunity.
+F. Data conflicts & insufficiency (must be stated in data_conflicts).
+G. If market context is available, mention overall market direction and BTC/ETH category separately (as context, not as proxy).
 
-Return ONLY strict JSON format:
-
+Return ONLY strict JSON. Do not rename keys; do not translate enum values:
 {{
   "trend": {{
     "direction": "bullish/bearish/sideways",
     "strength": 0-100,
-    "description": "Brief trend description"
+    "description": "Trend description"
   }},
   "key_levels": {{
     "supports": [
-      {{"price": 0, "strength": 0-100, "reason": "Why this is support"}},
-      {{"price": 0, "strength": 0-100, "reason": "Why this is support"}}
+      {{"price": 0, "strength": 0-100, "reason": "Support reasoning"}},
+      {{"price": 0, "strength": 0-100, "reason": "Support reasoning"}}
     ],
     "resistances": [
-      {{"price": 0, "strength": 0-100, "reason": "Why this is resistance"}},
-      {{"price": 0, "strength": 0-100, "reason": "Why this is resistance"}}
+      {{"price": 0, "strength": 0-100, "reason": "Resistance reasoning"}},
+      {{"price": 0, "strength": 0-100, "reason": "Resistance reasoning"}}
     ]
   }},
   "patterns": {{
     "detected": ["channel", "wedge", "triangle", "flag", "head_and_shoulders", "double_top", "double_bottom"],
     "primary": "Most significant pattern name or null",
-    "description": "Pattern description and implications"
+    "description": "Pattern description"
   }},
   "sentiment": {{
     "score": -100 to 100,
@@ -195,88 +281,26 @@ Return ONLY strict JSON format:
     "entry_zone": [min_price, max_price],
     "stop_loss": price,
     "take_profit": [price1, price2, price3],
-    "reasoning": "Why this suggestion"
+    "reasoning": "Suggestion reasoning"
   }},
   "summary": "2-3 sentence market summary"
 }}
 
+Required extra fields (must be present; Chinese):
+"fundamental_view", "technical_view", "macro_view", "liquidity_view", "data_conflicts"
+If no conflicts, set data_conflicts to "无". If data is insufficient, state "数据不足".
+
 Requirements:
-1. Support levels MUST be < current_price
-2. Resistance levels MUST be > current_price
-3. Levels must be based on actual price action (pivots, volume clusters, round numbers)
-4. Strength 0-100: higher = stronger level
-5. Be specific with reasoning (e.g., "Multiple bounces at $86,500", "High volume node")
-6. Consider ALL data: klines, indicators, orderbook, market data
-7. Be objective and data-driven"""
-
-    return f"""你是专业的量化分析师和技术分析师。请全面分析市场数据。
-
-**重要**: 你只负责分析，不负责画线。系统会根据你的分析结果绘制辅助线。
-
-输入数据 (JSON):
-{data_json}
-
-你的任务:
-1. 分析市场结构和趋势
-2. 识别关键支撑位和阻力位（附带理由）
-3. 评估市场情绪和动量
-4. 评估风险和机会
-5. 提供交易建议
-
-只返回严格的JSON格式:
-
-{{
-  "trend": {{
-    "direction": "bullish/bearish/sideways",
-    "strength": 0-100,
-    "description": "简要趋势描述"
-  }},
-  "key_levels": {{
-    "supports": [
-      {{"price": 0, "strength": 0-100, "reason": "为什么这是支撑位"}},
-      {{"price": 0, "strength": 0-100, "reason": "为什么这是支撑位"}}
-    ],
-    "resistances": [
-      {{"price": 0, "strength": 0-100, "reason": "为什么这是阻力位"}},
-      {{"price": 0, "strength": 0-100, "reason": "为什么这是阻力位"}}
-    ]
-  }},
-  "patterns": {{
-    "detected": ["channel", "wedge", "triangle", "flag", "head_and_shoulders", "double_top", "double_bottom"],
-    "primary": "最重要的形态名称或null",
-    "description": "形态描述和含义"
-  }},
-  "sentiment": {{
-    "score": -100到100,
-    "description": "市场情绪分析"
-  }},
-  "momentum": {{
-    "score": -100到100,
-    "description": "动量分析"
-  }},
-  "risk_assessment": {{
-    "level": "low/medium/high",
-    "factors": ["风险因素1", "风险因素2"]
-  }},
-  "trading_suggestion": {{
-    "action": "buy/sell/hold/wait",
-    "entry_zone": [最低价, 最高价],
-    "stop_loss": 价格,
-    "take_profit": [价格1, 价格2, 价格3],
-    "reasoning": "建议理由"
-  }},
-  "summary": "2-3句话的市场总结"
-}}
-
-要求:
-1. 支撑位必须 < 当前价格
-2. 阻力位必须 > 当前价格
-3. 关键位必须基于实际价格行为（枢轴点、成交量集群、整数关口）
-4. 强度0-100: 越高越强
-5. 理由要具体（例如："$86,500多次反弹"、"高成交量节点"）
-6. 考虑所有数据: K线、指标、订单簿、市场数据
-7. 客观、数据驱动"""
-
+1. Support levels MUST be < current_price; resistance levels MUST be > current_price.
+2. Allow multiple levels (1-5 each) when confirmed by multi-source evidence.
+3. Use weighted evidence (approx): price structure + volume clusters 40%, orderbook liquidity 25%, indicators 15%, crowd/strategy 10%, macro_data 10%.
+4. Do not mention any data source names; say "based on signals" or "based on data".
+5. Strength 0-100: higher = stronger level.
+6. Be specific with reasoning (e.g., "Multiple bounces at 86500", "High volume node", "Orderbook sell wall").
+7. Consider ALL data: klines, indicators, orderbook, market data, crowd/strategy context, macro_data.
+8. macro_data includes only the next 7 days schedule and releases within the last 3 days; avoid stale data.
+9. Summary MUST include fundamentals, technicals, liquidity/flow, and market regime; if data is insufficient, say so in Chinese.
+10. All descriptive fields (reason/description/summary/optional views) MUST be in Chinese."""
 
 def call_ai_analysis_api(prompt: str, config: Dict[str, Any]) -> Optional[str]:
     """调用AI API进行分析"""
@@ -292,26 +316,55 @@ def call_ai_analysis_api(prompt: str, config: Dict[str, Any]) -> Optional[str]:
         'Authorization': f'Bearer {api_key}'
     }
 
-    payload = {
-        'model': model,
-        'messages': [
-            {'role': 'system', 'content': 'You are a professional quantitative analyst. Reply with strict JSON only.'},
-            {'role': 'user', 'content': prompt}
-        ],
-        'max_tokens': 8000,
-        'temperature': 0.3,
-    }
+    timeout_sec = int(os.getenv("NOFX_AI_API_TIMEOUT", "90") or 90)
+    connect_timeout = float(os.getenv("NOFX_AI_CONNECT_TIMEOUT", "15") or 15)
+    max_tokens = int(os.getenv("NOFX_AI_MARKET_MAX_TOKENS", "8000") or 8000)
+
+    protocol, resolved_url = resolve_protocol_and_url(api_url, config.get('api_protocol'))
+    stream = should_force_responses_stream(resolved_url, protocol)
+    payload = build_payload(
+        protocol,
+        resolved_url,
+        model,
+        "你是专业量化分析师，要求多维度全面分析，仅返回严格 JSON，所有描述性文本使用中文。",
+        prompt,
+        max_tokens,
+        0.3,
+        stream,
+    )
 
     try:
         session = requests.Session()
         session.trust_env = False
-        resp = session.post(api_url, headers=headers, json=payload, timeout=120)
+        if protocol == AI_PROTOCOL_RESPONSES:
+            headers["Accept"] = "text/event-stream" if stream else "application/json"
+        resp = session.post(resolved_url, headers=headers, json=payload, timeout=(connect_timeout, timeout_sec))
         if resp.status_code != 200:
-            logger.warning(f"AI analysis API call failed: {resp.status_code} - {resp.text[:200]}")
-            return None
+            if resp.status_code == 429:
+                raise RuntimeError(f"AI_429: {resp.text[:200]}")
+            if protocol == AI_PROTOCOL_RESPONSES and resp.status_code == 400:
+                override_key = resolve_responses_token_key_override(resp.text)
+                if override_key is not None:
+                    payload = override_responses_token_key(payload, override_key, max_tokens)
+                    resp = session.post(
+                        resolved_url,
+                        headers=headers,
+                        json=payload,
+                        timeout=(connect_timeout, timeout_sec),
+                    )
+            if resp.status_code != 200:
+                logger.warning(f"AI analysis API call failed: {resp.status_code} - {resp.text[:200]}")
+                return None
 
-        data = resp.json()
-        content = data.get('choices', [{}])[0].get('message', {}).get('content', '')
+        if protocol == AI_PROTOCOL_RESPONSES:
+            try:
+                content = parse_responses_body(resp.text)
+            except Exception as exc:
+                logger.warning(f"AI analysis API parse error: {exc}")
+                content = ""
+        else:
+            data = resp.json()
+            content = parse_compatible_content(data)
         if not content:
             return None
 
@@ -364,13 +417,23 @@ def get_ai_market_analysis(
     获取AI市场分析
     返回分析结果，不包含绘图坐标
     """
+    language = "zh"
+
     if config is None:
-        from ai_market_summary import get_ai_summary_config
-        config = get_ai_summary_config()
+        from ai_market_summary import get_ai_market_config
+        config = get_ai_market_config()
 
     if not config or not config.get('api_key'):
         logger.info("AI analysis not available: no API config")
         return None
+
+    # Frequency control: skip if same symbol was analyzed recently
+    cooldown = int(os.getenv("NOFX_AI_ANALYSIS_COOLDOWN", "120") or 120)
+    now = _time_mod.monotonic()
+    last_ts, last_result = _analysis_cache.get(symbol, (0.0, None))
+    if now - last_ts < cooldown and last_result is not None:
+        logger.info(f"AI analysis for {symbol} throttled (cooldown {cooldown}s), returning cached result")
+        return last_result
 
     # 构建Prompt
     prompt = build_comprehensive_analysis_prompt(
@@ -379,7 +442,7 @@ def get_ai_market_analysis(
 
     # 调用AI API
     logger.info(f"Calling AI for comprehensive market analysis of {symbol}...")
-    raw_response = call_ai_analysis_api(prompt, config)
+    raw_response = call_ai_with_queue(lambda: call_ai_analysis_api(prompt, config))
 
     if not raw_response:
         logger.warning("AI analysis failed: no response")
@@ -394,6 +457,13 @@ def get_ai_market_analysis(
 
     # 验证和清理数据
     analysis = validate_and_clean_analysis(analysis, current_price)
+
+    # Cache the result with timestamp
+    _analysis_cache[symbol] = (now, analysis)
+    # Evict stale entries to prevent unbounded growth
+    if len(_analysis_cache) > _ANALYSIS_CACHE_MAX:
+        oldest_key = min(_analysis_cache, key=lambda k: _analysis_cache[k][0])
+        del _analysis_cache[oldest_key]
 
     logger.info(f"AI analysis completed for {symbol}")
     return analysis
@@ -433,6 +503,6 @@ def validate_and_clean_analysis(analysis: Dict[str, Any], current_price: float) 
         analysis['sentiment'] = {'score': 0, 'description': 'Neutral'}
 
     if 'summary' not in analysis:
-        analysis['summary'] = 'Market analysis completed.'
+        analysis['summary'] = '市场分析完成。'
 
     return analysis

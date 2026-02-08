@@ -6,19 +6,31 @@
 import logging
 import sys
 import io
+from pathlib import Path
 from logging.handlers import RotatingFileHandler
-from config import (
-    LOG_LEVEL,
-    LOG_TO_FILE,
-    LOG_FILE,
-    LOG_MAX_SIZE,
-    LOG_BACKUP_COUNT,
-    LOG_FORMAT,
-    LOG_DATE_FORMAT
-)
+try:
+    from signal_monitor.config import (
+        LOG_LEVEL,
+        LOG_TO_FILE,
+        LOG_FILE,
+        LOG_MAX_SIZE,
+        LOG_BACKUP_COUNT,
+        LOG_FORMAT,
+        LOG_DATE_FORMAT,
+    )
+except Exception:
+    from config import (
+        LOG_LEVEL,
+        LOG_TO_FILE,
+        LOG_FILE,
+        LOG_MAX_SIZE,
+        LOG_BACKUP_COUNT,
+        LOG_FORMAT,
+        LOG_DATE_FORMAT,
+    )
 
 
-def setup_logger(name='valuescan'):
+def setup_logger(name='signal_monitor'):
     """
     配置并返回logger实例
     
@@ -57,8 +69,11 @@ def setup_logger(name='valuescan'):
     # 文件处理器 - 可选
     if LOG_TO_FILE:
         try:
+            log_path = Path(LOG_FILE)
+            if log_path.parent and not log_path.parent.exists():
+                log_path.parent.mkdir(parents=True, exist_ok=True)
             file_handler = RotatingFileHandler(
-                LOG_FILE,
+                str(log_path),
                 maxBytes=LOG_MAX_SIZE,
                 backupCount=LOG_BACKUP_COUNT,
                 encoding='utf-8'

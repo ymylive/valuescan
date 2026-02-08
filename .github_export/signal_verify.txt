@@ -1,0 +1,20 @@
+Dec 31 09:37:58 serce7ki842oekt valuescan-signal[458001]: 2025-12-31 09:37:58,483 [INFO]   URL: https://api.valuescan.io/api/account/message/getWarnMessage
+Dec 31 09:37:58 serce7ki842oekt valuescan-signal[458001]: 2025-12-31 09:37:58,483 [INFO]   方法: GET
+Dec 31 09:37:58 serce7ki842oekt valuescan-signal[458001]: 2025-12-31 09:37:58,510 [INFO] [getWarnMessage] 成功获取 6 条信号
+Dec 31 09:37:58 serce7ki842oekt valuescan-signal[458001]: 2025-12-31 09:37:58,510 [INFO] [2/2] 正在从 [aiMessagePage] 获取数据...
+Dec 31 09:37:58 serce7ki842oekt valuescan-signal[458001]: 2025-12-31 09:37:58,510 [INFO]   URL: https://api.valuescan.io/api/account/message/aiMessagePage
+Dec 31 09:37:58 serce7ki842oekt valuescan-signal[458001]: 2025-12-31 09:37:58,510 [INFO]   方法: POST
+Dec 31 09:37:58 serce7ki842oekt valuescan-signal[458001]: 2025-12-31 09:37:58,553 [INFO] [aiMessagePage] 成功获取 50 条信号
+Dec 31 09:37:58 serce7ki842oekt valuescan-signal[458001]: 2025-12-31 09:37:58,554 [INFO] 合并过程中跳过 6 条重复信号
+Dec 31 09:37:58 serce7ki842oekt valuescan-signal[458001]: 2025-12-31 09:37:58,554 [INFO] ============================================================
+Dec 31 09:37:58 serce7ki842oekt valuescan-signal[458001]: 2025-12-31 09:37:58,554 [INFO] ✓ 信号数据获取完成
+Dec 31 09:37:58 serce7ki842oekt valuescan-signal[458001]: 2025-12-31 09:37:58,554 [INFO]   总计: 50 条消息
+Dec 31 09:37:58 serce7ki842oekt valuescan-signal[458001]: 2025-12-31 09:37:58,554 [INFO]   来源分布: {'getWarnMessage': 6, 'aiMessagePage': 50}
+Dec 31 09:37:58 serce7ki842oekt valuescan-signal[458001]: 2025-12-31 09:37:58,554 [INFO]   去重数量: 6
+Dec 31 09:37:58 serce7ki842oekt valuescan-signal[458001]: 2025-12-31 09:37:58,554 [INFO] ============================================================
+Dec 31 09:37:58 serce7ki842oekt valuescan-signal[458001]: 2025-12-31 09:37:58 [INFO]   状态码: 200
+Dec 31 09:37:58 serce7ki842oekt valuescan-signal[458001]: 2025-12-31 09:37:58 [INFO]   消息: success
+Dec 31 09:37:58 serce7ki842oekt valuescan-signal[458001]: 2025-12-31 09:37:58 [INFO]   Age filter: skipped 47 messages older than 10 minutes
+Dec 31 09:37:58 serce7ki842oekt valuescan-signal[458001]: 2025-12-31 09:37:58 [INFO]   消息统计: 总共 3 条, 新消息 0 条, 重复 3 条
+Dec 31 09:37:58 serce7ki842oekt valuescan-signal[458001]: 2025-12-31 09:37:58 [INFO]     └─ 数据库已处理: 3 条
+Dec 31 09:37:58 serce7ki842oekt valuescan-signal[458001]: 2025-12-31 09:37:58 [INFO]   本次无新消息（所有消息都已处理过）

@@ -1,9 +1,9 @@
 import React from 'react';
-import { useTranslation } from 'react-i18next';
-import { GlassCard } from '../Common/GlassCard';
-import { Input } from '../Common/Input';
+import { GlassCard } from '../shared';
+import { Input } from '../ui';
 import { Activity, Chrome, RefreshCw, Network, BarChart3 } from 'lucide-react';
 import { SignalMonitorConfig, LOGIN_METHODS } from '../../types/config';
+import { parseFloatSafe, parseIntSafe } from '../../utils/number';
 
 interface SignalMonitorConfigProps {
   config: SignalMonitorConfig;
@@ -11,9 +11,7 @@ interface SignalMonitorConfigProps {
 }
 
 export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = ({ config, onChange }) => {
-  const { t } = useTranslation();
-
-  const handleChange = (field: keyof SignalMonitorConfig, value: any) => {
+  const handleChange = <K extends keyof SignalMonitorConfig>(field: K, value: SignalMonitorConfig[K]) => {
     onChange({ ...config, [field]: value });
   };
 
@@ -27,20 +25,6 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
         </div>
 
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Chrome 调试端口
-            </label>
-            <Input
-              type="number"
-              value={config.chrome_debug_port}
-              onChange={(e) => handleChange('chrome_debug_port', parseInt(e.target.value))}
-              min={1024}
-              max={65535}
-              className="w-full"
-            />
-          </div>
-
           <div className="flex items-center gap-3">
             <input
               type="checkbox"
@@ -166,18 +150,6 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Crypto News API Key（可选）
-            </label>
-            <Input
-              type="password"
-              value={config.crypto_news_api_key}
-              onChange={(e) => handleChange('crypto_news_api_key', e.target.value)}
-              placeholder="API Key"
-              className="w-full"
-            />
-          </div>
         </div>
       </GlassCard>
 
@@ -197,7 +169,7 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
               <Input
                 type="number"
                 value={config.poll_interval}
-                onChange={(e) => handleChange('poll_interval', parseInt(e.target.value))}
+                onChange={(e) => handleChange('poll_interval', parseIntSafe(e.target.value, config.poll_interval))}
                 min={1}
                 max={300}
                 className="w-full"
@@ -211,12 +183,27 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
               <Input
                 type="number"
                 value={config.request_timeout}
-                onChange={(e) => handleChange('request_timeout', parseInt(e.target.value))}
+                onChange={(e) => handleChange('request_timeout', parseIntSafe(e.target.value, config.request_timeout))}
                 min={5}
                 max={60}
                 className="w-full"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              信号发送间隔（分钟）
+            </label>
+            <Input
+              type="number"
+              value={config.ai_signal_interval_minutes}
+              onChange={(e) => handleChange('ai_signal_interval_minutes', parseIntSafe(e.target.value, config.ai_signal_interval_minutes))}
+              min={1}
+              max={1440}
+              className="w-full"
+            />
+            <p className="text-xs text-gray-500 mt-1">用于 AI 定时信号推送</p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -227,7 +214,7 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
               <Input
                 type="number"
                 value={config.max_consecutive_failures}
-                onChange={(e) => handleChange('max_consecutive_failures', parseInt(e.target.value))}
+                onChange={(e) => handleChange('max_consecutive_failures', parseIntSafe(e.target.value, config.max_consecutive_failures))}
                 min={1}
                 max={20}
                 className="w-full"
@@ -241,7 +228,7 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
               <Input
                 type="number"
                 value={config.failure_cooldown}
-                onChange={(e) => handleChange('failure_cooldown', parseInt(e.target.value))}
+                onChange={(e) => handleChange('failure_cooldown', parseIntSafe(e.target.value, config.failure_cooldown))}
                 min={10}
                 max={600}
                 className="w-full"
@@ -270,7 +257,7 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
               <Input
                 type="number"
                 value={config.auto_relogin_cooldown}
-                onChange={(e) => handleChange('auto_relogin_cooldown', parseInt(e.target.value))}
+                onChange={(e) => handleChange('auto_relogin_cooldown', parseIntSafe(e.target.value, config.auto_relogin_cooldown ?? 1800))}
                 min={300}
                 max={7200}
                 className="w-full"
@@ -286,7 +273,7 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
               <Input
                 type="number"
                 value={config.startup_signal_max_age_seconds}
-                onChange={(e) => handleChange('startup_signal_max_age_seconds', parseInt(e.target.value))}
+                onChange={(e) => handleChange('startup_signal_max_age_seconds', parseIntSafe(e.target.value, config.startup_signal_max_age_seconds))}
                 min={60}
                 max={3600}
                 className="w-full"
@@ -300,7 +287,7 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
               <Input
                 type="number"
                 value={config.signal_max_age_seconds}
-                onChange={(e) => handleChange('signal_max_age_seconds', parseInt(e.target.value))}
+                onChange={(e) => handleChange('signal_max_age_seconds', parseIntSafe(e.target.value, config.signal_max_age_seconds))}
                 min={60}
                 max={3600}
                 className="w-full"
@@ -326,7 +313,7 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
               <Input
                 type="number"
                 value={config.token_refresh_interval_hours}
-                onChange={(e) => handleChange('token_refresh_interval_hours', parseFloat(e.target.value))}
+                onChange={(e) => handleChange('token_refresh_interval_hours', parseFloatSafe(e.target.value, config.token_refresh_interval_hours ?? 0.8))}
                 min={0.1}
                 max={24}
                 step={0.1}
@@ -341,7 +328,7 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
               <Input
                 type="number"
                 value={config.token_refresh_safety_seconds}
-                onChange={(e) => handleChange('token_refresh_safety_seconds', parseInt(e.target.value))}
+                onChange={(e) => handleChange('token_refresh_safety_seconds', parseIntSafe(e.target.value, config.token_refresh_safety_seconds ?? 300))}
                 min={60}
                 max={1800}
                 className="w-full"
@@ -374,7 +361,7 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
               <Input
                 type="number"
                 value={config.refresh_window_start}
-                onChange={(e) => handleChange('refresh_window_start', parseInt(e.target.value))}
+                onChange={(e) => handleChange('refresh_window_start', parseIntSafe(e.target.value, config.refresh_window_start ?? 0))}
                 min={0}
                 max={23}
                 className="w-full"
@@ -388,7 +375,7 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
               <Input
                 type="number"
                 value={config.refresh_window_end}
-                onChange={(e) => handleChange('refresh_window_end', parseInt(e.target.value))}
+                onChange={(e) => handleChange('refresh_window_end', parseIntSafe(e.target.value, config.refresh_window_end ?? 6))}
                 min={0}
                 max={23}
                 className="w-full"
@@ -415,7 +402,7 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
               className="w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
             />
             <label htmlFor="enable_ipc_forwarding" className="text-gray-700 dark:text-gray-300 font-medium">
-              启用 IPC 转发（将信号转发给交易模块）
+              启用 IPC 转发（将信号转发给外部订阅者）
             </label>
           </div>
 
@@ -442,7 +429,7 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
                   <Input
                     type="number"
                     value={config.ipc_port}
-                    onChange={(e) => handleChange('ipc_port', parseInt(e.target.value))}
+                    onChange={(e) => handleChange('ipc_port', parseIntSafe(e.target.value, config.ipc_port))}
                     min={1024}
                     max={65535}
                     className="w-full"
@@ -458,7 +445,7 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
                   <Input
                     type="number"
                     value={config.ipc_connect_timeout}
-                    onChange={(e) => handleChange('ipc_connect_timeout', parseFloat(e.target.value))}
+                    onChange={(e) => handleChange('ipc_connect_timeout', parseFloatSafe(e.target.value, config.ipc_connect_timeout))}
                     min={0.5}
                     max={10}
                     step={0.5}
@@ -473,7 +460,7 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
                   <Input
                     type="number"
                     value={config.ipc_retry_delay}
-                    onChange={(e) => handleChange('ipc_retry_delay', parseFloat(e.target.value))}
+                    onChange={(e) => handleChange('ipc_retry_delay', parseFloatSafe(e.target.value, config.ipc_retry_delay))}
                     min={0.5}
                     max={10}
                     step={0.5}
@@ -488,7 +475,7 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
                   <Input
                     type="number"
                     value={config.ipc_max_retries}
-                    onChange={(e) => handleChange('ipc_max_retries', parseInt(e.target.value))}
+                    onChange={(e) => handleChange('ipc_max_retries', parseIntSafe(e.target.value, config.ipc_max_retries))}
                     min={1}
                     max={10}
                     className="w-full"
@@ -521,42 +508,40 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
             </label>
           </div>
 
-          <div className="space-y-4 pl-4 border-l-2 border-pink-500/30">
-            <div>
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="enable_ai_key_levels"
-                  checked={config.enable_ai_key_levels}
-                  onChange={(e) => handleChange('enable_ai_key_levels', e.target.checked)}
-                  className="w-5 h-5 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
-                />
-                <label htmlFor="enable_ai_key_levels" className="text-gray-700 dark:text-gray-300 font-medium">
-                  使用 AI 主力位（开启后忽视本地算法）
-                </label>
-              </div>
-              <p className="text-xs text-gray-500 ml-8 mt-1">
-                使用 AI 分析并输出主力位坐标，替代本地算法计算
-              </p>
+          <div>
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="enable_ai_key_levels"
+                checked={config.enable_ai_key_levels}
+                onChange={(e) => handleChange('enable_ai_key_levels', e.target.checked)}
+                className="w-5 h-5 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+              />
+              <label htmlFor="enable_ai_key_levels" className="text-gray-700 dark:text-gray-300 font-medium">
+                使用 AI 主力位（开启后忽视本地算法）
+              </label>
             </div>
+            <p className="text-xs text-gray-500 ml-8 mt-1">
+              使用 AI 分析并输出主力位坐标，替代本地算法计算
+            </p>
+          </div>
 
-            <div>
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="enable_ai_overlays"
-                  checked={config.enable_ai_overlays}
-                  onChange={(e) => handleChange('enable_ai_overlays', e.target.checked)}
-                  className="w-5 h-5 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
-                />
-                <label htmlFor="enable_ai_overlays" className="text-gray-700 dark:text-gray-300 font-medium">
-                  使用 AI 辅助线（开启后忽视本地算法）
-                </label>
-              </div>
-              <p className="text-xs text-gray-500 ml-8 mt-1">
-                使用 AI 生成图表叠加层和辅助线，替代本地算法绘制
-              </p>
+          <div>
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="enable_ai_overlays"
+                checked={config.enable_ai_overlays}
+                onChange={(e) => handleChange('enable_ai_overlays', e.target.checked)}
+                className="w-5 h-5 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+              />
+              <label htmlFor="enable_ai_overlays" className="text-gray-700 dark:text-gray-300 font-medium">
+                使用 AI 辅助线（开启后忽视本地算法）
+              </label>
             </div>
+            <p className="text-xs text-gray-500 ml-8 mt-1">
+              使用 AI 生成图表叠加层和辅助线，替代本地算法绘制
+            </p>
           </div>
 
           <div className="flex items-center gap-3">
@@ -571,6 +556,38 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
               启用 AI 单币简评
             </label>
           </div>
+
+          {config.enable_ai_signal_analysis && (
+            <div className="grid grid-cols-2 gap-4 pl-8 border-l-2 border-pink-500/30">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  简评等待超时（秒）
+                </label>
+                <Input
+                  type="number"
+                  value={config.ai_brief_wait_timeout_seconds}
+                  onChange={(e) => handleChange('ai_brief_wait_timeout_seconds', parseIntSafe(e.target.value, config.ai_brief_wait_timeout_seconds))}
+                  min={10}
+                  max={300}
+                  className="w-full"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  多空信号缓存（秒）
+                </label>
+                <Input
+                  type="number"
+                  value={config.bull_bear_signal_ttl_seconds}
+                  onChange={(e) => handleChange('bull_bear_signal_ttl_seconds', parseIntSafe(e.target.value, config.bull_bear_signal_ttl_seconds))}
+                  min={300}
+                  max={604800}
+                  className="w-full"
+                />
+              </div>
+            </div>
+          )}
 
           <div className="flex items-center gap-3">
             <input
@@ -621,7 +638,7 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
                   <Input
                     type="number"
                     value={config.chart_img_width}
-                    onChange={(e) => handleChange('chart_img_width', parseInt(e.target.value))}
+                    onChange={(e) => handleChange('chart_img_width', parseIntSafe(e.target.value, config.chart_img_width))}
                     min={400}
                     max={2000}
                     className="w-full"
@@ -635,7 +652,7 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
                   <Input
                     type="number"
                     value={config.chart_img_height}
-                    onChange={(e) => handleChange('chart_img_height', parseInt(e.target.value))}
+                    onChange={(e) => handleChange('chart_img_height', parseIntSafe(e.target.value, config.chart_img_height))}
                     min={300}
                     max={1500}
                     className="w-full"
@@ -650,7 +667,7 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
                 <Input
                   type="number"
                   value={config.chart_img_timeout}
-                  onChange={(e) => handleChange('chart_img_timeout', parseInt(e.target.value))}
+                  onChange={(e) => handleChange('chart_img_timeout', parseIntSafe(e.target.value, config.chart_img_timeout))}
                   min={30}
                   max={300}
                   className="w-full"

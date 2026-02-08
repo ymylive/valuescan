@@ -1,0 +1,163 @@
+# IDE 配置文件
+.idea/
+*.iml
+*.xml
+
+# AI 工具
+.claude/
+CLAUDE.md
+
+# 编译产物
+nofx-auto
+*.exe
+nofx
+nofx_test
+
+# Go 相关
+*.test
+*.out
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# 临时文件
+*.log
+*.tmp
+*.bak
+*.backup
+
+# 环境变量
+.env
+config.json
+configbak.json
+
+# ValueScan 本地配置与登录�?
+signal_monitor/config.py
+binance_trader/config.py
+keepalive/config.py
+keepalive_config.json
+ipc_config.py
+valuescan_cookies.json
+valuescan_localstorage.json
+valuescan_sessionstorage.json
+xray_config*.json
+
+# 数据目录（数据库、日志等�?data/
+*.db
+
+# 决策日志
+decision_logs/
+nofx_test
+
+# Node.js
+web/node_modules/
+node_modules/
+web/dist/
+web/.vite/
+
+# ESLint 临时报告文件（调试时生成，不纳入版本控制�?eslint-*.json
+
+# VS code
+.vscode
+
+# 密钥和敏感文�?# 注意：crypto目录包含加密服务代码，应该被提交
+# 只忽略密钥文件本�?secrets/
+*.key
+*.pem
+*.p12
+*.pfx
+rsa_key*
+
+# 加密相关
+DATA_ENCRYPTION_KEY=*
+*.enc
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Python 虚拟环境
+.venv/
+venv/
+ENV/
+env/
+.env/
+
+# uv
+.uv/
+uv.lock
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+.hypothesis/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# pyenv
+.python-version
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+PR_DESCRIPTION.md
+
+!web/src/lib/
+web/nofx_dist/
+external/
+
+
+# Local runtime overrides
+config/valuescan.env
+signal_monitor/valuescan_credentials.json
+signal_monitor/chrome-debug-profile/
+telegram_copytrade/config.py
+web/nofx_root_dist/
+
+# NOFX local/runtime artifacts
+nofx/.env
+nofx/data/
+nofx/node_modules/
+nofx/nofx
+nofx/web/node_modules/
+nofx/web/dist/
+
+# Include NOFX source, but keep runtime outputs ignored
+!nofx/
+!nofx/**
+nofx/.env
+nofx/data/
+nofx/node_modules/
+nofx/nofx
+nofx/web/node_modules/
+nofx/web/dist/

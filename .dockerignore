@@ -1,0 +1,12 @@
+.git
+.github
+__pycache__/
+**/__pycache__/
+*.pyc
+node_modules/
+web/node_modules/
+web/dist/
+output/
+data/
+*.log
+.env

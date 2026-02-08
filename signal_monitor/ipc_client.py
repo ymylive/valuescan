@@ -1,6 +1,6 @@
 """
 本地 IPC 客户端
-负责将 ValueScan 捕获的信号转发到交易模块
+负责将 signal 捕获的信号转发到交易模块
 """
 
 import json
@@ -92,7 +92,7 @@ def _send_payload(payload: Dict[str, Any]) -> bool:
 
 def forward_signal(item: Dict[str, Any], parsed_content: Optional[Dict[str, Any]]):
     """
-    将捕获到的 ValueScan 信号通过本地 IPC 发送给交易模块
+    将捕获到的 signal 信号通过本地 IPC 发送给交易模块
     """
     if not ENABLE_IPC_FORWARDING:
         return

@@ -22,6 +22,25 @@ func NewProxyHandler(st *store.Store) *ProxyHandler {
 	}
 }
 
+func (h *ProxyHandler) loadUserJSON(userID, key string, out interface{}) (bool, error) {
+	data, err := h.store.UserConfig().Get(userID, key)
+	if err != nil {
+		return false, nil
+	}
+	if err := json.Unmarshal([]byte(data), out); err != nil {
+		return true, err
+	}
+	return true, nil
+}
+
+func (h *ProxyHandler) saveUserJSON(userID, key string, value interface{}) error {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	return h.store.UserConfig().Set(userID, key, string(data))
+}
+
 // ProxyNode Proxy node structure
 type ProxyNode struct {
 	ID             string `json:"id"`
@@ -90,8 +109,14 @@ func (h *ProxyHandler) HandleGetConfig(c *gin.Context) {
 	userID := c.GetString("user_id")
 
 	// Get configuration from database
-	configData, err := h.store.UserConfig().Get(userID, "clash_config")
+	var config ClashConfig
+	loaded, err := h.loadUserJSON(userID, "clash_config", &config)
 	if err != nil {
+		logger.Errorf("Failed to parse Clash config: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse configuration"})
+		return
+	}
+	if !loaded {
 		// Return default configuration with default proxy groups
 		defaultConfig := ClashConfig{
 			Port:               7890,
@@ -112,13 +137,6 @@ func (h *ProxyHandler) HandleGetConfig(c *gin.Context) {
 		return
 	}
 
-	var config ClashConfig
-	if err := json.Unmarshal([]byte(configData), &config); err != nil {
-		logger.Errorf("Failed to parse Clash config: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse configuration"})
-		return
-	}
-
 	c.JSON(http.StatusOK, config)
 }
 
@@ -132,15 +150,8 @@ func (h *ProxyHandler) HandleSaveConfig(c *gin.Context) {
 		return
 	}
 
-	// Serialize configuration
-	configData, err := json.Marshal(config)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to serialize configuration"})
-		return
-	}
-
 	// Save to database
-	if err := h.store.UserConfig().Set(userID, "clash_config", string(configData)); err != nil {
+	if err := h.saveUserJSON(userID, "clash_config", config); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
 		return
 	}
@@ -154,16 +165,15 @@ func (h *ProxyHandler) HandleGetNodes(c *gin.Context) {
 	userID := c.GetString("user_id")
 
 	// Get nodes from database
-	nodesData, err := h.store.UserConfig().Get(userID, "clash_nodes")
-	if err != nil {
-		c.JSON(http.StatusOK, []ProxyNode{})
-		return
-	}
-
 	var nodes []ProxyNode
-	if err := json.Unmarshal([]byte(nodesData), &nodes); err != nil {
+	loaded, err := h.loadUserJSON(userID, "clash_nodes", &nodes)
+	if err != nil {
 		logger.Errorf("Failed to parse Clash nodes: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse nodes"})
+		return
+	}
+	if !loaded {
+		c.JSON(http.StatusOK, []ProxyNode{})
 		return
 	}
 
@@ -180,15 +190,8 @@ func (h *ProxyHandler) HandleSaveNodes(c *gin.Context) {
 		return
 	}
 
-	// Serialize nodes
-	nodesData, err := json.Marshal(nodes)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to serialize nodes"})
-		return
-	}
-
 	// Save to database
-	if err := h.store.UserConfig().Set(userID, "clash_nodes", string(nodesData)); err != nil {
+	if err := h.saveUserJSON(userID, "clash_nodes", nodes); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save nodes"})
 		return
 	}

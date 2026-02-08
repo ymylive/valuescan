@@ -3,6 +3,7 @@
 负责消息的解析、打印和处理逻辑
 """
 
+import hashlib
 import json
 import os
 import time
@@ -11,7 +12,12 @@ from datetime import datetime, timezone, timedelta
 from logger import logger
 from message_types import MESSAGE_TYPE_MAP, TRADE_TYPE_MAP, FUNDS_MOVEMENT_MAP
 from telegram import send_telegram_message, format_message_for_telegram, send_confluence_alert
-from database import is_message_processed, mark_message_processed
+from database import (
+    is_message_processed,
+    mark_message_processed,
+    is_message_fingerprint_processed,
+    mark_message_fingerprint_processed,
+)
 from signal_tracker import get_signal_tracker
 
 # 北京时区 (UTC+8)
@@ -21,18 +27,18 @@ STARTUP_TIME = time.time()
 # 尝试从 config.py 读取配置，环境变量优先
 try:
     import config as signal_config
-    STARTUP_SIGNAL_MAX_AGE_SECONDS = int(os.getenv("VALUESCAN_STARTUP_SIGNAL_MAX_AGE_SECONDS") or getattr(signal_config, "STARTUP_SIGNAL_MAX_AGE_SECONDS", 600))
-    SIGNAL_MAX_AGE_SECONDS = int(os.getenv("VALUESCAN_SIGNAL_MAX_AGE_SECONDS") or getattr(signal_config, "SIGNAL_MAX_AGE_SECONDS", 600))
+    STARTUP_SIGNAL_MAX_AGE_SECONDS = int(os.getenv("NOFX_STARTUP_SIGNAL_MAX_AGE_SECONDS") or getattr(signal_config, "STARTUP_SIGNAL_MAX_AGE_SECONDS", 600))
+    SIGNAL_MAX_AGE_SECONDS = int(os.getenv("NOFX_SIGNAL_MAX_AGE_SECONDS") or getattr(signal_config, "SIGNAL_MAX_AGE_SECONDS", 600))
 except ImportError:
-    STARTUP_SIGNAL_MAX_AGE_SECONDS = int(os.getenv("VALUESCAN_STARTUP_SIGNAL_MAX_AGE_SECONDS", "600"))
-    SIGNAL_MAX_AGE_SECONDS = int(os.getenv("VALUESCAN_SIGNAL_MAX_AGE_SECONDS", "600"))
+    STARTUP_SIGNAL_MAX_AGE_SECONDS = int(os.getenv("NOFX_STARTUP_SIGNAL_MAX_AGE_SECONDS", "600"))
+    SIGNAL_MAX_AGE_SECONDS = int(os.getenv("NOFX_SIGNAL_MAX_AGE_SECONDS", "600"))
 
 STARTUP_FILTER_SECONDS = int(
-    os.getenv("VALUESCAN_STARTUP_FILTER_SECONDS", str(STARTUP_SIGNAL_MAX_AGE_SECONDS))
+    os.getenv("NOFX_STARTUP_FILTER_SECONDS", str(STARTUP_SIGNAL_MAX_AGE_SECONDS))
 )
 
 def _get_message_id(item):
-    """Best-effort message id extraction (supports multiple ValueScan response shapes)."""
+    """Best-effort message id extraction (supports multiple signal response shapes)."""
     if not isinstance(item, dict):
         return None
     for key in ("id", "msgId", "messageId", "message_id", "msg_id"):
@@ -46,7 +52,68 @@ def _get_message_id(item):
                 continue
         if isinstance(v, str) and v.strip():
             return v.strip()
-    return None
+    return _build_fallback_message_id(item)
+
+
+def _build_fallback_message_id(item):
+    if not isinstance(item, dict):
+        return None
+    parts = []
+    msg_type = _get_message_type(item)
+    if msg_type is not None:
+        parts.append(str(msg_type))
+    ts_ms = _get_message_timestamp_ms(item)
+    if ts_ms:
+        parts.append(str(ts_ms))
+    title = item.get("title")
+    if title:
+        parts.append(str(title))
+    symbol = _extract_symbol_from_item(item)
+    if symbol:
+        parts.append(str(symbol))
+    if not parts:
+        content = item.get("content") or item.get("message")
+        if content:
+            parts.append(str(content))
+    if not parts:
+        return None
+    base = "|".join(parts)
+    digest = hashlib.sha1(base.encode("utf-8", errors="ignore")).hexdigest()[:16]
+    return f"fallback_{digest}"
+
+
+def _normalize_symbol(value):
+    if not value:
+        return ""
+    text = str(value).upper().replace("$", "").strip()
+    for suffix in ("USDT", "USD", "USDC", "PERP", "-PERP", "_PERP"):
+        if text.endswith(suffix):
+            text = text[: -len(suffix)]
+    return text.strip()
+
+
+def _get_message_fingerprint(item):
+    if not isinstance(item, dict):
+        return None
+    msg_type = _get_message_type(item)
+    symbol = _normalize_symbol(_extract_symbol_from_item(item))
+    ts_ms = _get_message_timestamp_ms(item)
+    time_bucket = int(ts_ms // 60000) if ts_ms else 0
+    title = item.get("title") or ""
+    content = item.get("content") or item.get("message") or ""
+    if isinstance(content, dict):
+        try:
+            content_text = json.dumps(content, ensure_ascii=False, sort_keys=True)
+        except Exception:
+            content_text = str(content)
+    else:
+        content_text = str(content)
+    content_text = content_text.strip() or str(title)
+    if not content_text:
+        return None
+    base = f"{msg_type}|{symbol}|{time_bucket}|{content_text[:200]}"
+    digest = hashlib.sha1(base.encode("utf-8", errors="ignore")).hexdigest()[:16]
+    return f"fp_{digest}"
 
 
 def _get_message_type(item):
@@ -60,7 +127,7 @@ def _get_message_type(item):
 
 def _extract_message_items(response_data):
     """
-    Extract the list of message items from common ValueScan API payload shapes.
+    Extract the list of message items from common signal API payload shapes.
     Returns a list (possibly empty).
     """
     if isinstance(response_data, list):
@@ -141,14 +208,23 @@ def _filter_items_by_age(items, max_age_seconds, seen_ids=None):
         if ts_ms and ts_ms < cutoff_ms:
             skipped_old += 1
             msg_id = _get_message_id(item)
+            fingerprint = _get_message_fingerprint(item)
+            fingerprint = _get_message_fingerprint(item)
+            msg_type = _get_message_type(item)
+            title = item.get("title")
+            symbol = _extract_symbol_from_item(item)
+            content = item.get("content") or item.get("message") or title
             if msg_id and not is_message_processed(msg_id):
-                msg_type = _get_message_type(item)
-                title = item.get("title")
-                symbol = _extract_symbol_from_item(item)
-                content = item.get("content") or item.get("message") or title
                 mark_message_processed(msg_id, msg_type, symbol, title, ts_ms, content)
-            if seen_ids is not None and msg_id:
-                seen_ids.add(msg_id)
+            if fingerprint and not is_message_fingerprint_processed(fingerprint):
+                mark_message_fingerprint_processed(
+                    fingerprint, msg_id, msg_type, symbol, ts_ms, content
+                )
+            if seen_ids is not None:
+                if msg_id:
+                    seen_ids.add(msg_id)
+                if fingerprint:
+                    seen_ids.add(fingerprint)
             continue
         filtered_items.append(item)
 
@@ -274,6 +350,7 @@ def process_message_item(item, idx=None, send_to_telegram=False, signal_callback
         bool: 是否为新消息（未处理过的）
     """
     msg_id = _get_message_id(item)
+    fingerprint = _get_message_fingerprint(item)
 
     # 检查数据库中是否已处理过
     if msg_id and is_message_processed(msg_id):
@@ -281,6 +358,10 @@ def process_message_item(item, idx=None, send_to_telegram=False, signal_callback
         return False
 
     # 打印消息详情
+    if fingerprint and is_message_fingerprint_processed(fingerprint):
+        logger.info(f"  [skip] fingerprint {fingerprint} already processed")
+        return False
+
     print_message_details(item, idx)
 
     # 提取消息信息用于数据库记录
@@ -423,6 +504,10 @@ def process_message_item(item, idx=None, send_to_telegram=False, signal_callback
             if msg_id:
                 content_str = item.get('content') or item.get('message') or title
                 if mark_message_processed(msg_id, msg_type, symbol, title, created_time, content_str):
+                    if fingerprint:
+                        mark_message_fingerprint_processed(
+                            fingerprint, msg_id, msg_type, symbol, created_time, content_str
+                        )
                     logger.info(f"✅ 消息 ID {msg_id} 已记录到数据库")
                     _invoke_callback()
                     # 检查并发送融合信号
@@ -431,6 +516,11 @@ def process_message_item(item, idx=None, send_to_telegram=False, signal_callback
                 else:
                     logger.warning(f"⚠️ 消息 ID {msg_id} 记录到数据库失败")
                     return False  # 记录失败，下次重试
+            if fingerprint:
+                content_str = item.get('content') or item.get('message') or title
+                mark_message_fingerprint_processed(
+                    fingerprint, msg_id, msg_type, symbol, created_time, content_str
+                )
             _invoke_callback()
             # 检查并发送融合信号
             _check_and_send_confluence_signal()
@@ -443,10 +533,19 @@ def process_message_item(item, idx=None, send_to_telegram=False, signal_callback
         if msg_id:
             content_str = item.get('content') or item.get('message') or title
             if mark_message_processed(msg_id, msg_type, symbol, title, created_time, content_str):
+                if fingerprint:
+                    mark_message_fingerprint_processed(
+                        fingerprint, msg_id, msg_type, symbol, created_time, content_str
+                    )
                 logger.info(f"✅ 消息 ID {msg_id} 已记录到数据库（未发送 TG）")
                 _invoke_callback()
                 return True  # 记录成功
             return False  # 记录失败
+        if fingerprint:
+            content_str = item.get('content') or item.get('message') or title
+            mark_message_fingerprint_processed(
+                fingerprint, msg_id, msg_type, symbol, created_time, content_str
+            )
         _invoke_callback()
         return True  # 没有 msg_id，直接返回成功
 
@@ -508,19 +607,34 @@ def process_response_data(response_data, send_to_telegram=False, seen_ids=None, 
         
         for item in items:
             msg_id = _get_message_id(item)
-            if not msg_id:
+            fingerprint = _get_message_fingerprint(item)
+            if not msg_id and not fingerprint:
                 continue
             
             # 检查本次批次中是否重复（内存去重）
-            if seen_ids is not None and msg_id in seen_ids:
+            if seen_ids is not None and (
+                (msg_id and msg_id in seen_ids)
+                or (fingerprint and fingerprint in seen_ids)
+            ):
                 duplicate_in_batch += 1
                 continue
             
             # 检查数据库中是否已处理（持久化去重）
-            if is_message_processed(msg_id):
+            if msg_id and is_message_processed(msg_id):
                 duplicate_in_db += 1
                 if seen_ids is not None:
-                    seen_ids.add(msg_id)
+                    if msg_id:
+                        seen_ids.add(msg_id)
+                    if fingerprint:
+                        seen_ids.add(fingerprint)
+                continue
+            if fingerprint and is_message_fingerprint_processed(fingerprint):
+                duplicate_in_db += 1
+                if seen_ids is not None:
+                    if msg_id:
+                        seen_ids.add(msg_id)
+                    if fingerprint:
+                        seen_ids.add(fingerprint)
                 continue
             
             # 新消息（注意：这里不提前添加到 seen_ids，等发送成功后再添加）
@@ -550,8 +664,11 @@ def process_response_data(response_data, send_to_telegram=False, seen_ids=None, 
                 )
                 if success and seen_ids is not None:
                     msg_id = _get_message_id(item)
+                    fingerprint = _get_message_fingerprint(item)
                     if msg_id:
                         seen_ids.add(msg_id)
+                    if fingerprint:
+                        seen_ids.add(fingerprint)
         else:
             logger.info(f"  本次无新消息（所有消息都已处理过）")
         

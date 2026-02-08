@@ -1,0 +1,3 @@
+AI API call error: HTTPSConnectionPool(host='chat.cornna.xyz', port=443): Read timed out. (read timeout=90)
+AI API call failed: 500 - {"error": {"message": "Request failed: HTTPSConnectionPool(host='cloudcode-pa.googleapis.com', port=443): Max retries exceeded with url: /v1internal:generateContent (Caused by ProxyError('Cannot conne
+Macro summary invalid after retry; skipping send.

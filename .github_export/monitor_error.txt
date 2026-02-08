@@ -1,0 +1,20 @@
+Dec 31 10:04:54 serce7ki842oekt systemd[1]: Stopped ValueScan Signal Monitor Service.
+Dec 31 10:04:54 serce7ki842oekt systemd[1]: Started ValueScan Signal Monitor Service.
+Dec 31 10:04:55 serce7ki842oekt valuescan-monitor[460852]: Traceback (most recent call last):
+Dec 31 10:04:55 serce7ki842oekt valuescan-monitor[460852]:   File "/root/valuescan/signal_monitor/api_monitor.py", line 14, in <module>
+Dec 31 10:04:55 serce7ki842oekt valuescan-monitor[460852]:     from .logger import logger
+Dec 31 10:04:55 serce7ki842oekt valuescan-monitor[460852]: ImportError: attempted relative import with no known parent package
+Dec 31 10:04:55 serce7ki842oekt valuescan-monitor[460852]: During handling of the above exception, another exception occurred:
+Dec 31 10:04:55 serce7ki842oekt valuescan-monitor[460852]: Traceback (most recent call last):
+Dec 31 10:04:55 serce7ki842oekt valuescan-monitor[460852]:   File "/root/valuescan/signal_monitor/start_with_chrome.py", line 13, in <module>
+Dec 31 10:04:55 serce7ki842oekt valuescan-monitor[460852]:     from api_monitor import capture_api_request
+Dec 31 10:04:55 serce7ki842oekt valuescan-monitor[460852]:   File "/root/valuescan/signal_monitor/api_monitor.py", line 38, in <module>
+Dec 31 10:04:55 serce7ki842oekt valuescan-monitor[460852]:     from message_handler import process_response_data
+Dec 31 10:04:55 serce7ki842oekt valuescan-monitor[460852]:   File "/root/valuescan/signal_monitor/message_handler.py", line 13, in <module>
+Dec 31 10:04:55 serce7ki842oekt valuescan-monitor[460852]:     from telegram import send_telegram_message, format_message_for_telegram, send_confluence_alert
+Dec 31 10:04:55 serce7ki842oekt valuescan-monitor[460852]:   File "/root/valuescan/signal_monitor/telegram.py", line 1996
+Dec 31 10:04:55 serce7ki842oekt valuescan-monitor[460852]:     logger.warning(f异步图表生成器初始化失败: {e})
+Dec 31 10:04:55 serce7ki842oekt valuescan-monitor[460852]:                                                         ^
+Dec 31 10:04:55 serce7ki842oekt valuescan-monitor[460852]: SyntaxError: invalid syntax
+Dec 31 10:04:55 serce7ki842oekt systemd[1]: valuescan-monitor.service: Main process exited, code=exited, status=1/FAILURE
+Dec 31 10:04:55 serce7ki842oekt systemd[1]: valuescan-monitor.service: Failed with result 'exit-code'.

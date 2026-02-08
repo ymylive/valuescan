@@ -19,11 +19,16 @@ from matplotlib.colors import LinearSegmentedColormap
 from scipy.ndimage import gaussian_filter1d
 from chart_logger import ChartGenerationLogger
 from logger import logger
+from data_cleaner import clean_ohlcv_dataframe
 from key_levels_enhanced import find_key_levels_enhanced, check_confluence
 from ai_market_analysis import get_ai_market_analysis
 from auxiliary_line_drawer import draw_auxiliary_lines_optimized
 from ai_key_levels_cache import get_levels as get_ai_levels
-from ai_market_summary import get_ai_summary_config, get_ai_overlays_config
+from ai_market_summary import (
+    get_ai_summary_config,
+    get_ai_overlays_config,
+    get_ai_market_config,
+)
 from chart_fonts import configure_matplotlib_fonts
 from market_data_sources import fetch_market_snapshot
 
@@ -67,6 +72,122 @@ def _calc_liq_from_binance(payload):
         return None
     return {"longs": longs, "shorts": shorts}
 
+
+def _normalize_profile(values):
+    if values is None:
+        return None
+    arr = np.asarray(values, dtype=float)
+    if arr.size == 0:
+        return None
+    max_v = float(np.nanmax(arr))
+    if not np.isfinite(max_v) or max_v <= 0:
+        return None
+    return arr / max_v
+
+
+def _build_liquidity_heatmap(
+    df,
+    p_min,
+    p_max,
+    ob,
+    ai_lvls,
+    level_points,
+    level_strengths,
+    atr,
+    bin_count=120,
+):
+    bins = np.linspace(p_min, p_max, bin_count)
+    centers = (bins[:-1] + bins[1:]) / 2.0
+
+    typical_price = (df["high"] + df["low"] + df["close"]) / 3.0
+    vol_profile = np.histogram(typical_price, bins=bins, weights=df["volume"])[0]
+    vol_profile = _normalize_profile(vol_profile)
+
+    touch_profile = None
+    highs = df["high"].values
+    lows = df["low"].values
+    volumes = df["volume"].values
+    if highs.size and lows.size and volumes.size:
+        touch_prices = np.concatenate([highs, lows])
+        touch_weights = np.concatenate([volumes, volumes])
+        touch_profile = np.histogram(touch_prices, bins=bins, weights=touch_weights)[0]
+        touch_profile = _normalize_profile(touch_profile)
+
+    ob_profile = None
+    if isinstance(ob, dict):
+        prices = []
+        weights = []
+        for side in ("bids", "asks"):
+            for price, amount in ob.get(side, []) or []:
+                try:
+                    price_f = float(price)
+                    amount_f = float(amount)
+                except Exception:
+                    continue
+                prices.append(price_f)
+                weights.append(price_f * amount_f)
+        if prices:
+            ob_profile = np.histogram(prices, bins=bins, weights=weights)[0]
+            ob_profile = _normalize_profile(ob_profile)
+
+    level_profile = None
+    level_bumps = np.zeros_like(centers)
+    sigma = max((atr or 0) * 0.9, (p_max - p_min) * 0.01, 1e-6)
+    if level_points:
+        for idx, level in enumerate(level_points):
+            try:
+                lvl = float(level)
+            except Exception:
+                continue
+            weight = 0.45
+            if level_strengths and idx < len(level_strengths):
+                try:
+                    weight = max(0.2, min(float(level_strengths[idx]), 1.0))
+                except Exception:
+                    pass
+            level_bumps += weight * np.exp(-0.5 * ((centers - lvl) / sigma) ** 2)
+
+    if isinstance(ai_lvls, dict):
+        for key in ("supports", "resistances"):
+            for lvl in ai_lvls.get(key, []) or []:
+                try:
+                    lvl_f = float(lvl)
+                except Exception:
+                    continue
+                level_bumps += 0.35 * np.exp(-0.5 * ((centers - lvl_f) / sigma) ** 2)
+
+    if np.any(level_bumps > 0):
+        level_profile = _normalize_profile(level_bumps)
+
+    profiles = []
+    weights = []
+    if vol_profile is not None:
+        profiles.append(vol_profile)
+        weights.append(0.45)
+    if ob_profile is not None:
+        profiles.append(ob_profile)
+        weights.append(0.25)
+    if touch_profile is not None:
+        profiles.append(touch_profile)
+        weights.append(0.15)
+    if level_profile is not None:
+        profiles.append(level_profile)
+        weights.append(0.15)
+
+    if not profiles:
+        return np.zeros_like(centers), bins
+
+    weight_sum = sum(weights) or 1.0
+    combined = np.zeros_like(centers)
+    for weight, profile in zip(weights, profiles):
+        combined += profile * (weight / weight_sum)
+
+    combined = gaussian_filter1d(combined, 1.2)
+    normalized = _normalize_profile(combined)
+    if normalized is None:
+        normalized = np.zeros_like(centers)
+    return normalized, bins
+
 def get_integrated_data(symbol, interval):
     base = symbol.upper().replace('$', '').replace('USDT', '').strip()
     fs = f"{base}USDT"
@@ -74,9 +195,16 @@ def get_integrated_data(symbol, interval):
     # 1. Primary Market
     k_raw = _req(f"{BINANCE_FUT_BASE}/fapi/v1/klines", {'symbol': fs, 'interval': interval, 'limit': 200})
     if not k_raw: return None
-    df = pd.DataFrame(k_raw, columns=['timestamp','open','high','low','close','volume','ct','qv','t','tbb','tbq','i']).iloc[:,:6]
-    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-    for c in df.columns[1:]: df[c] = df[c].astype(float)
+    df = pd.DataFrame(
+        k_raw,
+        columns=['timestamp','open','high','low','close','volume','ct','qv','t','tbb','tbq','i'],
+    ).iloc[:, :6]
+    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True)
+    for c in df.columns[1:]:
+        df[c] = df[c].astype(float)
+    df = clean_ohlcv_dataframe(df, interval, base, fill_missing=True, drop_incomplete=True)
+    if df is None or df.empty:
+        return None
     
     # 2. Intelligence Sources
     tick = _req(f"{BINANCE_FUT_BASE}/fapi/v1/ticker/24hr", {'symbol': fs})
@@ -143,10 +271,11 @@ def get_klines(symbol, timeframe='1h', limit=200):
         k_raw,
         columns=['timestamp','open','high','low','close','volume','ct','qv','t','tbb','tbq','i'],
     ).iloc[:,:6]
-    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True)
     for c in df.columns[1:]:
         df[c] = df[c].astype(float)
-    return df
+    cleaned = clean_ohlcv_dataframe(df, timeframe, base, fill_missing=True, drop_incomplete=True)
+    return cleaned
 
 
 def get_orderbook(symbol, limit=100):
@@ -447,7 +576,7 @@ def generate_chart_v10(symbol, interval='1h', limit=200):
         df['vwap'] = ((df['high']+df['low']+df['close'])/3 * df['volume']).cumsum() / df['volume'].cumsum()
         
         # Step 2: Workspace Setup
-        configure_matplotlib_fonts([
+        selected_fonts = configure_matplotlib_fonts([
             'Microsoft YaHei',
             'SimHei',
             'WenQuanYi Micro Hei',
@@ -456,7 +585,39 @@ def generate_chart_v10(symbol, interval='1h', limit=200):
             'Noto Sans',
             'DejaVu Sans',
             'Arial',
-        ])
+        ]) or []
+        cjk_fonts = {
+            'Microsoft YaHei',
+            'SimHei',
+            'WenQuanYi Micro Hei',
+            'Noto Sans CJK SC',
+            'Noto Sans CJK',
+            'PingFang SC',
+        }
+        has_cjk_font = any(font in cjk_fonts for font in selected_fonts)
+        labels = {
+            "change_24h": ("24H涨跌", "24H Change"),
+            "high_24h": ("24H最高", "24H High"),
+            "low_24h": ("24H最低", "24H Low"),
+            "volume_24h": ("24H成交额", "24H Volume"),
+            "open_24h": ("24H开盘", "24H Open"),
+            "long_short_ratio": ("多空比", "Long/Short Ratio"),
+            "funding_rate": ("资金费率", "Funding Rate"),
+            "open_interest": ("持仓量OI", "Open Interest"),
+            "oi_change_1h": ("OI 1h变化", "OI 1h Change"),
+            "orderbook_bias": ("盘口比例", "Orderbook Bias"),
+            "buy_side": ("买盘", "Buy Side"),
+            "flow_title": ("资金流入/流出", "Capital Flow In/Out"),
+            "period": ("周期", "Period"),
+            "inflow": ("流入", "Inflow"),
+            "outflow": ("流出", "Outflow"),
+            "netflow": ("净流", "Net Flow"),
+            "strength": ("强度", "Strength"),
+        }
+
+        def _label(key):
+            zh, en = labels[key]
+            return zh if has_cjk_font else en
         dpi = 120; fig = plt.figure(figsize=(16, 10), dpi=dpi)
         
         # Background Gradient
@@ -473,13 +634,6 @@ def generate_chart_v10(symbol, interval='1h', limit=200):
         ax_main.set_ylim(p_min, p_max); ax_main.set_xlim(-5, len(df)+22)
         ax_main.grid(True, linestyle=(0, (1, 10)), color=COLORS['grid'], alpha=0.4)
 
-        # --- A. HEATMAP Strip (Price Density) ---
-        bins = np.linspace(p_min, p_max, 100); h_v, _ = np.histogram(df['close'], bins=bins, weights=df['volume'])
-        h_n = gaussian_filter1d(h_v/h_v.max(), 1.5)
-        cmap_h = LinearSegmentedColormap.from_list('h', [COLORS['bg_top'], COLORS['ai_accent'], COLORS['vwap']])
-        ax_heat.barh(bins[:-1], h_n, height=(bins[1]-bins[0]), color=[cmap_h(v) for v in h_n], edgecolor='none', alpha=0.8)
-        ax_heat.set_ylim(ax_main.get_ylim()); ax_heat.invert_xaxis()
-
         # --- B. AUXILIARY LINE SYSTEM (AI + LOCAL) ---
         # 从 JSON 配置文件读取 AI 模块启用状态
         try:
@@ -495,14 +649,87 @@ def generate_chart_v10(symbol, interval='1h', limit=200):
         except Exception:
             enable_ai_overlays = False
         
+        ai_lvls_for_fallback = ai_lvls
+        if not enable_ai_key_levels:
+            ai_lvls = None
         logger.info(f"[AI Config] Key Levels: {enable_ai_key_levels}, Overlays: {enable_ai_overlays}")
 
-        # 1. Key Levels (Enhanced Algorithm with AI validation)
-        # 使用增强版算法，自动验证和融合AI结果
-        s_list, r_list, level_meta = find_key_levels_enhanced(
-            df, curr_p, ob, market_cap=None,
-            ai_levels=ai_lvls if (enable_ai_key_levels and ai_lvls) else None
+        # 1. Key Levels - 使用新的AI主力位系统
+        # 导入新的AI主力位模块
+        try:
+            from key_levels_ai import find_ai_key_levels, LevelStrength
+        except ImportError:
+            find_ai_key_levels = None
+            LevelStrength = None
+
+        level_result = None
+        s_list = []
+        r_list = []
+        level_meta = {"source": "QUANT"}
+        strong_supports = []
+        strong_resistances = []
+        weak_supports = []
+        weak_resistances = []
+        vs_level_list = []
+
+        if find_ai_key_levels:
+            # 使用新的AI主力位系统
+            level_result = find_ai_key_levels(df, curr_p, ai_lvls_for_fallback, ob)
+            s_list = [l.price for l in level_result.get('supports', [])]
+            r_list = [l.price for l in level_result.get('resistances', [])]
+            strong_supports = level_result.get('strong_supports', [])
+            strong_resistances = level_result.get('strong_resistances', [])
+            weak_supports = level_result.get('weak_supports', [])
+            weak_resistances = level_result.get('weak_resistances', [])
+            level_meta = level_result.get('metadata', {"source": "AI"})
+            level_meta['support_strengths'] = [l.strength for l in level_result.get('supports', [])]
+            level_meta['resistance_strengths'] = [l.strength for l in level_result.get('resistances', [])]
+            logger.info("[AI Levels] Found %d supports (%d strong), %d resistances (%d strong)",
+                       len(s_list), len(strong_supports), len(r_list), len(strong_resistances))
+        else:
+            # 回退到增强版算法
+            s_list, r_list, level_meta = find_key_levels_enhanced(
+                df, curr_p, ob, market_cap=None,
+                ai_levels=ai_lvls_for_fallback
+            )
+
+        # 过滤在价格范围内的主力位
+        s_list = [p for p in s_list if p_min <= p <= p_max]
+        r_list = [p for p in r_list if p_min <= p <= p_max]
+
+        # --- A. HEATMAP Strip (Liquidity Density) ---
+        level_points = []
+        level_strengths = []
+        if s_list:
+            support_strengths = level_meta.get("support_strengths", [None] * len(s_list))
+            for i, level in enumerate(s_list):
+                level_points.append(level)
+                strength = support_strengths[i] if i < len(support_strengths) else None
+                level_strengths.append(strength)
+        if r_list:
+            resistance_strengths = level_meta.get("resistance_strengths", [None] * len(r_list))
+            for i, level in enumerate(r_list):
+                level_points.append(level)
+                strength = resistance_strengths[i] if i < len(resistance_strengths) else None
+                level_strengths.append(strength)
+        if vs_level_list:
+            for level in vs_level_list:
+                level_points.append(level)
+                level_strengths.append(0.35)
+
+        heatmap, heat_bins = _build_liquidity_heatmap(
+            df, p_min, p_max, ob, ai_lvls, level_points, level_strengths, atr
         )
+        cmap_h = LinearSegmentedColormap.from_list('h', [COLORS['bg_top'], COLORS['ai_accent'], COLORS['vwap']])
+        ax_heat.barh(
+            heat_bins[:-1],
+            heatmap,
+            height=(heat_bins[1] - heat_bins[0]),
+            color=[cmap_h(v) for v in heatmap],
+            edgecolor='none',
+            alpha=0.85,
+        )
+        ax_heat.set_ylim(ax_main.get_ylim()); ax_heat.invert_xaxis()
 
         # Label Manager for collision detection
         class LabelManager:
@@ -556,7 +783,7 @@ def generate_chart_v10(symbol, interval='1h', limit=200):
         # 初始化标签管理器
         label_manager = LabelManager(len(df) + 22, p_max - p_min)
 
-        def draw_key_line(p, c, label, source, strength=None):
+        def draw_key_line(p, c, label, source, strength=None, is_strong=False, is_weak=False):
             # 使用增强版汇合检测 - 动态阈值
             confluence_threshold = level_meta.get('confluence_threshold', 0.004)
             confluence_info = check_confluence(p, df, confluence_threshold)
@@ -564,19 +791,35 @@ def generate_chart_v10(symbol, interval='1h', limit=200):
             # 检查是否有汇合
             has_confluence = any(confluence_info.values())
 
-            # 根据强度和汇合调整样式 (降低alpha和线宽以减少视觉混乱)
-            if strength and strength > 0.7:
-                base_lw, base_alpha = (1.5, 0.85)  # 降低
+            # 根据强弱等级调整样式
+            if is_strong:
+                # 强主力位 - 实线、粗线、高透明度
+                base_lw, base_alpha = (2.0, 0.9)
+                line_style = '-'
+                label_prefix = "★"
+            elif is_weak:
+                # 弱主力位 - 虚线、细线、低透明度
+                base_lw, base_alpha = (0.6, 0.4)
+                line_style = ':'
+                label_prefix = "○"
+            elif strength and strength > 0.7:
+                base_lw, base_alpha = (1.5, 0.85)
+                line_style = '-'
+                label_prefix = ""
             elif has_confluence:
-                base_lw, base_alpha = (1.2, 0.75)  # 降低
+                base_lw, base_alpha = (1.2, 0.75)
+                line_style = '--'
+                label_prefix = ""
             else:
-                base_lw, base_alpha = (0.7, 0.5)   # 降低
+                base_lw, base_alpha = (0.8, 0.55)
+                line_style = '--'
+                label_prefix = ""
 
-            # 绘制主线 (移除发光效果以减少视觉混乱)
-            ax_main.axhline(p, color=c, ls='-' if has_confluence else '--', lw=base_lw, alpha=base_alpha)
+            # 绘制主线
+            ax_main.axhline(p, color=c, ls=line_style, lw=base_lw, alpha=base_alpha)
 
             # 构建标签
-            tag = f"{source}:{label}"
+            tag = f"{label_prefix}{source}:{label}"
             if strength:
                 tag += f" ({strength:.0%})"
 
@@ -586,25 +829,41 @@ def generate_chart_v10(symbol, interval='1h', limit=200):
                 tag += f" [{','.join(conf_indicators)}]"
 
             # 绘制标签 (使用智能位置管理)
-            fontweight = 'bold' if (has_confluence or (strength and strength > 0.7)) else 'normal'
+            fontweight = 'bold' if is_strong or (has_confluence and strength and strength > 0.6) else 'normal'
             label_x, label_y = label_manager.find_best_position(len(df)+20, p)
             ax_main.text(label_x, label_y, f"{tag} {p:,.2f}", color=c, fontsize=7,
                         va='center', ha='right', family='monospace', fontweight=fontweight)
 
-        # 获取强度信息
-        support_strengths = level_meta.get('support_strengths', [None] * len(s_list))
-        resistance_strengths = level_meta.get('resistance_strengths', [None] * len(r_list))
-        source = level_meta.get('source', 'QUANT')
+        # 绘制主力位 - 区分强弱
+        source = level_meta.get('source', 'AI')
 
-        # 绘制支撑位 (限制为2个最强的)
-        for i, s in enumerate(s_list[:2]):  # 3 -> 2
-            strength = support_strengths[i] if i < len(support_strengths) else None
-            draw_key_line(s, COLORS['up'], "SUP", source, strength)
+        # 绘制强支撑位 (绿色实线)
+        for level in strong_supports[:2]:
+            p = level.price if hasattr(level, 'price') else level
+            s = level.strength if hasattr(level, 'strength') else 0.8
+            if p_min <= p <= p_max:
+                draw_key_line(p, COLORS['up'], "SUP", source, s, is_strong=True)
 
-        # 绘制阻力位 (限制为2个最强的)
-        for i, r in enumerate(r_list[:2]):  # 3 -> 2
-            strength = resistance_strengths[i] if i < len(resistance_strengths) else None
-            draw_key_line(r, COLORS['down'], "RES", source, strength)
+        # 绘制强阻力位 (红色实线)
+        for level in strong_resistances[:2]:
+            p = level.price if hasattr(level, 'price') else level
+            s = level.strength if hasattr(level, 'strength') else 0.8
+            if p_min <= p <= p_max:
+                draw_key_line(p, COLORS['down'], "RES", source, s, is_strong=True)
+
+        # 绘制弱支撑位 (绿色虚线)
+        for level in weak_supports[:1]:
+            p = level.price if hasattr(level, 'price') else level
+            s = level.strength if hasattr(level, 'strength') else 0.3
+            if p_min <= p <= p_max:
+                draw_key_line(p, COLORS['up'], "SUP", source, s, is_weak=True)
+
+        # 绘制弱阻力位 (红色虚线)
+        for level in weak_resistances[:1]:
+            p = level.price if hasattr(level, 'price') else level
+            s = level.strength if hasattr(level, 'strength') else 0.3
+            if p_min <= p <= p_max:
+                draw_key_line(p, COLORS['down'], "RES", source, s, is_weak=True)
 
         # 2. AI Market Analysis & Auxiliary Lines (New System)
         ai_analysis = None
@@ -612,10 +871,10 @@ def generate_chart_v10(symbol, interval='1h', limit=200):
             # 如果启用AI，进行全面市场分析
             if enable_ai_overlays:
                 try:
-                    ai_config = get_ai_overlays_config()
-                    if ai_config and ai_config.get('api_key'):
+                    ai_config = get_ai_market_config()
+                    if ai_config and ai_config.get("api_key"):
                         import os
-                        language = os.getenv('VALUESCAN_LANGUAGE', 'zh').lower()
+                        language = os.getenv("NOFX_LANGUAGE", "zh").lower()
                         logger.info(f"Calling AI for market analysis of {symbol}...")
                         ai_analysis = get_ai_market_analysis(
                             symbol, df, curr_p, ob, None, ai_config, language
@@ -626,6 +885,8 @@ def generate_chart_v10(symbol, interval='1h', limit=200):
                     logger.warning(f"AI market analysis failed: {e}")
 
             # 使用优化的辅助线绘制算法
+            if isinstance(ai_analysis, dict):
+                ai_analysis.pop("key_levels", None)
             auxiliary_lines = draw_auxiliary_lines_optimized(df, curr_p, atr, ai_analysis)
 
             # 绘制趋势线
@@ -815,15 +1076,15 @@ def generate_chart_v10(symbol, interval='1h', limit=200):
 
         ax_info.text(0.5, yp, f"${curr_p:,.2f}", ha='center', color='white', fontsize=20, fontweight='bold', transform=ax_info.transAxes); yp -= 0.06
         if tick:
-            row("24H涨跌", f"{float(tick['priceChangePercent']):+.2f}%", COLORS['up'] if float(tick['priceChangePercent'])>=0 else COLORS['down'])
-            row("24H最高", f"{float(tick['highPrice']):,.2f}", COLORS['text'])
-            row("24H最低", f"{float(tick['lowPrice']):,.2f}", COLORS['text'])
-            row("24H成交额", _fmt_big(float(tick.get('quoteVolume', 0))), COLORS['text_dim'])
-            row("24H开盘", f"{float(tick.get('openPrice', 0)):,.2f}", COLORS['text_dim'])
+            row(_label("change_24h"), f"{float(tick['priceChangePercent']):+.2f}%", COLORS['up'] if float(tick['priceChangePercent'])>=0 else COLORS['down'])
+            row(_label("high_24h"), f"{float(tick['highPrice']):,.2f}", COLORS['text'])
+            row(_label("low_24h"), f"{float(tick['lowPrice']):,.2f}", COLORS['text'])
+            row(_label("volume_24h"), _fmt_big(float(tick.get('quoteVolume', 0))), COLORS['text_dim'])
+            row(_label("open_24h"), f"{float(tick.get('openPrice', 0)):,.2f}", COLORS['text_dim'])
         if ls_hist:
-            row("多空比", f"{float(ls_hist[0]['longShortRatio']):.2f}", COLORS['gold'])
+            row(_label("long_short_ratio"), f"{float(ls_hist[0]['longShortRatio']):.2f}", COLORS['gold'])
         if fund:
-            row("资金费率", f"{float(fund[0]['fundingRate'])*100:.4f}%", COLORS['ema50'])
+            row(_label("funding_rate"), f"{float(fund[0]['fundingRate'])*100:.4f}%", COLORS['ema50'])
 
         oi_val = None
         oi_delta = None
@@ -832,9 +1093,9 @@ def generate_chart_v10(symbol, interval='1h', limit=200):
             oi_delta = oi_stats.get("delta_1h")
 
         if oi_val is not None:
-            row("持仓量OI", _fmt_big(oi_val), COLORS['ai_accent'])
+            row(_label("open_interest"), _fmt_big(oi_val), COLORS['ai_accent'])
         if oi_delta is not None:
-            row("OI 1h变化", f"{float(oi_delta):+.2f}%", COLORS['up'] if float(oi_delta) >= 0 else COLORS['down'])
+            row(_label("oi_change_1h"), f"{float(oi_delta):+.2f}%", COLORS['up'] if float(oi_delta) >= 0 else COLORS['down'])
 
         if ob:
             bid_notional = sum(p * a for p, a in ob.get("bids", [])[:10])
@@ -842,14 +1103,14 @@ def generate_chart_v10(symbol, interval='1h', limit=200):
             total = bid_notional + ask_notional
             if total > 0:
                 ratio = bid_notional / total
-                row("盘口比例", f"{ratio*100:.1f}% 买盘", COLORS['up'] if ratio >= 0.5 else COLORS['down'])
+                row(_label("orderbook_bias"), f"{ratio*100:.1f}% {_label('buy_side')}", COLORS['up'] if ratio >= 0.5 else COLORS['down'])
 
         # 清算分析部分已删除，为图表腾出更多空间
 
         # --- E. CAPITAL FLOW ---
         ax_flow.add_patch(mpatches.FancyBboxPatch((0,0), 1, 1, boxstyle="round,pad=0,rounding_size=0.04", fc=COLORS['panel'], alpha=0.7, transform=ax_flow.transAxes))
-        ax_flow.text(0.02, 0.85, "资金流入/流出", color=COLORS['ai_accent'], fontsize=10, fontweight='bold', transform=ax_flow.transAxes)
-        cols = [0.05, 0.22, 0.40, 0.58, 0.76]; hdrs = ["周期", "流入", "流出", "净流", "强度"]
+        ax_flow.text(0.02, 0.85, _label("flow_title"), color=COLORS['ai_accent'], fontsize=10, fontweight='bold', transform=ax_flow.transAxes)
+        cols = [0.05, 0.22, 0.40, 0.58, 0.76]; hdrs = [_label("period"), _label("inflow"), _label("outflow"), _label("netflow"), _label("strength")]
         for i, h in enumerate(hdrs): ax_flow.text(cols[i], 0.68, h, color=COLORS['text_dim'], fontsize=8, fontweight='bold', transform=ax_flow.transAxes)
             
         # Unified Flow Processing (force Binance taker flow)

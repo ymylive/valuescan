@@ -6,9 +6,16 @@
 import sqlite3
 import os
 import time
+import json
 from pathlib import Path
 from typing import Optional
-from logger import logger
+try:
+    from .logger import logger
+except Exception:
+    try:
+        from logger import logger
+    except Exception:
+        logger = None  # type: ignore[assignment]
 
 
 class MessageDatabase:
@@ -33,12 +40,24 @@ class MessageDatabase:
     @staticmethod
     def _get_default_db_path() -> str:
         """Get default DB path, stable across working directories."""
-        env_path = os.environ.get('VALUESCAN_DB_PATH')
+        env_path = os.environ.get('NOFX_DB_PATH')
         if env_path:
             return env_path
 
         repo_root = Path(__file__).resolve().parent.parent
-        return str(repo_root / 'data' / 'valuescan.db')
+        return str(repo_root / 'data' / 'signal_monitor.db')
+
+    @staticmethod
+    def _normalize_symbol(value: Optional[str]) -> str:
+        if not value:
+            return ""
+        text = str(value).upper().strip()
+        if text.startswith("$"):
+            text = text[1:]
+        for suffix in ("USDT", "USD", "USDC", "PERP", "-PERP", "_PERP"):
+            if text.endswith(suffix):
+                text = text[: -len(suffix)]
+        return text.strip()
     
     def _init_database(self):
         """初始化数据库，创建表结构"""
@@ -53,6 +72,18 @@ class MessageDatabase:
                     message_type INTEGER,
                     symbol TEXT,
                     title TEXT,
+                    processed_time INTEGER,
+                    created_time INTEGER,
+                    content TEXT
+                )
+            ''')
+
+            self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS processed_message_fingerprints (
+                    fingerprint TEXT PRIMARY KEY,
+                    message_id TEXT,
+                    message_type INTEGER,
+                    symbol TEXT,
                     processed_time INTEGER,
                     created_time INTEGER,
                     content TEXT
@@ -76,8 +107,11 @@ class MessageDatabase:
                 CREATE INDEX IF NOT EXISTS idx_processed_time 
                 ON processed_messages(processed_time)
             ''')
-            
-            self.conn.commit()
+
+            self.cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_fingerprint_time
+                ON processed_message_fingerprints(processed_time)
+            ''')
             
             # 获取数据库中已有的记录数
             count = self.get_total_count()
@@ -109,6 +143,21 @@ class MessageDatabase:
             logger.error(f"❌ 查询消息 ID 失败: {e}")
             return False
     
+    def is_fingerprint_processed(self, fingerprint):
+        """Check whether a fingerprint was already processed."""
+        if not fingerprint:
+            return False
+        try:
+            self.cursor.execute(
+                'SELECT fingerprint FROM processed_message_fingerprints WHERE fingerprint = ?',
+                (str(fingerprint),)
+            )
+            result = self.cursor.fetchone()
+            return result is not None
+        except sqlite3.Error as e:
+            logger.error(f"â?Fingerprint query failed: {e}")
+            return False
+
     def add_message(self, message_id, message_type=None, symbol=None, title=None, created_time=None, content=None):
         """
         添加消息到数据库
@@ -155,6 +204,38 @@ class MessageDatabase:
             logger.error(f"❌ 添加消息到数据库失败: {e}")
             return False
     
+    def add_fingerprint(self, fingerprint, message_id=None, message_type=None, symbol=None, created_time=None, content=None):
+        """Persist a fingerprint for dedupe."""
+        if not fingerprint:
+            return False
+        if self.is_fingerprint_processed(fingerprint):
+            return False
+        try:
+            current_time = int(time.time())
+            self.cursor.execute(
+                '''
+                INSERT INTO processed_message_fingerprints
+                (fingerprint, message_id, message_type, symbol, processed_time, created_time, content)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''',
+                (
+                    str(fingerprint),
+                    message_id,
+                    message_type,
+                    symbol,
+                    current_time,
+                    created_time,
+                    content,
+                ),
+            )
+            self.conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
+        except sqlite3.Error as e:
+            logger.error(f"â?Add fingerprint failed: {e}")
+            return False
+
     def get_total_count(self):
         """
         获取数据库中消息总数
@@ -240,6 +321,103 @@ class MessageDatabase:
         except sqlite3.Error as e:
             logger.error(f"❌ 获取 AI 分析消息失败: {e}")
             return []
+
+    def get_recent_messages_for_symbol(self, symbol: str, limit=200, since_timestamp_ms=None):
+        """
+        Get recent messages for a specific symbol, optionally filtered by time.
+        """
+        base_symbol = self._normalize_symbol(symbol)
+        if not base_symbol:
+            return []
+        unlimited = limit is None or int(limit) <= 0
+        fetch_limit = max(int(limit) * 5, int(limit)) if not unlimited else None
+        try:
+            if since_timestamp_ms:
+                if unlimited:
+                    self.cursor.execute(
+                        '''
+                        SELECT message_id, message_type, symbol, title,
+                               processed_time, created_time, content
+                        FROM processed_messages
+                        WHERE created_time >= ?
+                        ORDER BY created_time DESC
+                        ''',
+                        (since_timestamp_ms,),
+                    )
+                else:
+                    self.cursor.execute(
+                        '''
+                        SELECT message_id, message_type, symbol, title,
+                               processed_time, created_time, content
+                        FROM processed_messages
+                        WHERE created_time >= ?
+                        ORDER BY created_time DESC
+                        LIMIT ?
+                        ''',
+                        (since_timestamp_ms, fetch_limit),
+                    )
+            else:
+                if unlimited:
+                    self.cursor.execute(
+                        '''
+                        SELECT message_id, message_type, symbol, title,
+                               processed_time, created_time, content
+                        FROM processed_messages
+                        ORDER BY created_time DESC
+                        '''
+                    )
+                else:
+                    self.cursor.execute(
+                        '''
+                        SELECT message_id, message_type, symbol, title,
+                               processed_time, created_time, content
+                        FROM processed_messages
+                        ORDER BY created_time DESC
+                        LIMIT ?
+                        ''',
+                        (fetch_limit,),
+                    )
+            rows = self.cursor.fetchall()
+        except sqlite3.Error as e:
+            logger.error(f"â?èŽ·å–ç‰¹å®šå¸ç§æ¶ˆæ¯å¤±è´¥: {e}")
+            return []
+
+        results = []
+        for row in rows:
+            content = row[6] if len(row) > 6 else ""
+            row_symbol = self._normalize_symbol(row[2])
+            match = row_symbol == base_symbol
+
+            if not match and content and isinstance(content, str):
+                stripped = content.lstrip()
+                if stripped.startswith("{") and stripped.endswith("}"):
+                    try:
+                        parsed = json.loads(content)
+                    except Exception:
+                        parsed = None
+                    if isinstance(parsed, dict):
+                        parsed_symbol = self._normalize_symbol(parsed.get("symbol"))
+                        if parsed_symbol == base_symbol:
+                            match = True
+
+            if not match:
+                continue
+
+            results.append(
+                {
+                    "id": row[0],
+                    "type": row[1],
+                    "symbol": row[2],
+                    "title": row[3],
+                    "processedTime": row[4],
+                    "createTime": row[5],
+                    "content": content,
+                }
+            )
+            if not unlimited and len(results) >= limit:
+                break
+
+        return results
     
     def clean_old_messages(self, days=30):
         """
@@ -255,11 +433,17 @@ class MessageDatabase:
             cutoff_time = int(time.time()) - (days * 24 * 3600)
             
             self.cursor.execute('''
-                DELETE FROM processed_messages 
+                DELETE FROM processed_messages
                 WHERE processed_time < ?
             ''', (cutoff_time,))
-            
+
             deleted_count = self.cursor.rowcount
+
+            self.cursor.execute('''
+                DELETE FROM processed_message_fingerprints
+                WHERE processed_time < ?
+            ''', (cutoff_time,))
+
             self.conn.commit()
             
             if deleted_count > 0:
@@ -371,6 +555,18 @@ def mark_message_processed(message_id, message_type=None, symbol=None, title=Non
     """
     db = get_database()
     return db.add_message(message_id, message_type, symbol, title, created_time, content)
+
+
+def is_message_fingerprint_processed(fingerprint):
+    """Check whether a fingerprint was already processed."""
+    db = get_database()
+    return db.is_fingerprint_processed(fingerprint)
+
+
+def mark_message_fingerprint_processed(fingerprint, message_id=None, message_type=None, symbol=None, created_time=None, content=None):
+    """Persist a message fingerprint for dedupe."""
+    db = get_database()
+    return db.add_fingerprint(fingerprint, message_id, message_type, symbol, created_time, content)
 
 
 # Legacy alias for older imports.

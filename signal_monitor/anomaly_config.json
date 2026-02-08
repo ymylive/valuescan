@@ -1,0 +1,41 @@
+{
+  "anomaly_source": "local",
+  "symbols": [
+    "BTC",
+    "ETH",
+    "SOL",
+    "BNB"
+  ],
+  "vol_spike_threshold": 6.0,
+  "vol_zscore_threshold": 3.5,
+  "price_change_threshold": 3.5,
+  "funding_warn_negative": -0.015,
+  "funding_warn_positive": 0.05,
+  "funding_extreme_negative": -0.04,
+  "funding_extreme_positive": 0.12,
+  "oi_change_warn": 5.0,
+  "oi_change_extreme": 12.0,
+  "imbalance_threshold": 4.0,
+  "whale_wall_usd": 4000000,
+  "spread_warn": 0.001,
+  "correlation_window_minutes": 60,
+  "independence_threshold": 0.6,
+  "fear_extreme": 20,
+  "greed_extreme": 80,
+  "use_dynamic_threshold": true,
+  "zscore_threshold": 3.5,
+  "atr_multiplier": 3.5,
+  "scoring_enabled": true,
+  "scoring_weights": {
+    "volume_price": 0.3,
+    "derivatives": 0.25,
+    "fund_flow": 0.2,
+    "orderbook": 0.15,
+    "sentiment": 0.1
+  },
+  "scoring_thresholds": {
+    "info": 55,
+    "warning": 70,
+    "alert": 85
+  }
+}

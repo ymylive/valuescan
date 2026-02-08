@@ -1,0 +1,1 @@
+Dec 31 10:06:51 serce7ki842oekt valuescan-monitor[461160]: 2025-12-31 10:06:51 [INFO] 📊 异步图表生成器已初始化 (工作线程: 3)

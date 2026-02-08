@@ -54,7 +54,7 @@ def _get_proxies():
     Returns:
         dict: requests库使用的代理配置，如果没有配置则返回None
     """
-    if os.getenv("VALUESCAN_NO_PROXY", "0") == "1":
+    if os.getenv("NOFX_NO_PROXY", "0") == "1":
         return None
 
     def _read_env_proxy(names):

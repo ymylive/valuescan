@@ -1,10 +1,11 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { ProxyNode, Subscription, ClashConfig, SpeedTestResult, ClashStats } from '../types/clash';
 import api from './api';
 
 class ClashService {
-  private readonly STORAGE_KEY = 'valuescan_clash_config';
-  private readonly NODES_KEY = 'valuescan_clash_nodes';
-  private readonly SUBSCRIPTIONS_KEY = 'valuescan_clash_subscriptions';
+  private readonly STORAGE_KEY = 'nofx_clash_config';
+  private readonly NODES_KEY = 'nofx_clash_nodes';
+  private readonly SUBSCRIPTIONS_KEY = 'nofx_clash_subscriptions';
 
   // 获取 Clash 配置
   async getConfig(): Promise<ClashConfig> {
@@ -335,8 +336,6 @@ class ClashService {
 
   // 测速单个节点
   async testNode(nodeId: string): Promise<SpeedTestResult> {
-    const startTime = Date.now();
-
     try {
       // 调用后端 API 进行实际测速
       const result = await api.post('/clash/test-node', { nodeId }) as any;

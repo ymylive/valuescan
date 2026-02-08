@@ -17,7 +17,7 @@ export interface LogEntry {
   level: LogLevel;
   component: string;
   message: string;
-  data?: any;
+  data?: unknown;
   error?: Error;
 }
 

@@ -7,6 +7,7 @@
 """
 
 import io
+import os
 import requests
 import numpy as np
 import pandas as pd
@@ -19,8 +20,8 @@ from chart_fonts import configure_matplotlib_fonts
 
 # ==================== 配置 ====================
 BINANCE_FUTURES_KLINES_URL = "https://fapi.binance.com/fapi/v1/klines"
-NOFX_API_BASE = "http://nofxaios.com:30006"
-NOFX_AUTH_KEY = "cm_568c67eae410d912c54c"
+NOFX_API_BASE = os.getenv("NOFX_API_BASE", "https://nofxai.com/data").strip().rstrip("/")
+NOFX_AUTH_KEY = (os.getenv("NOFX_API_TOKEN") or os.getenv("NOFX_AUTH_KEY") or "").strip()
 
 # Coinglass 风格配色
 COLORS = {
@@ -49,6 +50,13 @@ def get_proxies():
     except ImportError:
         pass
     return proxies
+
+
+def _build_source_headers():
+    headers = {"Accept": "application/json"}
+    if NOFX_AUTH_KEY:
+        headers["Authorization"] = f"Bearer {NOFX_AUTH_KEY}"
+    return headers
 
 
 def get_futures_klines(symbol, interval='15m', limit=100):
@@ -85,7 +93,7 @@ def get_futures_klines(symbol, interval='15m', limit=100):
 
 
 def get_nofx_quant_data(symbol):
-    """从 NOFX 获取量化数据（资金流向）"""
+    """Fetch external quant data for netflow/oi/price."""
     symbol_clean = symbol.upper().replace('$', '').strip()
     if not symbol_clean.endswith('USDT'):
         symbol_clean = f"{symbol_clean}USDT"
@@ -94,15 +102,16 @@ def get_nofx_quant_data(symbol):
         url = f"{NOFX_API_BASE}/api/coin/{symbol_clean}"
         response = requests.get(
             url,
-            params={'include': 'netflow,oi,price', 'auth': NOFX_AUTH_KEY},
-            timeout=10
+            params={'include': 'netflow,oi,price'},
+            headers=_build_source_headers(),
+            timeout=10,
         )
         if response.status_code == 200:
             data = response.json()
             if data.get('code') == 0:
                 return data.get('data', {})
-    except Exception as e:
-        logger.warning(f"NOFX API 失败: {e}")
+    except Exception:
+        logger.warning("Data source request failed.")
     return None
 
 
@@ -518,7 +527,7 @@ def generate_chart_v2(symbol, interval='15m', limit=150):
             spine.set_visible(False)
         
         # 水印
-        fig.text(0.5, 0.55, 'NOFX', fontsize=30, color=COLORS['yellow'],
+        fig.text(0.5, 0.55, 'Signal', fontsize=30, color=COLORS['yellow'],
                 ha='center', va='center', alpha=0.015, fontweight='bold')
         
         # 保存

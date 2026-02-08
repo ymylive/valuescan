@@ -1,0 +1,33 @@
+--- signal_monitor/ai_signal_analysis.py.orig
++++ signal_monitor/ai_signal_analysis.py
+@@ -354,65 +354,30 @@
+ 9) Analysis must reference specific data points (orderbook notional, taker flow ratios, kline pivot prices) and explain why these levels matter for market makers.
+ Input data (JSON):
+ {payload_json}"""
+
++    # Chinese prompt
++    return f"""你是资深量化分析师。分析该币种和信号，给出是否入场的判断，如入场则设置止盈止损位（盈亏比>2），并给出充分理由、未来走势和风险系数。
++仅返回严格的 JSON，不要额外文字。
++JSON 格式:
++{{"analysis":"...","supports":[...],"resistances":[...],"stop_loss":0,"take_profit":0,"rr":0,"risk_level":"低/中/高","entry_decision":"是/否","overlays":[{{"x1":0,"y1":0,"x2":0,"y2":0,"style":"dashed","label":"channel_top","type":"channel"}}]}}
++要求:
++1) analysis: 约200字。必须包含：
++   - 币种分析（当前价格、趋势、成交量、市值等关键数据）
++   - 信号分析（信号类型、强度、可靠性评估）
++   - 是否入场判断（是/否，附详细理由，必须基于数据支撑）
++   - 如入场：止盈止损位设置及理由（必须引用订单簿关键位、Taker资金流、形态支撑）
++   - 未来可能走势（短期走势预测，附概率评估）
++   - 风险系数评估（风险等级及主要风险因素）
++2) supports/resistances: 基于多源数据（订单簿堆积、Taker资金流偏向、形态关键点）返回1-3个关键位。
++3) 支撑位 < 当前价 < 阻力位。
++4) stop_loss < price < take_profit。rr（盈亏比）必须 > 2.0。
++5) risk_level: "低"（盈亏比>3，支撑强）、"中"（盈亏比2-3）、"高"（盈亏比<2.5或支撑弱）。
++6) entry_decision: 信号强且盈亏比>2时为"是"，否则为"否"。
++7) overlays: 从 overlay_candidates 选择，|x2-x1|>=20，y1/y2在价格范围内。
++8) 如信号显示FOMO加剧或资金异动，设置 risk_level="高" 并在分析中警示。
++9) analysis 必须引用具体数据（订单簿堆积量、Taker资金流比例、K线关键价位）并说明为何这些位置对做市商重要。
++输入数据 (JSON):
++{payload_json}"""
+
+ def _build_key_levels_prompt(symbol: str, snapshot: Dict[str, Any], language: str = "zh") -> str:
+     payload = {

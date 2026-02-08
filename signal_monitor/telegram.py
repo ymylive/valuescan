@@ -8,6 +8,8 @@ import time
 import os
 import glob
 import threading
+import queue
+from pathlib import Path
 from datetime import datetime, timezone, timedelta
 import requests
 from logger import logger
@@ -44,45 +46,335 @@ except ImportError:
 # 北京时区 (UTC+8)
 BEIJING_TZ = timezone(timedelta(hours=8))
 _PRO_CHART_LOCK = threading.Lock()
+_ASYNC_QUEUE_PUT_TIMEOUT = float(os.getenv("NOFX_ASYNC_QUEUE_TIMEOUT", "2"))
+_ASYNC_QUEUE_WARN_INTERVAL = float(os.getenv("NOFX_ASYNC_QUEUE_WARN_INTERVAL", "10"))
+_AI_ANALYSIS_QUEUE_SIZE = int(os.getenv("NOFX_AI_ANALYSIS_QUEUE_SIZE", "100"))
+_CHART_QUEUE_SIZE = int(os.getenv("NOFX_CHART_QUEUE_SIZE", "50"))
+_AI_ANALYSIS_QUEUE = queue.Queue(maxsize=_AI_ANALYSIS_QUEUE_SIZE)
+_CHART_QUEUE = queue.Queue(maxsize=_CHART_QUEUE_SIZE)
+_WORKERS_STARTED = False
+_WORKER_INIT_LOCK = threading.Lock()
+_AI_ANALYSIS_MAX_RETRIES = max(1, int(os.getenv("NOFX_AI_ANALYSIS_RETRY", "2")))
+_AI_ANALYSIS_RETRY_DELAY = float(os.getenv("NOFX_AI_ANALYSIS_RETRY_DELAY", "2"))
+_CHART_MAX_RETRIES = max(1, int(os.getenv("NOFX_CHART_RETRY", "2")))
+_CHART_RETRY_DELAY = float(os.getenv("NOFX_CHART_RETRY_DELAY", "3"))
+
+
+def _queue_worker(task_queue, label):
+    while True:
+        task = task_queue.get()
+        if task is None:
+            task_queue.task_done()
+            break
+        func, args, kwargs = task
+        try:
+            func(*args, **kwargs)
+        except Exception as exc:
+            logger.warning(f"[AsyncQueue] {label} task failed: {exc}")
+        finally:
+            task_queue.task_done()
+
+
+def _ensure_async_workers():
+    global _WORKERS_STARTED
+    if _WORKERS_STARTED:
+        return
+    with _WORKER_INIT_LOCK:
+        if _WORKERS_STARTED:
+            return
+        threading.Thread(
+            target=_queue_worker,
+            args=(_AI_ANALYSIS_QUEUE, "AI Analysis"),
+            daemon=True,
+            name="ai-analysis-worker",
+        ).start()
+        threading.Thread(
+            target=_queue_worker,
+            args=(_CHART_QUEUE, "Chart"),
+            daemon=True,
+            name="chart-worker",
+        ).start()
+        _WORKERS_STARTED = True
+
+
+def _enqueue_task(task_queue, label, func, *args, **kwargs):
+    warned_at = None
+    while True:
+        try:
+            task_queue.put((func, args, kwargs), timeout=_ASYNC_QUEUE_PUT_TIMEOUT)
+            return True
+        except queue.Full:
+            now = time.time()
+            if warned_at is None or (now - warned_at) >= _ASYNC_QUEUE_WARN_INTERVAL:
+                logger.warning(
+                    f"[AsyncQueue] {label} queue full (size={task_queue.qsize()}). "
+                    "Waiting to enqueue to avoid drop."
+                )
+                warned_at = now
 
 
 def _get_telegram_proxies():
     """
-    获取Telegram API请求的代理配置
-    优先级: 环境变量 > config.py配置 > 本地Clash代理
+    Resolve proxy settings for Telegram API requests.
     """
     import os
 
     proxies = {}
 
-    # 1. 尝试从环境变量获取
-    http_proxy = os.getenv('HTTP_PROXY') or os.getenv('http_proxy')
-    https_proxy = os.getenv('HTTPS_PROXY') or os.getenv('https_proxy')
+    telegram_proxy = os.getenv("NOFX_TELEGRAM_PROXY") or os.getenv("TELEGRAM_PROXY")
+    if telegram_proxy:
+        proxies["http"] = telegram_proxy
+        proxies["https"] = telegram_proxy
 
-    if http_proxy:
-        proxies['http'] = http_proxy
-    if https_proxy:
-        proxies['https'] = https_proxy
+    http_proxy = os.getenv("HTTP_PROXY") or os.getenv("http_proxy")
+    https_proxy = os.getenv("HTTPS_PROXY") or os.getenv("https_proxy")
 
-    # 2. 如果环境变量没有,尝试从config.py获取
+    if http_proxy and not proxies:
+        proxies["http"] = http_proxy
+    if https_proxy and not proxies:
+        proxies["https"] = https_proxy
+
     if not proxies:
         try:
             from config import HTTP_PROXY as CONFIG_HTTP_PROXY
             if CONFIG_HTTP_PROXY:
-                proxies['http'] = CONFIG_HTTP_PROXY
-                proxies['https'] = CONFIG_HTTP_PROXY
+                proxies["http"] = CONFIG_HTTP_PROXY
+                proxies["https"] = CONFIG_HTTP_PROXY
         except ImportError:
             pass
 
-    # 3. 如果都没有,尝试使用本地Clash代理
-    if not proxies:
-        proxies = {
-            'http': 'http://127.0.0.1:7890',
-            'https': 'http://127.0.0.1:7890'
-        }
+    return proxies or None
 
-    return proxies
 
+def _post_telegram(url, **kwargs):
+    proxies = _get_telegram_proxies()
+    try:
+        if proxies:
+            return requests.post(url, proxies=proxies, **kwargs)
+        return requests.post(url, **kwargs)
+    except requests.exceptions.ProxyError as exc:
+        if proxies:
+            logger.warning("Telegram proxy failed, retrying without proxy: %s", exc)
+            return requests.post(url, **kwargs)
+        raise
+
+
+
+
+def _load_market_alert_config():
+    cfg_path = Path(__file__).with_name("market_alert_config.json")
+    if not cfg_path.exists():
+        return {}
+    try:
+        return json.loads(cfg_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _get_metals_config():
+    cfg = {
+        "enabled": False,
+        "symbols": ["XAUUSD", "XAGUSD"],
+        "yahoo_symbol_map": {
+            "XAUUSD": "GC=F",
+            "XAGUSD": "SI=F",
+        },
+    }
+    file_cfg = _load_market_alert_config()
+    metals_cfg = file_cfg.get("metals", {}) if isinstance(file_cfg, dict) else {}
+    if isinstance(metals_cfg, dict):
+        if "enabled" in metals_cfg:
+            cfg["enabled"] = bool(metals_cfg.get("enabled"))
+        if isinstance(metals_cfg.get("symbols"), list) and metals_cfg.get("symbols"):
+            cfg["symbols"] = [str(s).upper() for s in metals_cfg["symbols"]]
+        if isinstance(metals_cfg.get("yahoo_symbol_map"), dict):
+            cfg["yahoo_symbol_map"].update({str(k).upper(): str(v) for k, v in metals_cfg["yahoo_symbol_map"].items()})
+    return cfg
+
+
+def _is_metal_symbol(symbol: str) -> bool:
+    sym = str(symbol or "").upper().replace("$", "").strip()
+    cfg = _get_metals_config()
+    symbols = cfg.get("symbols") if isinstance(cfg, dict) else []
+    return sym in set([str(s).upper() for s in symbols])
+
+
+def _render_simple_candles(symbol: str, klines: list):
+    try:
+        import pandas as pd
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as mpatches
+        from io import BytesIO
+    except Exception:
+        return None
+    cleaned = _normalize_klines_for_chart(klines)
+    df = pd.DataFrame(cleaned)
+    if df.empty:
+        return None
+    fig, ax = plt.subplots(figsize=(8, 4))
+    prices = df[["open", "high", "low", "close"]]
+    price_min = prices.min().min()
+    price_max = prices.max().max()
+    for i, row in df.iterrows():
+        is_up = row["close"] >= row["open"]
+        color = "#2ecc71" if is_up else "#e74c3c"
+        ax.plot([i, i], [row["low"], row["high"]], color=color, linewidth=1)
+        body_bottom = min(row["open"], row["close"])
+        body_height = abs(row["close"] - row["open"])
+        if body_height <= 0:
+            body_height = (price_max - price_min) * 0.001 if price_max > price_min else 0.001
+        rect = mpatches.Rectangle((i - 0.3, body_bottom), 0.6, body_height, facecolor=color, edgecolor=color, alpha=0.9)
+        ax.add_patch(rect)
+    ax.set_title(f"{symbol} Chart")
+    ax.grid(True, linestyle="--", alpha=0.2)
+    fig.tight_layout()
+    buf = BytesIO()
+    fig.savefig(buf, format="png", dpi=140)
+    plt.close(fig)
+    buf.seek(0)
+    return buf.getvalue()
+
+
+def _limit_klines_for_chart(klines: list, limit: int) -> list:
+    if not isinstance(klines, list) or not klines:
+        return []
+    if limit <= 0:
+        return klines
+    if all(isinstance(item, dict) and isinstance(item.get("ts"), (int, float)) for item in klines):
+        klines = sorted(klines, key=lambda item: item.get("ts", 0))
+    return klines[-limit:]
+
+
+def _normalize_klines_for_chart(klines: list) -> list:
+    if not isinstance(klines, list) or not klines:
+        return []
+    cleaned = []
+    for item in klines:
+        if not isinstance(item, dict):
+            continue
+        try:
+            o = float(item.get("open"))
+            h = float(item.get("high"))
+            l = float(item.get("low"))
+            c = float(item.get("close"))
+        except Exception:
+            continue
+        ts = item.get("ts")
+        try:
+            ts_val = int(ts) if ts is not None else None
+        except Exception:
+            ts_val = None
+        hi = max(h, o, c)
+        lo = min(l, o, c)
+        cleaned.append({
+            "ts": ts_val,
+            "open": o,
+            "high": hi,
+            "low": lo,
+            "close": c,
+            "volume": item.get("volume", 0) or 0,
+        })
+    if not cleaned:
+        return []
+    if all(isinstance(row.get("ts"), int) for row in cleaned):
+        cleaned.sort(key=lambda row: row.get("ts", 0))
+    total = len(cleaned)
+    if total >= 20:
+        downs = sum(1 for row in cleaned if row["close"] < row["open"])
+        ups = sum(1 for row in cleaned if row["close"] > row["open"])
+        first_open = cleaned[0]["open"]
+        last_close = cleaned[-1]["close"]
+        net_change = 0.0
+        if first_open:
+            net_change = (last_close - first_open) / first_open
+        if downs / total > 0.9 and net_change > 0.01:
+            cleaned = [_swap_open_close(row) for row in cleaned]
+        elif ups / total > 0.9 and net_change < -0.01:
+            cleaned = [_swap_open_close(row) for row in cleaned]
+    return cleaned
+
+
+def _swap_open_close(row: dict) -> dict:
+    o = row.get("open")
+    c = row.get("close")
+    h = row.get("high")
+    l = row.get("low")
+    row["open"], row["close"] = c, o
+    try:
+        hi = max(float(h), float(o), float(c))
+        lo = min(float(l), float(o), float(c))
+        row["high"] = hi
+        row["low"] = lo
+    except Exception:
+        pass
+    return row
+
+
+def _generate_metals_chart(symbol: str):
+    base = str(symbol or "").upper().replace("$", "").strip()
+    try:
+        from metals_chart_generator import generate_metals_chart
+        chart = generate_metals_chart(base)
+        if chart:
+            return chart
+    except Exception:
+        pass
+    latest_quote = {}
+    try:
+        from market_data_sources import fetch_market_snapshot
+        latest_quote = fetch_market_snapshot(base, force_refresh=True) or {}
+    except Exception:
+        latest_quote = {}
+    quote = latest_quote
+    try:
+        price = float(quote.get("price", 0) or 0)
+    except Exception:
+        price = 0.0
+    if price <= 0:
+        return None
+    change_pct = float(quote.get("price_change_percent", 0) or 0)
+    prev = price / (1 + change_pct / 100) if change_pct else price
+    high = float(quote.get("high_24h", price) or price)
+    low = float(quote.get("low_24h", price) or price)
+    volume = float(quote.get("volume_24h", 0) or 0)
+    klines = [{
+        "ts": int(time.time()) * 1000,
+        "open": prev,
+        "high": high,
+        "low": low,
+        "close": price,
+        "volume": volume,
+    }]
+    return _render_simple_candles(base, klines)
+
+
+def _generate_snapshot_chart(symbol: str):
+    base = str(symbol or "").upper().replace("$", "").strip()
+    try:
+        from market_data_sources import fetch_market_snapshot
+        quote = fetch_market_snapshot(base) or {}
+    except Exception:
+        quote = {}
+    try:
+        price = float(quote.get("price", 0) or 0)
+    except Exception:
+        price = 0.0
+    if price <= 0:
+        return None
+    change_pct = float(quote.get("price_change_percent", 0) or 0)
+    prev = price / (1 + change_pct / 100) if change_pct else price
+    high = float(quote.get("high_24h", price) or price)
+    low = float(quote.get("low_24h", price) or price)
+    volume = float(quote.get("volume_24h", 0) or 0)
+    klines = [{
+        "ts": int(time.time()) * 1000,
+        "open": prev,
+        "high": high,
+        "low": low,
+        "close": price,
+        "volume": volume,
+    }]
+    return _render_simple_candles(base, klines)
 
 def cleanup_chart_files():
     """
@@ -90,7 +382,7 @@ def cleanup_chart_files():
     虽然主要使用内存生成，但为了防止残留文件，执行清理
     """
     if not AUTO_DELETE_CHARTS:
-        logger.debug("⚠️ 自动删除图表已禁用，跳过清理")
+        logger.debug("Auto-delete charts disabled; skipping cleanup.")
         return
 
     try:
@@ -102,12 +394,12 @@ def cleanup_chart_files():
         for f in files:
             try:
                 os.remove(f)
-                logger.debug(f"🗑️ 已删除临时文件: {f}")
+                logger.debug(f"Deleted temp file: {f}")
             except Exception as e:
-                logger.warning(f"⚠️ 删除临时文件失败 {f}: {e}")
+                logger.warning(f"Failed to delete temp file {f}: {e}")
                 
     except Exception as e:
-        logger.warning(f"⚠️ 清理临时文件异常: {e}")
+        logger.warning(f"Chart cleanup error: {e}")
 
 
 def get_binance_futures_link(symbol: str) -> str:
@@ -189,53 +481,47 @@ def send_telegram_message(
     """
     # 检查是否启用 Telegram 通知
     if not ENABLE_TELEGRAM:
-        logger.info("  ⏭️  Telegram 通知已禁用，跳过发送")
+        logger.info("    Telegram notifications disabled; skipping.")
         return {"success": True, "message_id": None}  # 返回成功状态以便继续后续流程
 
     if not TELEGRAM_BOT_TOKEN:
-        logger.warning("  ⚠️ Telegram Bot Token 未配置，跳过发送")
+        logger.warning("   Telegram bot token missing; skipping.")
+        return None
+    if not TELEGRAM_CHAT_ID:
+        logger.warning("   Telegram chat ID missing; skipping.")
         return None
 
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
 
-    # 添加 Inline Keyboard 按钮
-    buttons = [
-        {
-            "text": "🔗 访问 ValueScan",
-            "url": "https://www.valuescan.io/login?inviteCode=GXZ722"
-        }
-    ]
-    
-    # 如果提供了symbol，添加Binance合约链接按钮
+    buttons = []
+
+    # Add Binance futures link when symbol is available.
     if symbol:
         binance_url = get_binance_futures_link(symbol)
         buttons.append({
-            "text": "📊 Binance合约",
+            "text": "Binance Futures",
             "url": binance_url
         })
-    
-    inline_keyboard = {
-        "inline_keyboard": [buttons]
-    }
+    inline_keyboard = {"inline_keyboard": [buttons]} if buttons else None
 
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
         "text": message_text,
         "disable_web_page_preview": True,
-        "reply_markup": inline_keyboard
     }
+    if inline_keyboard:
+        payload["reply_markup"] = inline_keyboard
     if parse_mode:
         payload["parse_mode"] = parse_mode
     if reply_to_message_id:
         payload["reply_to_message_id"] = reply_to_message_id
 
     # 配置代理
-    proxies = _get_telegram_proxies()
 
     try:
-        response = requests.post(url, json=payload, timeout=10, proxies=proxies)
+        response = _post_telegram(url, json=payload, timeout=10)
         if response.status_code == 200:
-            logger.info("  ✅ Telegram 消息发送成功")
+            logger.info("   Telegram message sent.")
             
             result = response.json()
             message_id = result.get('result', {}).get('message_id')
@@ -246,10 +532,10 @@ def send_telegram_message(
 
             return {"success": True, "message_id": message_id}
         else:
-            logger.error(f"  ❌ Telegram 消息发送失败: {response.status_code} - {response.text}")
+            logger.error(f"   Telegram message failed: {response.status_code} - {response.text}")
             return None
     except Exception as e:
-        logger.error(f"  ❌ Telegram 消息发送异常: {e}")
+        logger.error(f"   Telegram message error: {e}")
         return None
 
 
@@ -267,11 +553,14 @@ def send_telegram_photo(photo_data, caption=None, pin_message=False):
     """
     # 检查是否启用 Telegram 通知
     if not ENABLE_TELEGRAM:
-        logger.info("  ⏭️  Telegram 通知已禁用，跳过发送")
+        logger.info("    Telegram notifications disabled; skipping.")
         return True
 
     if not TELEGRAM_BOT_TOKEN:
-        logger.warning("  ⚠️ Telegram Bot Token 未配置，跳过发送")
+        logger.warning("   Telegram bot token missing; skipping.")
+        return False
+    if not TELEGRAM_CHAT_ID:
+        logger.warning("   Telegram chat ID missing; skipping.")
         return False
 
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
@@ -290,12 +579,11 @@ def send_telegram_photo(photo_data, caption=None, pin_message=False):
         data['parse_mode'] = 'HTML'
 
     # 配置代理
-    proxies = _get_telegram_proxies()
 
     try:
-        response = requests.post(url, data=data, files=files, timeout=30, proxies=proxies)
+        response = _post_telegram(url, data=data, files=files, timeout=30)
         if response.status_code == 200:
-            logger.info("  ✅ Telegram 图片发送成功")
+            logger.info("   Telegram photo sent.")
 
             # 如果需要置顶消息
             if pin_message:
@@ -307,11 +595,11 @@ def send_telegram_photo(photo_data, caption=None, pin_message=False):
             cleanup_chart_files()  # 发送后清理临时文件
             return True
         else:
-            logger.error(f"  ❌ Telegram 图片发送失败: {response.status_code} - {response.text}")
+            logger.error(f"   Telegram photo failed: {response.status_code} - {response.text}")
             cleanup_chart_files()  # 失败也要清理
             return False
     except Exception as e:
-        logger.error(f"  ❌ Telegram 图片发送异常: {e}")
+        logger.error(f"   Telegram photo error: {e}")
         cleanup_chart_files()  # 异常也要清理
         return False
 
@@ -330,11 +618,11 @@ def edit_message_with_photo(message_id, photo_data, caption=None):
     """
     # 检查是否启用 Telegram 通知
     if not ENABLE_TELEGRAM:
-        logger.info("  ⏭️  Telegram 通知已禁用，跳过编辑")
+        logger.info("    Telegram notifications disabled; skipping.")
         return True
 
     if not TELEGRAM_BOT_TOKEN:
-        logger.warning("  ⚠️ Telegram Bot Token 未配置，跳过编辑")
+        logger.warning("   Telegram bot token missing; skipping.")
         return False
 
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/editMessageMedia"
@@ -354,23 +642,10 @@ def edit_message_with_photo(message_id, photo_data, caption=None):
         media_data["caption"] = caption
         media_data["parse_mode"] = "HTML"
 
-    # 添加 Inline Keyboard 按钮（保持与原消息一致）
-    inline_keyboard = {
-        "inline_keyboard": [
-            [
-                {
-                    "text": "🔗 访问 ValueScan",
-                    "url": "https://www.valuescan.io/login?inviteCode=GXZ722"
-                }
-            ]
-        ]
-    }
-
     data = {
         'chat_id': TELEGRAM_CHAT_ID,
         'message_id': message_id,
-        'media': json.dumps(media_data),
-        'reply_markup': json.dumps(inline_keyboard)
+        'media': json.dumps(media_data)
     }
 
     max_retries = 3
@@ -381,14 +656,13 @@ def edit_message_with_photo(message_id, photo_data, caption=None):
             # 添加随机延迟避免并发冲突
             if attempt > 0:
                 delay = base_delay + (attempt * 2)  # 递增延迟: 2, 4, 6秒
-                logger.info(f"  🔄 等待 {delay} 秒后重试编辑消息 (第 {attempt + 1} 次尝试)")
+                logger.info(f"    Waiting {delay}s before retry ({attempt + 1}/{max_retries})")
                 time.sleep(delay)
 
-            proxies = _get_telegram_proxies()
-            response = requests.post(url, data=data, files=files, timeout=30, proxies=proxies)
+            response = _post_telegram(url, data=data, files=files, timeout=30)
             
             if response.status_code == 200:
-                logger.info(f"  ✅ Telegram 消息编辑成功 (ID: {message_id})")
+                logger.info(f"   Telegram message updated (ID: {message_id})")
                 cleanup_chart_files()
                 return True
             elif response.status_code == 429:
@@ -396,29 +670,29 @@ def edit_message_with_photo(message_id, photo_data, caption=None):
                 try:
                     error_data = response.json()
                     retry_after = error_data.get('parameters', {}).get('retry_after', 10)
-                    logger.warning(f"  ⏱️ API速率限制，等待 {retry_after} 秒后重试 (尝试 {attempt + 1}/{max_retries})")
+                    logger.warning(f"   Telegram rate limit, retry in {retry_after}s ({attempt + 1}/{max_retries})")
                     if attempt < max_retries - 1:  # 不是最后一次尝试
                         time.sleep(retry_after + 1)  # 多等1秒确保安全
                         continue
                 except:
                     # JSON解析失败，使用默认延迟
-                    logger.warning(f"  ⏱️ API速率限制，等待 10 秒后重试 (尝试 {attempt + 1}/{max_retries})")
+                    logger.warning(f"   Telegram rate limit, retry in 10s ({attempt + 1}/{max_retries})")
                     if attempt < max_retries - 1:
                         time.sleep(10)
                         continue
                 
-                logger.error(f"  ❌ 消息编辑失败，已达最大重试次数: 429 - {response.text}")
+                logger.error(f"   Telegram rate limit failed: 429 - {response.text}")
                 cleanup_chart_files()
                 return False
             else:
-                logger.error(f"  ❌ Telegram 消息编辑失败: {response.status_code} - {response.text}")
+                logger.error(f"   Telegram edit failed: {response.status_code} - {response.text}")
                 if attempt < max_retries - 1:
                     continue  # 其他错误也重试
                 cleanup_chart_files()
                 return False
                 
         except Exception as e:
-            logger.error(f"  ❌ Telegram 消息编辑异常 (尝试 {attempt + 1}/{max_retries}): {e}")
+            logger.error(f"   Telegram edit error (attempt {attempt + 1}/{max_retries}): {e}")
             if attempt < max_retries - 1:
                 time.sleep(base_delay)
                 continue
@@ -448,18 +722,17 @@ def _pin_telegram_message(message_id):
         "disable_notification": False  # 发送通知提醒用户
     }
 
-    proxies = _get_telegram_proxies()
 
     try:
-        response = requests.post(url, json=payload, timeout=10, proxies=proxies)
+        response = _post_telegram(url, json=payload, timeout=10)
         if response.status_code == 200:
-            logger.info(f"  📌 消息已置顶 (ID: {message_id})")
+            logger.info(f"Telegram message pinned (ID: {message_id})")
             return True
         else:
-            logger.warning(f"  ⚠️ 置顶失败: {response.status_code} - {response.text}")
+            logger.warning(f"Telegram pin failed: {response.status_code} - {response.text}")
             return False
     except Exception as e:
-        logger.warning(f"  ⚠️ 置顶异常: {e}")
+        logger.warning(f"Telegram pin error: {e}")
         return False
 
 
@@ -486,14 +759,11 @@ def _get_binance_alpha_badge(symbol):
 
 
 def _get_recommendation_direction(msg_type, content):
-    """
-    根据 ValueScan 信号源给出方向性推荐（看涨/看跌）。
-    只使用 signals 自身语义，不引入外部判断。
-    返回: "BULLISH" / "BEARISH" / None
+    """Determine direction from signal metadata only.
+    Returns: "BULLISH" / "BEARISH" / None
     """
     if not isinstance(msg_type, int):
         return None
-
     funds_type = content.get("fundsMovementType") if isinstance(content, dict) else None
 
     # 核心信号：Alpha/FOMO 偏多
@@ -537,11 +807,10 @@ def _get_recommendation_line(msg_type, content):
         return None
     direction = _get_recommendation_direction(msg_type, content)
     if direction == "BULLISH":
-        return "📈 推荐：<b>看涨</b>（跟随 ValueScan 信号）"
+        return "Recommendation: <b>Bullish</b> (based on signals)"
     if direction == "BEARISH":
-        return "📉 推荐：<b>看跌</b>（跟随 ValueScan 信号）"
+        return "Recommendation: <b>Bearish</b> (based on signals)"
     return None
-
 
 def format_message_for_telegram(item):
     """
@@ -789,7 +1058,7 @@ def _format_risk_alert(item, content, msg_type_name):
             f"   • ⚠️ <b>风险等级上升</b>",
             f"   • 📉 主力疑似大量减持",
             f"   • 💰 已持仓建议分批止盈",
-            f"   • 🛑 不建议追高或抄底",
+            f"   • 🛑 不建议追高或接针",
             f"   • 👀 密切关注后续走势",
             f"",
             f"{tag}",
@@ -908,7 +1177,7 @@ def _format_risk_alert(item, content, msg_type_name):
             f"   • 🚨 <b>高风险！主力加速离场</b>",
             f"   • 📉 价格可能面临大幅下跌",
             f"   • 🛑 已持仓建议及时止损离场",
-            f"   • ⛔ 不建议抄底，等待企稳",
+            f"   • ⛔ 不建议接针，等待企稳",
             f"",
             f"{tag}",
             f"━━━━━━━━━",
@@ -1704,22 +1973,22 @@ def send_confluence_alert(symbol, price, alpha_count, fomo_count):
     Returns:
         bool: 发送成功返回 True，否则返回 False
     """
-    logger.info(f"🚨 发送融合信号提醒: ${symbol}")
+    logger.info(f"Confluence signal prepared: ${symbol}")
 
     # 格式化融合信号消息
     message = format_confluence_message(symbol, price, alpha_count, fomo_count)
 
     # 先立即发送文字消息（包含Binance合约链接）
-    logger.info(f"📝 立即发送融合信号（文字）: ${symbol}")
+    logger.info(f"Sending confluence message: ${symbol}")
     text_result = send_telegram_message(message, pin_message=True, symbol=symbol)
     
     if not text_result or not text_result.get("success"):
-        logger.error(f"❌ 文字消息发送失败: ${symbol}")
+        logger.error(f"Confluence message failed: ${symbol}")
         return False
 
     message_id = text_result.get("message_id")
     if not message_id:
-        logger.warning(f"⚠️ 未获取到消息ID，无法后续编辑: ${symbol}")
+        logger.warning(f"Confluence message missing ID: ${symbol}")
         return True  # 文字消息已发送成功
 
     # 检查是否启用图表生成
@@ -1731,17 +2000,26 @@ def send_confluence_alert(symbol, price, alpha_count, fomo_count):
 
     if enable_chart:
         try:
-            from chart_generator import generate_tradingview_chart_async
+            if _is_metal_symbol(symbol):
+                from metals_chart_generator import generate_metals_chart_async
+                generate_async = generate_metals_chart_async
+            else:
+                from chart_generator import generate_tradingview_chart_async
+                generate_async = generate_tradingview_chart_async
             
             # 异步生成图表的回调函数
             def chart_ready_callback(task_id, symbol, chart_data):
                 """图表生成完成后的回调 - 编辑已发送的消息添加图片"""
                 try:
+                    if not chart_data:
+                        fallback = _generate_metals_chart(symbol) if _is_metal_symbol(symbol) else _generate_snapshot_chart(symbol)
+                        if fallback:
+                            chart_data = fallback
                     if chart_data:
                         # 添加小幅随机延迟避免多个编辑请求冲突
                         import random
                         delay = random.uniform(0.5, 2.0)  # 0.5-2秒随机延迟
-                        logger.info(f"📊 图表生成完成，等待 {delay:.1f}秒后编辑融合信号: ${symbol} (任务ID: {task_id})")
+                        logger.info(f"Waiting {delay:.1f}s before attaching chart: ${symbol} (ID: {task_id})")
                         time.sleep(delay)
                         
                         # 编辑已发送的消息，将其替换为图片消息
@@ -1751,20 +2029,20 @@ def send_confluence_alert(symbol, price, alpha_count, fomo_count):
                             caption=message  # 使用完整的融合信号文字作为图片说明
                         )
                         if edit_result:
-                            logger.info(f"✅ 融合信号消息编辑成功（添加图片）: ${symbol}")
+                            logger.info(f"Chart attached to confluence message: ${symbol}")
                         else:
-                            logger.warning(f"⚠️ 消息编辑失败，但文字消息已发送: ${symbol}")
+                            logger.warning(f"Chart attach failed for confluence message: ${symbol}")
                     else:
-                        logger.warning(f"⚠️ 图表生成失败，保持文字消息: ${symbol}")
+                        logger.warning(f"No chart data for confluence message: ${symbol}")
                 except Exception as e:
-                    logger.error(f"❌ 图表回调处理异常: {e}")
+                    logger.error(f"  Chart callback error: {e}")
             
             # 提交异步图表生成任务
-            task_id = generate_tradingview_chart_async(symbol, callback=chart_ready_callback)
-            logger.info(f"🔄 已启动异步图表生成，完成后编辑消息: ${symbol} (任务ID: {task_id})")
+            task_id = generate_async(symbol, callback=chart_ready_callback)
+            logger.info(f"  Async chart task queued: ${symbol} (ID: {task_id})")
             
         except Exception as e:
-            logger.warning(f"⚠️ 异步图表生成启动失败: {e}")
+            logger.warning(f"  Async chart start failed: {e}")
 
     return True
 
@@ -1781,11 +2059,11 @@ def edit_message_caption(message_id, caption=None):
         bool: ???? True??? False
     """
     if not ENABLE_TELEGRAM:
-        logger.info("  ??  Telegram ????????????")
+        logger.info("  Telegram notifications disabled; skip edit caption.")
         return True
 
     if not TELEGRAM_BOT_TOKEN:
-        logger.warning("  ?? Telegram Bot Token ??????????")
+        logger.warning("  Telegram bot token missing; skip edit caption.")
         return False
 
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/editMessageCaption"
@@ -1797,18 +2075,91 @@ def edit_message_caption(message_id, caption=None):
         data["caption"] = caption
         data["parse_mode"] = "HTML"
 
-    proxies = _get_telegram_proxies()
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = _post_telegram(url, data=data, timeout=30)
+        except Exception as e:
+            logger.error(f"  Telegram edit caption error: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(2 + attempt * 2)
+                continue
+            return False
 
-    try:
-        response = requests.post(url, data=data, timeout=30, proxies=proxies)
         if response.status_code == 200:
-            logger.info(f"  ? Telegram ???????? (ID: {message_id})")
+            logger.info(f"  Telegram caption updated (ID: {message_id})")
             return True
-        logger.error(f"  ? Telegram ???????? {response.status_code} - {response.text}")
+        if response.status_code == 429 and attempt < max_retries - 1:
+            try:
+                retry_after = response.json().get("parameters", {}).get("retry_after", 5)
+            except Exception:
+                retry_after = 5
+            logger.warning(f"  Telegram rate limit, retry in {retry_after}s")
+            time.sleep(retry_after + 1)
+            continue
+        logger.error(f"  Telegram caption update failed: {response.status_code} - {response.text}")
+        if attempt < max_retries - 1 and response.status_code >= 500:
+            time.sleep(2 + attempt * 2)
+            continue
         return False
-    except Exception as e:
-        logger.error(f"  ? Telegram ???????? {e}")
+    return False
+
+
+def edit_message_text(message_id, text, parse_mode="HTML"):
+    """
+    Edit a text-only Telegram message.
+
+    Args:
+        message_id: Message ID to edit
+        text: New text
+        parse_mode: Parse mode (HTML/Markdown/None)
+    """
+    if not ENABLE_TELEGRAM:
+        logger.info("  Telegram notifications disabled; skip edit text.")
+        return True
+
+    if not TELEGRAM_BOT_TOKEN:
+        logger.warning("  Telegram bot token missing; skip edit text.")
         return False
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/editMessageText"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "message_id": message_id,
+        "text": text,
+        "disable_web_page_preview": True,
+    }
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
+
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = _post_telegram(url, json=payload, timeout=20)
+        except Exception as e:
+            logger.error(f"  Telegram edit text error: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(2 + attempt * 2)
+                continue
+            return False
+
+        if response.status_code == 200:
+            logger.info(f"  Telegram text updated (ID: {message_id})")
+            return True
+        if response.status_code == 429 and attempt < max_retries - 1:
+            try:
+                retry_after = response.json().get("parameters", {}).get("retry_after", 5)
+            except Exception:
+                retry_after = 5
+            logger.warning(f"  Telegram rate limit, retry in {retry_after}s")
+            time.sleep(retry_after + 1)
+            continue
+        logger.error(f"  Telegram text update failed: {response.status_code} - {response.text}")
+        if attempt < max_retries - 1 and response.status_code >= 500:
+            time.sleep(2 + attempt * 2)
+            continue
+        return False
+    return False
 
 
 def send_message_with_async_chart(message_text, symbol, pin_message=False, signal_payload=None):
@@ -1821,51 +2172,77 @@ def send_message_with_async_chart(message_text, symbol, pin_message=False, signa
     Returns:
         dict: ????
     """
-    logger.info(f"?? ?????????AI??: ${symbol}")
+    logger.info(f"[Telegram] Starting async signal: ${symbol}")
 
     # 1. ???????
     text_result = send_telegram_message(message_text, pin_message=pin_message, symbol=symbol)
 
     if not text_result or not text_result.get("success"):
-        logger.error(f"? ??????: ${symbol}")
+        logger.error(f"[Telegram] Text send failed: ${symbol}")
         return text_result
 
     message_id = text_result.get("message_id")
     if not message_id:
-        logger.warning(f"?? ?????ID: ${symbol}")
+        logger.warning(f"[Telegram] Missing message ID: ${symbol}")
         return text_result
 
     state = {
         "analysis": None,
+        "levels": [],
         "supports": [],
         "resistances": [],
         "stop_loss": None,
         "take_profit": None,
         "rr": None,
+        "entry_decision": None,
+        "direction": None,
         "chart_uploaded": False,
         "lock": threading.Lock(),
     }
+    caption_limit = int(os.getenv("NOFX_TG_CAPTION_LIMIT", "1024") or 1024)
+    text_limit = int(os.getenv("NOFX_TG_TEXT_LIMIT", "4096") or 4096)
 
     def _sanitize_caption(text):
         if not text:
             return ""
         return text.replace("<", "?").replace(">", "?")
 
+    def _truncate_telegram_text(text, limit):
+        if not text:
+            return ""
+        if len(text) <= limit:
+            return text
+        if limit <= 3:
+            return text[:limit]
+        return f"{text[:limit - 3]}..."
+
 
     def _build_caption():
+        return _sanitize_caption(message_text)
+
+    def _build_analysis_text():
         with state["lock"]:
             analysis = state["analysis"]
+            levels = state["levels"]
             supports = state["supports"]
             resistances = state["resistances"]
             stop_loss = state["stop_loss"]
             take_profit = state["take_profit"]
             rr = state["rr"]
+            entry_decision = state["entry_decision"]
+            direction = state["direction"]
         if not analysis:
-            return message_text
+            return ""
         analysis = _sanitize_caption(analysis)
-        label = "AI简评" if LANGUAGE == "zh" else "AI Brief"
-        lines = [f"{message_text}", "", f"{label}: {analysis}"]
-        if supports or resistances:
+        label = "AI\u7b80\u8bc4" if LANGUAGE == "zh" else "AI Brief"
+        lines = [f"{label}: {analysis}"]
+        if levels:
+            level_txt = ", ".join(f"{v:,.4f}" for v in levels[:7])
+            if LANGUAGE == "zh":
+                lines.append(f"主力位: {level_txt}")
+            else:
+                lines.append(f"Main Force Levels: {level_txt}")
+        elif supports or resistances:
             sup_txt = ", ".join(f"{v:,.4f}" for v in supports[:3]) if supports else "N/A"
             res_txt = ", ".join(f"{v:,.4f}" for v in resistances[:3]) if resistances else "N/A"
             if LANGUAGE == "zh":
@@ -1878,40 +2255,142 @@ def send_message_with_async_chart(message_text, symbol, pin_message=False, signa
                 lines.append(f"止损: {stop_loss:,.4f} | 止盈: {take_profit:,.4f} | 盈亏比: {rr_txt}")
             else:
                 lines.append(f"SL: {stop_loss:,.4f} | TP: {take_profit:,.4f} | R/R: {rr_txt}")
+        if _is_metal_symbol(symbol) and LANGUAGE == "zh":
+            if entry_decision == "yes":
+                if direction == "long":
+                    hint = "偏多参与，严格止损止盈，RR≥2"
+                elif direction == "short":
+                    hint = "偏空参与，严格止损止盈，RR≥2"
+                else:
+                    hint = "顺势参与，严格止损止盈，RR≥2"
+            else:
+                hint = "观望为主，等待更清晰的结构与宏观共振"
+            lines.append(f"操作建议: {hint}")
         return "\n".join(lines)
+
+    def _build_caption_with_analysis():
+        base = _build_caption()
+        analysis_text = _build_analysis_text()
+        if not analysis_text:
+            return base
+        if not base:
+            return analysis_text
+        return f"{base}\n\n{analysis_text}"
+
+
 
     def start_ai_analysis():
         def run_ai_analysis():
-            try:
-                logger.info(f"[Telegram] 启动 AI 信号分析: {symbol}")
+            for attempt in range(1, _AI_ANALYSIS_MAX_RETRIES + 1):
                 try:
-                    from ai_signal_analysis import analyze_signal
-                except Exception as exc:
-                    logger.warning(f"[Telegram] AI analysis import failed: {exc}")
-                    return
-                result = analyze_signal(symbol, signal_payload=signal_payload)
-                if not result:
-                    logger.info(f"[Telegram] AI 分析无结果: {symbol}")
-                    return
-                analysis = result.get("analysis") if isinstance(result, dict) else str(result)
-                analysis = " ".join(str(analysis).split())
-                logger.info(f"[Telegram] AI 分析结果: {analysis[:60]}...")
-                with state["lock"]:
-                    state["analysis"] = analysis
-                    state["supports"] = result.get("supports") if isinstance(result, dict) else []
-                    state["resistances"] = result.get("resistances") if isinstance(result, dict) else []
-                    state["stop_loss"] = result.get("stop_loss") if isinstance(result, dict) else None
-                    state["take_profit"] = result.get("take_profit") if isinstance(result, dict) else None
-                    state["rr"] = result.get("rr") if isinstance(result, dict) else None
-                    chart_uploaded = state["chart_uploaded"]
-                if chart_uploaded:
-                    logger.info(f"[Telegram] 更新消息 caption 添加 AI 简评")
-                    edit_message_caption(message_id, _build_caption())
-            except Exception as e:
-                logger.warning(f"[Telegram] AI 分析失败: {e}")
+                    logger.info(
+                        f"[Telegram] 启动 AI 信号分析: {symbol} (attempt {attempt}/{_AI_ANALYSIS_MAX_RETRIES})"
+                    )
+                    try:
+                        from ai_signal_analysis import analyze_signal
+                    except Exception as exc:
+                        logger.warning(f"[Telegram] AI analysis import failed: {exc}")
+                        return
+                    result = analyze_signal(symbol, signal_payload=signal_payload)
+                    if not result:
+                        logger.info(f"[Telegram] AI analysis empty: {symbol}, retrying once...")
+                        time.sleep(2)
+                        result = analyze_signal(symbol, signal_payload=signal_payload)
+                    if not result:
+                        logger.info(f"[Telegram] AI analysis empty: {symbol}")
+                        if attempt < _AI_ANALYSIS_MAX_RETRIES:
+                            time.sleep(_AI_ANALYSIS_RETRY_DELAY)
+                            continue
+                        return
+                    analysis = result.get("analysis") if isinstance(result, dict) else str(result)
+                    analysis = " ".join(str(analysis).split())
+                    logger.info(f"[Telegram] AI result: {analysis[:60]}...")
+                    # NOFX API已移除
+                    vs_levels = None
 
-        thread = threading.Thread(target=run_ai_analysis, daemon=True)
-        thread.start()
+                    ai_levels = None
+                    has_vs_levels = False
+                    if vs_levels and isinstance(vs_levels, dict):
+                        has_vs_levels = bool(
+                            vs_levels.get("levels") or vs_levels.get("supports") or vs_levels.get("resistances")
+                        )
+                    if not has_vs_levels:
+                        try:
+                            from ai_key_levels_cache import get_levels as _get_ai_levels
+                        except Exception:
+                            try:
+                                from signal_monitor.ai_key_levels_cache import get_levels as _get_ai_levels
+                            except Exception:
+                                _get_ai_levels = None  # type: ignore[assignment]
+                        if _get_ai_levels:
+                            ai_levels = _get_ai_levels(symbol)
+                        if not ai_levels:
+                            try:
+                                from ai_signal_analysis import generate_ai_key_levels
+                            except Exception:
+                                from signal_monitor.ai_signal_analysis import generate_ai_key_levels
+                            ai_levels = generate_ai_key_levels(symbol)
+
+                    with state["lock"]:
+                        state["analysis"] = analysis
+                        if has_vs_levels:
+                            state["levels"] = vs_levels.get("levels") or []
+                            state["supports"] = vs_levels.get("supports") or []
+                            state["resistances"] = vs_levels.get("resistances") or []
+                        elif ai_levels:
+                            supports = ai_levels.get("supports") or []
+                            resistances = ai_levels.get("resistances") or []
+                            state["supports"] = supports
+                            state["resistances"] = resistances
+                            state["levels"] = supports + resistances
+                        else:
+                            state["levels"] = []
+                            state["supports"] = []
+                            state["resistances"] = []
+                        state["stop_loss"] = result.get("stop_loss") if isinstance(result, dict) else None
+                        state["take_profit"] = result.get("take_profit") if isinstance(result, dict) else None
+                        state["rr"] = result.get("rr") if isinstance(result, dict) else None
+                        state["entry_decision"] = result.get("entry_decision") if isinstance(result, dict) else None
+                        state["direction"] = result.get("direction") if isinstance(result, dict) else None
+                        chart_uploaded = state["chart_uploaded"]
+                    caption_text = _build_caption_with_analysis()
+                    analysis_text = _build_analysis_text()
+                    analysis_overflow = bool(analysis_text) and len(caption_text) > caption_limit
+                    if chart_uploaded:
+                        logger.info("[Telegram] Updating caption with AI analysis...")
+                        if analysis_overflow:
+                            caption_text = _truncate_telegram_text(_build_caption(), caption_limit)
+                        ok = edit_message_caption(message_id, caption_text)
+                        if (not ok or analysis_overflow) and analysis_text:
+                            send_telegram_message(
+                                analysis_text,
+                                parse_mode=None,
+                                reply_to_message_id=message_id,
+                            )
+                    else:
+                        logger.info("[Telegram] Updating text with AI analysis...")
+                        ok = False
+                        if len(caption_text) <= text_limit:
+                            ok = edit_message_text(message_id, caption_text)
+                        if (not ok or len(caption_text) > text_limit) and analysis_text:
+                            send_telegram_message(
+                                analysis_text,
+                                parse_mode=None,
+                                reply_to_message_id=message_id,
+                            )
+                    return
+                except Exception as e:
+                    if attempt < _AI_ANALYSIS_MAX_RETRIES:
+                        logger.warning(
+                            f"[Telegram] AI 分析失败: {e} (retrying in {_AI_ANALYSIS_RETRY_DELAY}s)"
+                        )
+                        time.sleep(_AI_ANALYSIS_RETRY_DELAY)
+                        continue
+                    logger.warning(f"[Telegram] AI analysis failed: {e}")
+
+        _ensure_async_workers()
+        if not _enqueue_task(_AI_ANALYSIS_QUEUE, "AI Analysis", run_ai_analysis):
+            run_ai_analysis()
 
     # 2. ???? Pro ??
     try:
@@ -1923,57 +2402,98 @@ def send_message_with_async_chart(message_text, symbol, pin_message=False, signa
     # 3. ?????????
     if enable_pro_chart:
         def generate_and_edit_chart():
-            try:
-                from chart_pro_v10 import generate_chart_v10
-                from ai_key_levels_cache import wait_for_levels
-                logger.info(f"?? ????Pro??: ${symbol}")
-
-                import signal
-
-                def timeout_handler(signum, frame):
-                    raise TimeoutError(f"??????30?: ${symbol}")
-
+            for attempt in range(1, _CHART_MAX_RETRIES + 1):
+                alarm_active = False
                 try:
-                    signal.signal(signal.SIGALRM, timeout_handler)
-                    signal.alarm(30)
-                except Exception:
-                    pass
+                    from chart_pro_v10 import generate_chart_v10
+                    from ai_key_levels_cache import wait_for_levels
+                    logger.info(f"[Telegram] Pro chart start: ${symbol} (attempt {attempt}/{_CHART_MAX_RETRIES})")
 
-                wait_for_levels(symbol, timeout_sec=8, poll_sec=0.3)
-                with _PRO_CHART_LOCK:
-                    chart_data = generate_chart_v10(symbol, "1h", 200)
 
-                try:
-                    signal.alarm(0)
-                except Exception:
-                    pass
 
-                if chart_data:
-                    logger.info(f"? Pro??????: {len(chart_data)} bytes, ${symbol}")
-                    edit_result = edit_message_with_photo(
-                        message_id,
-                        chart_data,
-                        caption=_build_caption(),
-                    )
-                    if edit_result:
-                        logger.info(f"? ??????: ${symbol}")
-                        with state["lock"]:
-                            state["chart_uploaded"] = True
+                    import signal
+
+                    def timeout_handler(signum, frame):
+                        raise TimeoutError(f"Chart generation exceeded 30s: ${symbol}")
+
+                    try:
+                        signal.signal(signal.SIGALRM, timeout_handler)
+                        signal.alarm(30)
+                        alarm_active = True
+                    except Exception:
+                        alarm_active = False
+
+                    try:
+                        from ai_key_levels_config import get_ai_levels_config
+                        wait_enabled = get_ai_levels_config().get("enabled", False)
+                    except Exception:
+                        wait_enabled = False
+                    if wait_enabled:
+                        wait_for_levels(symbol, timeout_sec=8, poll_sec=0.3)
+                    with _PRO_CHART_LOCK:
+                        if _is_metal_symbol(symbol):
+                            chart_data = _generate_metals_chart(symbol)
+                        else:
+                            chart_data = generate_chart_v10(symbol, "1h", 200)
+                            if not chart_data:
+                                chart_data = _generate_snapshot_chart(symbol)
+
+                    if chart_data:
+                        logger.info(f"[Telegram] Pro chart generated: {len(chart_data)} bytes, ${symbol}")
+                        analysis_text = _build_analysis_text()
+                        full_caption = _build_caption_with_analysis()
+                        analysis_overflow = bool(analysis_text) and len(full_caption) > caption_limit
+                        caption_text = full_caption
+                        if caption_text and len(caption_text) > caption_limit:
+                            caption_text = _truncate_telegram_text(_build_caption(), caption_limit)
+                        edit_result = edit_message_with_photo(
+                            message_id,
+                            chart_data,
+                            caption=caption_text,
+                        )
+                        if edit_result:
+                            logger.info(f"[Telegram] Chart uploaded: ${symbol}")
+                            with state["lock"]:
+                                state["chart_uploaded"] = True
+                            if analysis_overflow and analysis_text:
+                                send_telegram_message(
+                                    analysis_text,
+                                    parse_mode=None,
+                                    reply_to_message_id=message_id,
+                                )
+                            return
+                        logger.warning(f"[Telegram] Chart upload failed: ${symbol}")
+                        if analysis_text:
+                            send_telegram_message(
+                                analysis_text,
+                                parse_mode=None,
+                                reply_to_message_id=message_id,
+                            )
+                        del chart_data
                     else:
-                        logger.warning(f"?? ??????: ${symbol}")
-                    del chart_data
-                else:
-                    logger.warning(f"?? Pro????????: ${symbol}")
-            except TimeoutError as e:
-                logger.error(f"? ??????: {e}")
-            except Exception as e:
-                logger.error(f"? ??????: {e}")
-                import traceback
-                logger.error(traceback.format_exc())
+                        logger.warning(f"[Telegram] Pro chart missing: ${symbol}")
+                except TimeoutError as e:
+                    logger.error(f"[Telegram] Chart generation error: {e}")
+                except Exception as e:
+                    logger.error(f"[Telegram] Chart generation error: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                finally:
+                    if alarm_active:
+                        try:
+                            signal.alarm(0)
+                        except Exception:
+                            pass
 
-        thread = threading.Thread(target=generate_and_edit_chart, daemon=True)
-        thread.start()
-        logger.info(f"?? ?????????: ${symbol}")
+                if attempt < _CHART_MAX_RETRIES:
+                    time.sleep(_CHART_RETRY_DELAY)
+                    continue
+                return
+
+        _ensure_async_workers()
+        if not _enqueue_task(_CHART_QUEUE, "Chart", generate_and_edit_chart):
+            generate_and_edit_chart()
+        logger.info(f"[Telegram] Chart generation queued (async): ${symbol}")
         if _get_ai_signal_enabled():
             start_ai_analysis()
     else:

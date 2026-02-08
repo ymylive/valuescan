@@ -1,11 +1,7 @@
 {
   "common": {
     "dashboard": "Dashboard",
-    "traders": "Traders",
-    "strategies": "Strategies",
     "models": "AI Models",
-    "exchanges": "Exchanges",
-    "debates": "Debate Arena",
     "settings": "Settings",
     "logout": "Logout",
     "status": "Status",
@@ -21,26 +17,140 @@
     "stopped": "Stopped",
     "loading": "Loading...",
     "success": "Success",
-    "error": "Error"
+    "error": "Error",
+    "confirm": "Confirm",
+    "reset": "Reset",
+    "add": "Add",
+    "remove": "Remove"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "configuration": "Configuration",
+    "proxy": "Proxy",
+    "logs": "Logs",
+    "services": "Services",
+    "forecast": "Forecast"
   },
   "dashboard": {
-    "totalEquity": "Total Equity",
-    "activeTraders": "Active Traders",
-    "totalPnL": "Total P&L",
-    "winRate": "Win Rate"
-  },
-  "traders": {
-    "newTrader": "New Trader",
-    "name": "Name",
-    "strategy": "Strategy",
-    "model": "Model",
-    "exchange": "Exchange",
-    "leverage": "Leverage",
-    "balance": "Balance"
+    "title": "System Overview",
+    "systemStatus": "System Status",
+    "activeServices": "Active Services",
+    "totalSignals": "Total Signals",
+    "lastUpdate": "Last Update"
   },
   "theme": {
-    "light": "Day Mode",
-    "dark": "Night Mode",
+    "light": "Light Mode",
+    "dark": "Dark Mode",
     "auto": "Auto Mode"
+  },
+  "config": {
+    "title": "Configuration",
+    "tabs": {
+      "ai": "AI Service",
+      "signal": "Signal Monitor",
+      "notification": "Notification",
+      "system": "System",
+      "anomaly": "Anomaly Detection",
+      "usMarket": "US Market"
+    },
+    "saveSuccess": "Configuration saved successfully",
+    "saveError": "Failed to save configuration",
+    "loadError": "Failed to load configuration"
+  },
+  "anomaly": {
+    "title": "Anomaly Detection Config",
+    "description": "Configure crypto market anomaly detection parameters",
+    "sections": {
+      "source": "Anomaly Source",
+      "basic": "Basic Settings",
+      "volumePrice": "Volume & Price",
+      "derivatives": "Derivatives",
+      "orderbook": "Order Book",
+      "correlation": "Correlation Filter",
+      "sentiment": "Sentiment",
+      "dynamic": "Dynamic Threshold",
+      "scoring": "Scoring System"
+    },
+    "fields": {
+      "anomalySource": "Anomaly Detection Source",
+      "anomalySourceHint": "Local detection only.",
+      "symbols": "Monitored Symbols",
+      "symbolsHint": "Enter symbols separated by commas",
+      "volSpikeThreshold": "Volume Spike Threshold",
+      "volSpikeHint": "Volume/MA20 ratio",
+      "volZscoreThreshold": "Volume Z-Score Threshold",
+      "priceChangeThreshold": "Price Change Threshold (%)",
+      "fundingWarnNegative": "Funding Rate Warning Negative (%)",
+      "fundingWarnPositive": "Funding Rate Warning Positive (%)",
+      "fundingExtremeNegative": "Funding Rate Extreme Negative (%)",
+      "fundingExtremePositive": "Funding Rate Extreme Positive (%)",
+      "oiChangeWarn": "OI Change Warning (%)",
+      "oiChangeExtreme": "OI Change Extreme (%)",
+      "imbalanceThreshold": "Imbalance Threshold",
+      "imbalanceHint": "e.g., 3.0 means 3:1",
+      "whaleWallUsd": "Whale Wall Threshold (USD)",
+      "spreadWarn": "Spread Warning",
+      "correlationWindow": "Correlation Window (minutes)",
+      "independenceThreshold": "Independence Threshold",
+      "independenceHint": "Below this is considered independent",
+      "fearExtreme": "Extreme Fear Threshold",
+      "greedExtreme": "Extreme Greed Threshold",
+      "useDynamicThreshold": "Enable Dynamic Threshold",
+      "zscoreThreshold": "Z-Score Threshold",
+      "atrMultiplier": "ATR Multiplier",
+      "scoringEnabled": "Enable Weighted Scoring",
+      "scoringWeights": "Scoring Weights",
+      "weightVolumePrice": "Volume & Price Weight",
+      "weightDerivatives": "Derivatives Weight",
+      "weightFundFlow": "Fund Flow Weight",
+      "weightOrderbook": "Order Book Weight",
+      "weightSentiment": "Sentiment Weight",
+      "scoringThresholds": "Scoring Thresholds",
+      "thresholdInfo": "Info Level",
+      "thresholdWarning": "Warning Level",
+      "thresholdAlert": "Alert Level"
+    },
+    "source": {
+      "local": "Local Detection"
+    }
+  },
+  "usMarket": {
+    "title": "US Market Monitor Config",
+    "description": "Configure US market monitoring and crypto impact analysis",
+    "fields": {
+      "enabled": "Enable US Market Monitor",
+      "checkAfterOpen": "Check After Open (minutes)",
+      "checkAfterOpenHint": "Minutes after market open to send report",
+      "vixSymbol": "VIX Symbol",
+      "aiAnalysisEnabled": "Enable AI Analysis",
+      "aiAnalysisHint": "Analyze US market impact on crypto"
+    },
+    "categories": {
+      "title": "Monitored Categories",
+      "indices": "Market Indices",
+      "indicesHint": "SPY, QQQ, DIA, etc.",
+      "tech": "Tech Giants",
+      "techHint": "NVDA, AAPL, MSFT, etc.",
+      "cryptoStocks": "Crypto Stocks",
+      "cryptoStocksHint": "COIN, MSTR, MARA, etc.",
+      "macro": "Macro Indicators",
+      "macroHint": "GLD, TLT, etc."
+    }
+  },
+  "notification": {
+    "title": "Notification Config",
+    "telegram": {
+      "title": "Telegram Notification",
+      "botToken": "Bot Token",
+      "chatId": "Chat ID",
+      "enabled": "Enable Telegram Notification",
+      "sendInMode1": "Send in Mode 1"
+    }
+  },
+  "system": {
+    "title": "System Config",
+    "ports": "Port Configuration",
+    "security": "Security Configuration",
+    "logging": "Logging Configuration"
   }
 }

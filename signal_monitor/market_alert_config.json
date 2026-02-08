@@ -1,0 +1,80 @@
+{
+  "enabled": true,
+  "symbols": [
+    "BTC",
+    "ETH",
+    "SOL",
+    "BNB"
+  ],
+  "poll_interval_seconds": 10,
+  "cooldown_seconds": 1800,
+  "derivatives": {
+    "funding_rate_extreme_negative": -0.01,
+    "funding_rate_extreme_positive": 0.03,
+    "oi_change_threshold_pct": 8.0
+  },
+  "sentiment": {
+    "fear_extreme": 20,
+    "greed_extreme": 80
+  },
+  "price": {
+    "short_term_change_pct": 6.0,
+    "window_minutes": 15
+  },
+  "combo_signals": {
+    "needle_catch": true,
+    "needle_catch_volatility_multiplier": 1.5,
+    "top_escape": true
+  },
+  "metals": {
+    "enabled": true,
+    "symbols": [
+      "XAUUSDT",
+      "XAGUSDT"
+    ],
+    "yahoo_symbol_map": {
+      "XAUUSDT": "GC=F",
+      "XAGUSDT": "SI=F"
+    },
+    "volatility_threshold_pct": 1.5,
+    "window_minutes": 30
+  },
+  "us_market": {
+    "enabled": true,
+    "check_after_open_minutes": 5,
+    "categories": {
+      "indices": [
+        "SPY",
+        "QQQ",
+        "DIA",
+        "IWM"
+      ],
+      "tech": [
+        "NVDA",
+        "AAPL",
+        "MSFT",
+        "GOOGL",
+        "META",
+        "AMZN",
+        "TSLA"
+      ],
+      "crypto_stocks": [
+        "COIN",
+        "MSTR",
+        "MARA",
+        "RIOT"
+      ],
+      "macro": [
+        "GLD",
+        "TLT"
+      ]
+    },
+    "vix_symbol": "^VIX",
+    "ai_analysis_enabled": true
+  },
+  "ai_analysis": {
+    "enabled": true,
+    "on_combo_signal": true,
+    "on_single_extreme": true
+  }
+}

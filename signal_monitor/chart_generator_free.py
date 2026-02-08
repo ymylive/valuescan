@@ -343,7 +343,7 @@ def generate_chart_free(symbol, interval='15m', limit=80):
                     color=color, fontsize=8, ha='left', alpha=0.8)
         
         # 水印
-        fig.text(0.5, 0.5, 'NOFX', color=COLORS['yellow'], fontsize=50,
+        fig.text(0.5, 0.5, 'Signal', color=COLORS['yellow'], fontsize=50,
                 ha='center', va='center', alpha=0.02, fontweight='bold',
                 transform=fig.transFigure)
         

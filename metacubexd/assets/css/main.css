@@ -1,0 +1,97 @@
+@import 'tailwindcss';
+@plugin '@tailwindcss/typography';
+@plugin 'daisyui' {
+  themes: all;
+}
+
+@font-face {
+  font-family: 'Twemoji Mozilla';
+  src: url('~/assets/fonts/TwemojiMozilla-flags.woff2') format('woff2');
+}
+
+:root {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+::-webkit-scrollbar {
+  background: transparent;
+  display: none;
+}
+
+::-webkit-scrollbar:vertical {
+  width: 6px;
+}
+
+::-webkit-scrollbar:horizontal {
+  height: 6px;
+}
+
+@media (width >= 640px) {
+  :root {
+    scrollbar-color: hsl(var(--p)) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    display: block;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-box bg-primary;
+  }
+}
+
+option {
+  font-family: system-ui;
+}
+
+/* Default font - Ubuntu from @nuxt/fonts */
+body {
+  font-family:
+    'Ubuntu', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
+    'Noto Sans CJK SC', system-ui, sans-serif;
+}
+
+/* Custom font families */
+.font-twemoji {
+  font-family:
+    'Twemoji Mozilla', 'Ubuntu', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Noto Sans CJK SC', system-ui, sans-serif;
+}
+
+.font-default {
+  font-family:
+    'Ubuntu', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
+    'Noto Sans CJK SC', system-ui, sans-serif;
+}
+
+/* Animated glow pulse effect for selected items */
+@keyframes glow-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 6px 1px color-mix(in oklch, var(--color-primary) 70%, transparent),
+      0 0 12px 2px color-mix(in oklch, var(--color-secondary) 40%, transparent);
+  }
+  33% {
+    box-shadow:
+      0 0 6px 1px color-mix(in oklch, var(--color-secondary) 70%, transparent),
+      0 0 12px 2px color-mix(in oklch, var(--color-accent) 40%, transparent);
+  }
+  66% {
+    box-shadow:
+      0 0 6px 1px color-mix(in oklch, var(--color-accent) 70%, transparent),
+      0 0 12px 2px color-mix(in oklch, var(--color-primary) 40%, transparent);
+  }
+}
+
+.animate-glow-pulse {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+/* Fix drawer height chain for proper scrolling */
+.drawer,
+.drawer-content {
+  height: 100%;
+  min-height: 0;
+}

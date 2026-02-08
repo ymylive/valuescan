@@ -5,6 +5,29 @@ AI辅助线绘制模块
 
 import json
 import requests
+
+try:
+    from .ai_api_utils import (
+        AI_PROTOCOL_RESPONSES,
+        build_payload,
+        override_responses_token_key,
+        parse_compatible_content,
+        parse_responses_body,
+        resolve_protocol_and_url,
+        resolve_responses_token_key_override,
+        should_force_responses_stream,
+    )
+except Exception:
+    from ai_api_utils import (  # type: ignore[import-not-found]
+        AI_PROTOCOL_RESPONSES,
+        build_payload,
+        override_responses_token_key,
+        parse_compatible_content,
+        parse_responses_body,
+        resolve_protocol_and_url,
+        resolve_responses_token_key_override,
+        should_force_responses_stream,
+    )
 from typing import Dict, List, Optional, Any, Tuple
 import numpy as np
 import pandas as pd
@@ -21,6 +44,8 @@ def build_pattern_prompt(
     """
     构建AI形态识别的Prompt
     """
+    language = "zh"
+
     # 准备K线数据
     klines = []
     if 'timestamp' in df.columns:
@@ -55,26 +80,27 @@ def build_pattern_prompt(
 
     payload_json = json.dumps(payload, ensure_ascii=False)
 
-    if language == "en":
+    if False:
         return f"""You are a professional technical analyst. Analyze the chart and identify trend lines and patterns.
 
 Input data (JSON):
 {payload_json}
 
-Requirements:
-1. Identify the most significant trend lines and patterns from the klines data
-2. For each pattern, provide:
-   - Pattern type: channel/wedge/triangle/flag/trendline
-   - Coordinates: x1, y1, x2, y2 (x is kline index, y is price)
-   - Style: solid/dashed/dotted
-   - Label: brief description
-   - Confidence: 0-1 score
-3. Validate against local_patterns if provided
-4. Lines must:
-   - Touch at least 2 pivot points (highs for resistance, lows for support)
-   - Have length >= 20 bars
-   - Be within price range
-5. Return ONLY strict JSON, no extra text
+  Requirements:
+  1. Identify the most significant trend lines and patterns from the klines data
+  2. For each pattern, provide:
+     - Pattern type: channel/wedge/triangle/flag/trendline
+     - Coordinates: x1, y1, x2, y2 (x is kline index, y is price)
+     - Style: solid/dashed/dotted
+     - Label: brief description
+     - Confidence: 0-1 score
+  3. Validate against local_patterns if provided
+  4. Use volume/volatility to validate patterns; include confirmation/invalidation hints in description
+  5. Lines must:
+     - Touch at least 2 pivot points (highs for resistance, lows for support)
+     - Have length >= 20 bars
+     - Be within price range
+  6. Return ONLY strict JSON, no extra text
 
 JSON format:
 {{
@@ -99,20 +125,21 @@ JSON format:
 输入数据 (JSON):
 {payload_json}
 
-要求:
-1. 从K线数据中识别最重要的趋势线和形态
-2. 对于每个形态，提供:
-   - 形态类型: channel/wedge/triangle/flag/trendline
-   - 坐标: x1, y1, x2, y2 (x是K线索引, y是价格)
-   - 样式: solid/dashed/dotted
-   - 标签: 简短描述
-   - 置信度: 0-1分数
-3. 如果提供了local_patterns，进行验证
-4. 线条必须:
-   - 至少触碰2个枢轴点（阻力线触碰高点，支撑线触碰低点）
-   - 长度 >= 20根K线
-   - 在价格范围内
-5. 只返回严格的JSON，不要额外文本
+  要求:
+  1. 从K线数据中识别最重要的趋势线和形态
+  2. 对于每个形态，提供:
+     - 形态类型: channel/wedge/triangle/flag/trendline
+     - 坐标: x1, y1, x2, y2 (x是K线索引, y是价格)
+     - 样式: solid/dashed/dotted
+     - 标签: 简短描述
+     - 置信度: 0-1分数
+  3. 如果提供了local_patterns，进行验证
+  4. 结合成交量/波动验证形态有效性，在description中注明确认/失效条件
+  5. 线条必须:
+     - 至少触碰2个枢轴点（阻力线触碰高点，支撑线触碰低点）
+     - 长度 >= 20根K线
+     - 在价格范围内
+  6. 只返回严格的JSON，不要额外文本
 
 JSON格式:
 {{
@@ -149,26 +176,44 @@ def call_ai_pattern_api(prompt: str, config: Dict[str, Any]) -> Optional[str]:
         'Authorization': f'Bearer {api_key}'
     }
 
-    payload = {
-        'model': model,
-        'messages': [
-            {'role': 'system', 'content': 'You are a professional technical analyst. Reply with strict JSON only.'},
-            {'role': 'user', 'content': prompt}
-        ],
-        'max_tokens': 8000,
-        'temperature': 0.3,
-    }
+    protocol, resolved_url = resolve_protocol_and_url(api_url, config.get('api_protocol'))
+    stream = should_force_responses_stream(resolved_url, protocol)
+    payload = build_payload(
+        protocol,
+        resolved_url,
+        model,
+        'You are a professional technical analyst. Provide comprehensive pattern analysis and reply with strict JSON only.',
+        prompt,
+        8000,
+        0.3,
+        stream,
+    )
 
     try:
         session = requests.Session()
         session.trust_env = False
-        resp = session.post(api_url, headers=headers, json=payload, timeout=60)
+        if protocol == AI_PROTOCOL_RESPONSES:
+            headers["Accept"] = "text/event-stream" if stream else "application/json"
+        resp = session.post(resolved_url, headers=headers, json=payload, timeout=60)
         if resp.status_code != 200:
-            logger.warning(f"AI pattern API call failed: {resp.status_code} - {resp.text[:200]}")
-            return None
+            if protocol == AI_PROTOCOL_RESPONSES and resp.status_code == 400:
+                override_key = resolve_responses_token_key_override(resp.text)
+                if override_key is not None:
+                    payload = override_responses_token_key(payload, override_key, 8000)
+                    resp = session.post(resolved_url, headers=headers, json=payload, timeout=60)
+            if resp.status_code != 200:
+                logger.warning(f"AI pattern API call failed: {resp.status_code} - {resp.text[:200]}")
+                return None
 
-        data = resp.json()
-        content = data.get('choices', [{}])[0].get('message', {}).get('content', '')
+        if protocol == AI_PROTOCOL_RESPONSES:
+            try:
+                content = parse_responses_body(resp.text)
+            except Exception as exc:
+                logger.warning(f"AI pattern API parse error: {exc}")
+                content = ""
+        else:
+            data = resp.json()
+            content = parse_compatible_content(data)
         if not content:
             return None
 
@@ -422,8 +467,17 @@ def draw_ai_patterns(
     # 1. 构建Prompt
     prompt = build_pattern_prompt(symbol, df, current_price, local_patterns, language)
 
-    # 2. 调用AI API
-    raw_response = call_ai_pattern_api(prompt, config)
+    # 2. 调用AI API（使用队列，减少重试）
+    try:
+        from ai_request_queue import call_ai_with_queue
+    except ImportError:
+        from .ai_request_queue import call_ai_with_queue
+
+    raw_response = call_ai_with_queue(
+        lambda: call_ai_pattern_api(prompt, config),
+        attempts=2,
+        retry_delay=5.0
+    )
     if not raw_response:
         logger.info("AI pattern detection not available, using local patterns only")
         # 返回本地形态

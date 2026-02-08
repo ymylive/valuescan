@@ -11,19 +11,62 @@ import time
 from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from logger import logger
+import struct
 
 # 默认配置（将在 config.py 中设置）
 DEFAULT_API_KEY = "123456789abcdef0123456789abcdef"
 DEFAULT_LAYOUT_ID = "oeTZqtUR"
 DEFAULT_CHART_WIDTH = 800
 DEFAULT_CHART_HEIGHT = 600
-DEFAULT_TIMEOUT = 90
+DEFAULT_TIMEOUT = 30
 
 # 异步图表生成配置
 _executor = None
 _chart_tasks = {}  # {task_id: {'status': 'processing', 'result': None, 'callback': func}}
 _task_counter = 0
 _lock = threading.Lock()
+
+
+def _is_valid_chart_image(image_data: bytes) -> bool:
+    if not image_data:
+        return False
+    try:
+        min_kb = int(os.getenv("NOFX_CHART_MIN_KB", "25") or 25)
+    except Exception:
+        min_kb = 25
+    if len(image_data) < min_kb * 1024:
+        return False
+    if image_data.startswith(b"\x89PNG\r\n\x1a\n") and len(image_data) >= 24:
+        try:
+            if image_data[12:16] == b"IHDR":
+                width, height = struct.unpack(">II", image_data[16:24])
+                if width < 200 or height < 200:
+                    return False
+        except Exception:
+            pass
+    return True
+
+
+def _resolve_tradingview_symbols(symbol: str) -> list:
+    clean = (symbol or "").upper().replace("$", "").strip()
+    if not clean:
+        return []
+    if ":" in clean:
+        return [clean]
+    metal_map = {
+        "XAUUSD": "XAUUSD",
+        "XAGUSD": "XAGUSD",
+        "XAU": "XAUUSD",
+        "XAG": "XAGUSD",
+        "GOLD": "XAUUSD",
+        "SILVER": "XAGUSD",
+    }
+    base = metal_map.get(clean)
+    if base:
+        return [f"OANDA:{base}", f"FX_IDC:{base}"]
+    if not clean.endswith("USDT"):
+        clean = f"{clean}USDT"
+    return [f"BINANCE:{clean}.P", f"BINANCE:{clean}"]
 
 
 class AsyncChartManager:
@@ -217,16 +260,10 @@ def generate_tradingview_chart(
 
     # 标准化交易对符号（币安格式）
     # 移除 $ 符号，统一添加 USDT
-    symbol_clean = symbol.upper().replace('$', '').strip()
-    if not symbol_clean.endswith('USDT'):
-        symbol_clean = f"{symbol_clean}USDT"
-
-    # 优先使用期货符号（永续合约）
-    binance_futures_symbol = f"BINANCE:{symbol_clean}.P"
-    binance_spot_symbol = f"BINANCE:{symbol_clean}"
-
-    # 尝试生成图表的符号列表（优先期货）
-    symbols_to_try = [binance_futures_symbol, binance_spot_symbol]
+    symbols_to_try = _resolve_tradingview_symbols(symbol)
+    if not symbols_to_try:
+        logger.error("❌ TradingView symbol not resolved; abort chart generation.")
+        return None
     
     logger.info(f"📊 正在为 ${symbol.upper().replace('$', '')} 生成 TradingView 图表...")
     
@@ -288,6 +325,13 @@ def generate_tradingview_chart(
                 if 'image' in content_type:
                     image_data = response.content
                     size_kb = len(image_data) / 1024
+                    if not _is_valid_chart_image(image_data):
+                        logger.warning(
+                            f"??? Chart image looks invalid (size={size_kb:.2f} KB) for {binance_symbol}"
+                        )
+                        if attempt < len(symbols_to_try):
+                            continue
+                        return None
                     logger.info(f"✅ 图表生成成功: {binance_symbol} ({size_kb:.2f} KB)")
 
                     # 可选：保存到文件

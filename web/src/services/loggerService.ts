@@ -15,7 +15,7 @@ class LoggerService {
   };
 
   private logs: LogEntry[] = [];
-  private readonly STORAGE_KEY = 'valuescan_logs';
+  private readonly STORAGE_KEY = 'nofx_logs';
   private readonly LEVEL_PRIORITY = {
     [LogLevel.DEBUG]: 0,
     [LogLevel.INFO]: 1,
@@ -44,35 +44,35 @@ class LoggerService {
   /**
    * 记录 DEBUG 日志
    */
-  debug(component: string, message: string, data?: any): void {
+  debug(component: string, message: string, data?: unknown): void {
     this.log(LogLevel.DEBUG, component, message, data);
   }
 
   /**
    * 记录 INFO 日志
    */
-  info(component: string, message: string, data?: any): void {
+  info(component: string, message: string, data?: unknown): void {
     this.log(LogLevel.INFO, component, message, data);
   }
 
   /**
    * 记录 WARN 日志
    */
-  warn(component: string, message: string, data?: any): void {
+  warn(component: string, message: string, data?: unknown): void {
     this.log(LogLevel.WARN, component, message, data);
   }
 
   /**
    * 记录 ERROR 日志
    */
-  error(component: string, message: string, error?: Error, data?: any): void {
+  error(component: string, message: string, error?: Error, data?: unknown): void {
     this.log(LogLevel.ERROR, component, message, data, error);
   }
 
   /**
    * 核心日志记录方法
    */
-  private log(level: LogLevel, component: string, message: string, data?: any, error?: Error): void {
+  private log(level: LogLevel, component: string, message: string, data?: unknown, error?: Error): void {
     if (!this.config.enabled) return;
 
     // 检查日志级别

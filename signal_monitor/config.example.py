@@ -1,5 +1,5 @@
 """
-ValuesCan API 监听工具配置文件示例
+Signal Monitor API 监听工具配置文件示例
 请复制此文件为 config.py 并填入您的配置
 """
 
@@ -41,23 +41,52 @@ LANGUAGE = "zh"
 
 # ==================== 外部数据 API 密钥 ====================
 # CoinMarketCap API Key (用于获取市场数据)
-COINMARKETCAP_API_KEY = "28fb263977514cb79b2ba80200c671c0"
+# 获取方式: https://coinmarketcap.com/api/
+COINMARKETCAP_API_KEY = ""
 
 # CryptoCompare API Key (用于获取价格和市场数据)
-CRYPTOCOMPARE_API_KEY = "fa599edd81742a6f284cc6db8f98574ede3b92dbb608b418c44715a83f1dab9b"
+# 获取方式: https://www.cryptocompare.com/cryptopian/api-keys
+CRYPTOCOMPARE_API_KEY = ""
 
 # CoinGecko API Key (用于获取趋势币种和市场数据)
-COINGECKO_API_KEY = "CG-6itS45epruuSZZpR9Mpp3Ui8"
+# 获取方式: https://www.coingecko.com/en/api/pricing
+COINGECKO_API_KEY = ""
 
 # Etherscan API Key (可选，用于链上数据查询)
+# 获取方式: https://etherscan.io/myapikey
 ETHERSCAN_API_KEY = ""
 
-# Crypto News API Key (可选，用于获取加密货币新闻)
-CRYPTO_NEWS_API_KEY = ""
+# FRED API Key (宏观数据)
+FRED_API_KEY = ""
+
+# GitHub Token (项目基本面，提升速率)
+GITHUB_TOKEN = ""
+
+
+# CCXT 数据源（可选）
+NOFX_CCXT_ENABLED = True
+NOFX_CCXT_EXCHANGE = "binance"
+NOFX_CCXT_MARKET_TYPE = "spot"
+NOFX_CCXT_ORDERBOOK_LIMIT = 20
+
+# FRED 关注指标（逗号分隔）
+NOFX_FRED_SERIES = "PAYEMS,CPIAUCSL,UNRATE,FEDFUNDS"
+
+# FRED 发布日历（release_id 列表，可选）
+NOFX_FRED_RELEASE_IDS = "10,46,50,53,54,101"
+
+# ERC20 合约地址映射（可选，JSON）
+NOFX_ERC20_CONTRACTS = "{\"USDT\":\"0xdAC17F958D2ee523a2206206994597C13D831ec7\",\"USDC\":\"0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48\",\"DAI\":\"0x6B175474E89094C44Da98b954EedeAC495271d0F\",\"LINK\":\"0x514910771AF9Ca656af840dff83E8264EcF986CA\",\"UNI\":\"0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984\",\"AAVE\":\"0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9\",\"LDO\":\"0x5A98FcBEA516Cf06857215779Fd812CA3beF1B32\",\"MKR\":\"0x9f8F72aA9304c8B593d555F12eF6589cC3A579A2\",\"COMP\":\"0xc00e94Cb662C3520282E6f5717214004A7f26888\"}"
+
+# GDELT data (macro/policy/geopolitics)
+NOFX_GDELT_ENABLED = True
+NOFX_GDELT_QUERY = "(crypto OR bitcoin OR ethereum OR regulation OR policy OR fed OR inflation OR cpi OR payroll OR geopolitics OR war OR sanctions)"
+NOFX_GDELT_MAX_RECORDS = 8
+NOFX_GDELT_TIMESPAN = "1d"
 
 
 # ==================== 轮询监控配置 ====================
-# 轮询间隔（秒）- 每隔多少秒轮询一次 ValueScan API
+# 轮询间隔（秒）- 每隔多少秒轮询一次 signal API
 POLL_INTERVAL = 10
 
 # 请求超时（秒）- API 请求超时时间
@@ -80,6 +109,25 @@ STARTUP_SIGNAL_MAX_AGE_SECONDS = 600
 
 # 运行时信号最大年龄（秒）- 运行时过滤超过此时间的信号
 SIGNAL_MAX_AGE_SECONDS = 600
+
+# ==================== Scheduled AI Signals ====================
+# Interval minutes for scheduled AI signal push
+AI_SIGNAL_INTERVAL_MINUTES = 30
+
+# Comma-separated symbols for scheduled AI signal push
+AI_SIGNAL_SYMBOLS = ["BTC", "ETH", "BNB", "SOL", "XAUUSD", "XAGUSD"]
+
+# Delay between symbols (seconds)
+AI_SIGNAL_SYMBOL_DELAY = 2
+
+# Suppress duplicate scheduled AI signals within this window (seconds)
+AI_SIGNAL_DEDUP_SECONDS = 120
+
+# Lookback hours for recent signal signals fed into AI analysis
+AI_SIGNAL_LOOKBACK_HOURS = 24
+
+# Max recent signals to include in AI analysis (0 = no limit)
+AI_SIGNAL_RECENT_LIMIT = 0
 
 
 # ==================== Token 刷新器配置 ====================
@@ -175,6 +223,18 @@ CHART_IMG_TIMEOUT = 90
 # False: 保留文件 (用于调试)
 AUTO_DELETE_CHARTS = True
 
+# 贵金属 K 线数据源优先级（逗号分隔）
+# 可选: binance, oanda, twelvedata
+NOFX_METALS_KLINE_PROVIDERS = "binance"
+# OANDA API Key (可用于 XAU_USD / XAG_USD 蜡烛)
+NOFX_OANDA_API_KEY = ""
+# OANDA 环境: practice 或 live
+NOFX_OANDA_ENV = "practice"
+# Twelve Data API Key (支持 XAU/USD, XAG/USD time_series)
+NOFX_TWELVEDATA_API_KEY = ""
+# 贵金属 K 线缓存秒数
+NOFX_METALS_KLINES_TTL = 60
+
 # ==================== 日志配置 ====================
 # 日志级别: DEBUG, INFO, WARNING, ERROR, CRITICAL
 # DEBUG: 详细的调试信息
@@ -188,7 +248,7 @@ LOG_LEVEL = "INFO"
 LOG_TO_FILE = True
 
 # 日志文件路径
-LOG_FILE = "valuescan.log"
+LOG_FILE = "signal_monitor.log"
 
 # 日志文件最大大小（字节）10MB
 LOG_MAX_SIZE = 10 * 1024 * 1024

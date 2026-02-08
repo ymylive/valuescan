@@ -1,0 +1,21 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential gcc wget \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY api/requirements.txt /app/api/requirements.txt
+COPY signal_monitor/requirements.txt /app/signal_monitor/requirements.txt
+RUN pip install --no-cache-dir -r /app/api/requirements.txt -r /app/signal_monitor/requirements.txt
+
+COPY api/ /app/api/
+COPY signal_monitor/ /app/signal_monitor/
+COPY logger.py /app/logger.py
+COPY sitecustomize.py /app/sitecustomize.py
+
+EXPOSE 5000
+CMD ["python", "-m", "api.server"]

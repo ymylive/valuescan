@@ -18,10 +18,10 @@ from pathlib import Path
 from typing import List, Dict, Optional
 
 # 配置
-SUBSCRIBE_URL_FILE = os.getenv("PROXY_SUBSCRIBE_URL_FILE", "/etc/valuescan/proxy_subscribe_url")
+SUBSCRIBE_URL_FILE = os.getenv("PROXY_SUBSCRIBE_URL_FILE", "/etc/nofx/proxy_subscribe_url")
 SUBSCRIBE_URL = (
     os.getenv("PROXY_SUBSCRIBE_URL")
-    or os.getenv("VALUESCAN_PROXY_SUBSCRIBE_URL")
+    or os.getenv("NOFX_PROXY_SUBSCRIBE_URL")
     or ""
 ).strip()
 XRAY_CONFIG_PATH = "/etc/xray/config.json"

@@ -1,0 +1,5 @@
+{
+    "admin_users": [1114483029],
+    "rate_limit_seconds": 300,
+    "rate_limit_message": "请等待 {remaining} 秒后再次查询"
+}
