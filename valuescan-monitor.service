@@ -1,0 +1,26 @@
+[Unit]
+Description=ValueScan AI Signal Scheduler
+Documentation=https://github.com/ymylive/valuescan
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/valuescan/signal_monitor
+ExecStart=/usr/bin/python3 /root/valuescan/signal_monitor/ai_signal_scheduler.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=valuescan-monitor
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/root/valuescan/config/valuescan.env
+Environment=VALUESCAN_AI_SIGNAL_INTERVAL_MINUTES=20
+
+# Resource limits
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

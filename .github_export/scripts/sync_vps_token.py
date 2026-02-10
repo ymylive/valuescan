@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import os
 """Sync token from VPS"""
 import paramiko
 import json
@@ -7,7 +6,7 @@ from pathlib import Path
 
 ssh = paramiko.SSHClient()
 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-ssh.connect("82.158.88.34", username="root", password=os.environ.get('VPS_PASSWORD', ''))
+ssh.connect("82.158.88.34", username="root", password="Qq159741")
 
 sftp = ssh.open_sftp()
 local = Path(__file__).parent.parent / "valuescan_localstorage.json"

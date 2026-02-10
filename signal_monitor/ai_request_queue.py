@@ -35,7 +35,10 @@ _LEGACY_MIN_INTERVAL = float(os.getenv("NOFX_AI_QUEUE_MIN_INTERVAL_SEC", "2.0") 
 _MIN_INTERVAL_FAST_SEC = float(os.getenv("NOFX_AI_QUEUE_MIN_INTERVAL_FAST_SEC", "") or 0.0)
 _MIN_INTERVAL_SLOW_SEC = float(os.getenv("NOFX_AI_QUEUE_MIN_INTERVAL_SLOW_SEC", "") or 0.0)
 _RECOVER_AFTER_SEC = float(os.getenv("NOFX_AI_QUEUE_RECOVER_SEC", "600") or 600.0)
-_COOLDOWN_ON_429_SEC = float(os.getenv("NOFX_AI_QUEUE_429_COOLDOWN_SEC", "300") or 300.0)
+_COOLDOWN_ON_429_SEC = float(os.getenv("NOFX_AI_QUEUE_429_COOLDOWN_SEC", "20") or 20.0)
+_RETRY_429_WAIT_SEC = float(os.getenv("NOFX_AI_RETRY_429_WAIT_SEC", "20") or 20.0)
+_MAX_RETRIES = int(os.getenv("NOFX_AI_MAX_RETRIES", "3") or 3)
+_DEFAULT_ATTEMPTS = max(1, _MAX_RETRIES + 1)
 
 if _MIN_INTERVAL_FAST_SEC <= 0:
     _MIN_INTERVAL_FAST_SEC = _LEGACY_MIN_INTERVAL
@@ -66,8 +69,7 @@ _MAX_BACKOFF_SEC = 300.0
 
 
 def _calculate_backoff(attempt: int) -> float:
-    """Exponential backoff: 2^attempt seconds, capped at _MAX_BACKOFF_SEC."""
-    return min(_MAX_BACKOFF_SEC, 2.0 ** attempt)
+    return _RETRY_429_WAIT_SEC
 
 
 def _is_429_error(exc: BaseException) -> bool:
@@ -143,7 +145,7 @@ def _worker() -> None:
 
 def call_ai_with_queue(
     func: Callable[[], T],
-    attempts: int = 3,
+    attempts: int = _DEFAULT_ATTEMPTS,
     retry_delay: float = 2.0,
     raise_on_error: bool = False,
 ) -> Optional[T]:

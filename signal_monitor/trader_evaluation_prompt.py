@@ -426,7 +426,7 @@ def build_baseline_evaluation(metrics, analysis: Optional[Any] = None) -> Dict[s
         verdict = "avoid"
         ratio = 0.0
 
-    confidence_base = 50 if trade_count >= 200 else 40 if trade_count >= 50 else 30
+    confidence_base = 70 if trade_count >= 200 else 60 if trade_count >= 50 else 45
     confidence = int(_clamp(confidence_base - (risk_score * 0.2), 30, 90))
 
     max_alloc = int(_clamp(ratio * 100, 5, 80))

@@ -23,20 +23,20 @@ func New(dbPath string) (*Store, error) {
         return nil, fmt.Errorf("failed to open database: %w", err)
     }
 
-    db.SetMaxOpenConns(5)
-    db.SetMaxIdleConns(2)
+    db.SetMaxOpenConns(1)
+    db.SetMaxIdleConns(1)
 
     if _, err := db.Exec(`PRAGMA foreign_keys = ON`); err != nil {
         db.Close()
         return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
     }
 
-    if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+    if _, err := db.Exec("PRAGMA journal_mode=DELETE"); err != nil {
         db.Close()
         return nil, fmt.Errorf("failed to set journal_mode: %w", err)
     }
 
-    if _, err := db.Exec("PRAGMA synchronous=NORMAL"); err != nil {
+    if _, err := db.Exec("PRAGMA synchronous=FULL"); err != nil {
         db.Close()
         return nil, fmt.Errorf("failed to set synchronous: %w", err)
     }
@@ -52,7 +52,7 @@ func New(dbPath string) (*Store, error) {
         return nil, fmt.Errorf("failed to initialize table structure: %w", err)
     }
 
-    logger.Info("Database enabled WAL mode and NORMAL sync")
+    logger.Info("Database enabled DELETE mode and FULL sync")
     return s, nil
 }
 

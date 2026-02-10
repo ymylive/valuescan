@@ -136,10 +136,7 @@ export interface EnvironmentConfig {
   valuescan_vps_password: string;
 }
 
-export const CONFIG_VERSION = '2.0.0';
-
 export interface CompleteConfig {
-  version: string;
   ai_service: AIServiceConfig;
   signal_monitor: SignalMonitorConfig;
   system: SystemConfig;

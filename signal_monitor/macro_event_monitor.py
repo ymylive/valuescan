@@ -37,10 +37,6 @@ try:
 except Exception:
     fetch_macro_snapshot = None
     _parse_macro_time = None
-try:
-    from .ai_request_queue import call_ai_with_queue
-except Exception:
-    from ai_request_queue import call_ai_with_queue  # type: ignore[import-not-found]
 
 # 时区
 BEIJING_TZ = timezone(timedelta(hours=8))
@@ -230,34 +226,54 @@ def fetch_latest_economic_data(event_name: str) -> Dict[str, Any]:
     }
 
 
-
-
 def build_macro_analysis_prompt(event: Dict[str, Any], market_data: Dict[str, Any]) -> str:
-    """?????????"""
-    event_name = event.get("name") or event.get("event") or event.get("title") or "????"
+    """构建宏观分析提示词"""
+    event_name = event.get("name") or event.get("event") or event.get("title") or "未知事件"
     event_time = event.get("_parsed_time", datetime.now(timezone.utc))
 
-    forecast = event.get("forecast") or event.get("expected") or "??"
-    previous = event.get("previous") or event.get("prior") or "??"
-    actual = event.get("actual") or "???"
+    # 获取预期值和前值
+    forecast = event.get("forecast") or event.get("expected") or "未知"
+    previous = event.get("previous") or event.get("prior") or "未知"
+    actual = event.get("actual") or "待公布"
 
-    prompt = f"""????????
+    prompt = f"""# 重要经济数据发布分析
 
-??: {event_name}
-??: {event_time.strftime("%Y-%m-%d %H:%M")} UTC
-??: {forecast}
-??: {previous}
-??: {actual}
+## 事件信息
+- 事件名称: {event_name}
+- 发布时间: {event_time.strftime("%Y-%m-%d %H:%M")} UTC
+- 预期值: {forecast}
+- 前值: {previous}
+- 实际值: {actual}
 
-????:
-{json.dumps(market_data, ensure_ascii=False)}
+## 当前市场数据
+{json.dumps(market_data, ensure_ascii=False, indent=2)}
 
-????:
-1 ????? 5-8 ? ????????????
-2 ??????????????????? ???????
-3 ????? ?????? ?? ???????
-4 ?????????? ????? BTC ? ETH
-5 ?????? ???????????? ? BTC ? ETH ?????? ??????
+## 分析框架（按权重）
+总要求：围绕加密市场整体与大盘方向进行全面分析，并单独补充BTC/ETH类别，不得将其作为大盘代理。
+
+### 1. 数据解读（权重30%）
+- 该数据的含义和重要性
+- 与预期和前值的对比分析
+- 数据背后反映的经济状况
+
+### 2. 市场影响预判（权重25%）
+- 对美元指数的影响
+- 对美股（纳斯达克、标普500）的影响
+- 对加密货币整体市场（总市值、成交量、涨跌幅、主导率结构）的影响
+- 对黄金的影响
+
+### 3. 加密市场联动分析（权重25%）
+- 结合恐惧贪婪指数与总市值/成交量变化判断情绪
+- 分析主流币与山寨币的相对强弱与轮动结构
+- 预判资金在大盘与板块间的流向变化
+- 单独说明BTC/ETH类别的相对强弱（不代表大盘）
+
+### 4. 交易建议（权重20%）
+- 短期（1-24小时）操作建议
+- 需要关注的关键价位
+- 风险提示
+
+请用简洁专业的语言回答，重点突出对加密货币整体市场与大盘的影响。
 """
     return prompt
 
@@ -269,34 +285,6 @@ def _safe_float(value: Any) -> Optional[float]:
         return float(value)
     except Exception:
         return None
-
-
-
-def _get_ai_proxies() -> Optional[Dict[str, str]]:
-    proxy_url = (
-        os.getenv("NOFX_AI_PROXY")
-        or os.getenv("NOFX_PROXY")
-        or os.getenv("HTTPS_PROXY")
-        or os.getenv("HTTP_PROXY")
-        or ""
-    ).strip()
-    if not proxy_url:
-        try:
-            from config import HTTP_PROXY as CONFIG_HTTP_PROXY
-        except Exception:
-            CONFIG_HTTP_PROXY = ""
-        if isinstance(CONFIG_HTTP_PROXY, str) and CONFIG_HTTP_PROXY.strip():
-            proxy_url = CONFIG_HTTP_PROXY.strip()
-    if not proxy_url:
-        try:
-            from config import AI_SUMMARY_PROXY as CONFIG_AI_SUMMARY_PROXY
-        except Exception:
-            CONFIG_AI_SUMMARY_PROXY = ""
-        if isinstance(CONFIG_AI_SUMMARY_PROXY, str) and CONFIG_AI_SUMMARY_PROXY.strip():
-            proxy_url = CONFIG_AI_SUMMARY_PROXY.strip()
-    if not proxy_url:
-        return None
-    return {"http": proxy_url, "https": proxy_url}
 
 
 def _fetch_global_market_snapshot() -> Dict[str, Any]:
@@ -362,20 +350,15 @@ def get_current_market_snapshot() -> Dict[str, Any]:
 
 
 def call_ai_analysis(prompt: str) -> Optional[str]:
-    """Call AI for macro analysis."""
+    """调用AI进行分析"""
     try:
         from ai_api_utils import (
-            build_payload,
-            resolve_protocol_and_url,
-            parse_compatible_content,
-            parse_responses_body,
-            AI_PROTOCOL_RESPONSES,
-            override_responses_token_key,
-            resolve_responses_token_key_override,
-            should_force_responses_stream,
+            build_payload, resolve_protocol_and_url,
+            parse_compatible_content, parse_responses_body,
+            AI_PROTOCOL_RESPONSES
         )
 
-        # Load AI config
+        # 读取AI配置
         config_path = Path(__file__).parent / "ai_signal_config.json"
         if not config_path.exists():
             logger.error("[MacroEvent] AI config not found")
@@ -391,26 +374,17 @@ def call_ai_analysis(prompt: str) -> Optional[str]:
         if not api_key or not api_url:
             logger.error("[MacroEvent] AI config incomplete")
             return None
-        system_prompt = (
-            "You are a senior macroeconomist and crypto market strategist. "
-            "Respond in concise Chinese, avoid emoji/special characters. "
-            "If you give trade suggestions, use BTC/ETH spot price levels, not total market cap."
-        )
+
+        system_prompt = "你是一位资深的宏观经济分析师和加密货币交易专家，要求多维度全面分析，擅长解读经济数据对市场的影响。"
 
         protocol, resolved_url = resolve_protocol_and_url(
             api_url, ai_config.get("api_protocol", "auto")
         )
-        stream = should_force_responses_stream(resolved_url, protocol)
 
         payload = build_payload(
-            protocol,
-            resolved_url,
-            model,
-            system_prompt,
-            prompt,
-            max_tokens=2000,
-            temperature=0.3,
-            stream=stream,
+            protocol, resolved_url, model,
+            system_prompt, prompt,
+            max_tokens=2000, temperature=0.3, stream=False
         )
 
         headers = {
@@ -418,89 +392,15 @@ def call_ai_analysis(prompt: str) -> Optional[str]:
             "Content-Type": "application/json",
         }
 
-        max_retries = int(os.getenv("NOFX_AI_API_RETRY", "1") or 1)
-        proxies = _get_ai_proxies()
-        use_env_proxy = os.getenv("NOFX_AI_TRUST_ENV", "0").lower() in ("1", "true", "yes", "on")
-        retry_statuses = {429, 500, 502, 503, 504}
+        resp = requests.post(resolved_url, headers=headers, json=payload, timeout=AI_TIMEOUT_SECONDS)
 
-        for attempt in range(max_retries + 1):
-            try:
-                session = requests.Session()
-                session.trust_env = bool(use_env_proxy and not proxies)
-                if protocol == AI_PROTOCOL_RESPONSES:
-                    headers["Accept"] = "text/event-stream" if stream else "application/json"
-                resp = session.post(
-                    resolved_url,
-                    headers=headers,
-                    json=payload,
-                    timeout=AI_TIMEOUT_SECONDS,
-                    proxies=proxies,
-                )
-            except Exception as exc:
-                if attempt < max_retries:
-                    logger.warning(
-                        "[MacroEvent] AI call error (attempt %s/%s): %s",
-                        attempt + 1,
-                        max_retries + 1,
-                        exc,
-                    )
-                    time.sleep(2 + attempt * 2)
-                    continue
-                logger.error(f"[MacroEvent] AI analysis error: {exc}")
-                return None
-
-            if resp.status_code != 200:
-                if resp.status_code == 429:
-                    raise RuntimeError(f"AI_429: {resp.text[:200]}")
-                if protocol == AI_PROTOCOL_RESPONSES and resp.status_code == 400:
-                    override_key = resolve_responses_token_key_override(resp.text)
-                    if override_key is not None:
-                        payload = override_responses_token_key(payload, override_key, 2000)
-                        resp = session.post(
-                            resolved_url,
-                            headers=headers,
-                            json=payload,
-                            timeout=AI_TIMEOUT_SECONDS,
-                            proxies=proxies,
-                        )
-                if resp.status_code != 200:
-                    logger.error(
-                        f"[MacroEvent] AI API error: {resp.status_code} - {resp.text[:200]}"
-                    )
-                    if attempt < max_retries and resp.status_code in retry_statuses:
-                        time.sleep(2 + attempt * 2)
-                        continue
-                    return None
-
-            try:
-                if protocol == AI_PROTOCOL_RESPONSES:
-                    content = parse_responses_body(resp.text)
-                else:
-                    try:
-                        data = resp.json()
-                    except Exception:
-                        data = None
-                    content = parse_compatible_content(data) if isinstance(data, dict) else ""
-                    if not content:
-                        content = (resp.text or "").strip()
-            except Exception as exc:
-                if attempt < max_retries:
-                    logger.warning(
-                        "[MacroEvent] AI parse error (attempt %s/%s): %s",
-                        attempt + 1,
-                        max_retries + 1,
-                        exc,
-                    )
-                    time.sleep(2 + attempt * 2)
-                    continue
-                logger.error(f"[MacroEvent] AI analysis error: {exc}")
-                return None
-
-            if content:
-                return content.strip()
-            if attempt < max_retries:
-                time.sleep(2 + attempt * 2)
-                continue
+        if resp.status_code == 200:
+            if protocol == AI_PROTOCOL_RESPONSES:
+                return parse_responses_body(resp.text)
+            else:
+                return parse_compatible_content(resp.json())
+        else:
+            logger.error(f"[MacroEvent] AI API error: {resp.status_code} - {resp.text[:200]}")
             return None
 
     except Exception as e:
@@ -607,7 +507,7 @@ def process_event(event: Dict[str, Any]) -> bool:
     prompt = build_macro_analysis_prompt(event, market_data)
 
     # 调用AI分析
-    analysis = call_ai_with_queue(lambda: call_ai_analysis(prompt))
+    analysis = call_ai_analysis(prompt)
 
     if not analysis:
         logger.error(f"[MacroEvent] Failed to get AI analysis for: {event_name}")

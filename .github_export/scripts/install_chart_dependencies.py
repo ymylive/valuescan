@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import os
 # -*- coding: utf-8 -*-
 """
 安装图表生成所需的依赖包
@@ -13,7 +12,7 @@ if sys.platform == 'win32':
 
 ssh = paramiko.SSHClient()
 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-ssh.connect("82.158.88.34", username="root", password=os.environ.get('VPS_PASSWORD', ''),
+ssh.connect("82.158.88.34", username="root", password="Qq159741",
            look_for_keys=False, allow_agent=False)
 
 print("检查当前已安装的包...")

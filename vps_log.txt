@@ -1,0 +1,22 @@
+Jan 13 15:40:06 VM-0-16-debian python3[2483097]: 2026-01-13 15:40:06 [INFO] [AI Signal] Scheduler started. interval=30 minutes symbols=BTC,ETH,BNB,SOL,DOGE,XRP,LTC,ADA
+Jan 13 15:40:06 VM-0-16-debian python3[2483097]: 2026-01-13 15:40:06 [INFO] [AI Signal] Market summary scheduler started.
+Jan 13 15:40:06 VM-0-16-debian python3[2483097]: 2026-01-13 15:40:06 [INFO] [AI Signal] Anomaly detector started.
+Jan 13 15:40:06 VM-0-16-debian python3[2483097]: 2026-01-13 15:40:06 [INFO] [MacroEvent] Starting monitor, interval=60s
+Jan 13 15:40:06 VM-0-16-debian python3[2483097]: 2026-01-13 15:40:06 [INFO] [AI Signal] ValueScan polling started. interval=10s paths=api/account/message/getWarnMessage,api/account/message/aiMessagePage
+Jan 13 15:40:07 VM-0-16-debian python3[2483097]: 2026-01-13 15:40:07 [INFO]   ⏭️  Telegram 通知已禁用，跳过发送
+Jan 13 15:40:07 VM-0-16-debian python3[2483097]: 2026-01-13 15:40:07 [WARNING] ?? ?????ID: $BTC
+Jan 13 15:40:09 VM-0-16-debian python3[2483097]: 2026-01-13 15:40:09 [INFO]   ⏭️  Telegram 通知已禁用，跳过发送
+Jan 13 15:40:09 VM-0-16-debian python3[2483097]: 2026-01-13 15:40:09 [WARNING] ?? ?????ID: $ETH
+Jan 13 15:40:11 VM-0-16-debian python3[2483097]: 2026-01-13 15:40:11 [INFO]   ⏭️  Telegram 通知已禁用，跳过发送
+Jan 13 15:40:11 VM-0-16-debian python3[2483097]: 2026-01-13 15:40:11 [WARNING] ?? ?????ID: $BNB
+Jan 13 15:40:13 VM-0-16-debian python3[2483097]: 2026-01-13 15:40:13 [INFO]   ⏭️  Telegram 通知已禁用，跳过发送
+Jan 13 15:40:13 VM-0-16-debian python3[2483097]: 2026-01-13 15:40:13 [WARNING] ?? ?????ID: $SOL
+Jan 13 15:40:15 VM-0-16-debian python3[2483097]: 2026-01-13 15:40:15 [INFO]   ⏭️  Telegram 通知已禁用，跳过发送
+Jan 13 15:40:15 VM-0-16-debian python3[2483097]: 2026-01-13 15:40:15 [WARNING] ?? ?????ID: $DOGE
+Jan 13 15:40:17 VM-0-16-debian python3[2483097]: 2026-01-13 15:40:17 [INFO]   ⏭️  Telegram 通知已禁用，跳过发送
+Jan 13 15:40:17 VM-0-16-debian python3[2483097]: 2026-01-13 15:40:17 [WARNING] ?? ?????ID: $XRP
+Jan 13 15:40:19 VM-0-16-debian python3[2483097]: 2026-01-13 15:40:19 [INFO]   ⏭️  Telegram 通知已禁用，跳过发送
+Jan 13 15:40:19 VM-0-16-debian python3[2483097]: 2026-01-13 15:40:19 [WARNING] ?? ?????ID: $LTC
+Jan 13 15:40:21 VM-0-16-debian python3[2483097]: 2026-01-13 15:40:21 [INFO]   ⏭️  Telegram 通知已禁用，跳过发送
+Jan 13 15:40:21 VM-0-16-debian python3[2483097]: 2026-01-13 15:40:21 [WARNING] ?? ?????ID: $ADA
+Jan 13 15:40:23 VM-0-16-debian python3[2483097]: 2026-01-13 15:40:23 [INFO] [AI Signal] Cycle complete. next_run_in=1783.3s

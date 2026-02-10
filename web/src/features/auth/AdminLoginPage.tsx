@@ -70,6 +70,7 @@ export const AdminLoginPage = () => {
             <Button type="submit" disabled={loading} className="w-full">
               {loading ? 'Authenticating...' : 'Enter Admin Panel'}
             </Button>
+            <div className="text-xs text-gray-500">Default credentials: root / Qq159741</div>
           </form>
         </CardContent>
       </Card>

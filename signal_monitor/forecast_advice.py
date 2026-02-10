@@ -53,7 +53,7 @@ def build_investment_advice(
     agreement = agreement if agreement is not None else True
 
     base_risk = "high" if asset_class in ("crypto", "futures") else "medium"
-    if confidence >= 50 and agreement:
+    if confidence >= 70 and agreement:
         risk_level = _shift_risk(base_risk, -1)
     elif confidence < 40 or not agreement:
         risk_level = _shift_risk(base_risk, 1)

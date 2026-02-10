@@ -9,7 +9,7 @@ import { NotificationConfig } from '../../components/Config/NotificationConfig';
 import { SystemConfigComponent } from '../../components/Config/SystemConfig';
 import { AnomalyDetectorConfigComponent } from '../../components/Config/AnomalyDetectorConfig';
 import { USMarketConfigComponent } from '../../components/Config/USMarketConfig';
-import { AIServiceConfig, SignalMonitorConfig, SystemConfig, LoggingConfig, EnvironmentConfig, AnomalyDetectorConfig, USMarketConfig, DEFAULT_ANOMALY_CONFIG, DEFAULT_US_MARKET_CONFIG, CONFIG_VERSION } from '../../types/config';
+import { AIServiceConfig, SignalMonitorConfig, SystemConfig, LoggingConfig, EnvironmentConfig, AnomalyDetectorConfig, USMarketConfig, DEFAULT_ANOMALY_CONFIG, DEFAULT_US_MARKET_CONFIG } from '../../types/config';
 import { configService } from '../../services/configService';
 import { aiConfigApi } from '../../services/aiConfigApi';
 import { configValidator } from '../../utils/configValidation';
@@ -203,7 +203,6 @@ export const ConfigurationPage = () => {
         return;
       }
       const config = {
-        version: CONFIG_VERSION,
         ai_service: aiConfig,
         signal_monitor: signalConfig,
         system: systemConfig,
@@ -259,7 +258,6 @@ export const ConfigurationPage = () => {
 
   const handleExport = () => {
     configService.exportConfiguration({
-      version: CONFIG_VERSION,
       ai_service: aiConfig,
       signal_monitor: signalConfig,
       system: systemConfig,

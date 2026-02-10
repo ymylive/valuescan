@@ -5,7 +5,6 @@ AI只负责分析，不负责绘制
 
 import json
 import os
-import time as _time_mod
 import requests
 
 try:
@@ -35,10 +34,6 @@ import numpy as np
 import pandas as pd
 from logger import logger
 from macro_data import load_macro_data
-try:
-    from .ai_request_queue import call_ai_with_queue
-except Exception:
-    from ai_request_queue import call_ai_with_queue  # type: ignore[import-not-found]
 
 # 巨鲸数据模块
 
@@ -63,10 +58,6 @@ except ImportError:
     fetch_nofx_public_strategies = None
     fetch_nofx_top_traders = None
 
-# Analysis frequency control: {symbol: (monotonic_timestamp, cached_result)}
-_analysis_cache: Dict[str, tuple] = {}
-_ANALYSIS_CACHE_MAX = 200  # Max cached symbols to prevent unbounded growth
-
 
 def build_comprehensive_analysis_prompt(
     symbol: str,
@@ -81,13 +72,13 @@ def build_comprehensive_analysis_prompt(
     包含所有数据，让AI做深度分析
     增强版：添加更多市场数据（资金费率、持仓量、多空比、清算数据等）
     """
-    # 准备K线数据（最近100根，减少Prompt大小）
+    # 准备K线数据（完整200根）
     klines = []
     if 'timestamp' in df.columns:
-        recent_df = df.tail(100).reset_index(drop=True)
-        ts_ms = (recent_df['timestamp'].astype('int64') // 10**6).astype('int64')
-        for i, row in recent_df.iterrows():
+        ts_ms = (df['timestamp'].astype('int64') // 10**6).astype('int64')
+        for i, row in df.reset_index(drop=True).iterrows():
             klines.append({
+                'index': i,
                 'ts': int(ts_ms.iloc[i]),
                 'open': float(row['open']),
                 'high': float(row['high']),
@@ -340,8 +331,6 @@ def call_ai_analysis_api(prompt: str, config: Dict[str, Any]) -> Optional[str]:
             headers["Accept"] = "text/event-stream" if stream else "application/json"
         resp = session.post(resolved_url, headers=headers, json=payload, timeout=(connect_timeout, timeout_sec))
         if resp.status_code != 200:
-            if resp.status_code == 429:
-                raise RuntimeError(f"AI_429: {resp.text[:200]}")
             if protocol == AI_PROTOCOL_RESPONSES and resp.status_code == 400:
                 override_key = resolve_responses_token_key_override(resp.text)
                 if override_key is not None:
@@ -417,8 +406,6 @@ def get_ai_market_analysis(
     获取AI市场分析
     返回分析结果，不包含绘图坐标
     """
-    language = "zh"
-
     if config is None:
         from ai_market_summary import get_ai_market_config
         config = get_ai_market_config()
@@ -427,14 +414,6 @@ def get_ai_market_analysis(
         logger.info("AI analysis not available: no API config")
         return None
 
-    # Frequency control: skip if same symbol was analyzed recently
-    cooldown = int(os.getenv("NOFX_AI_ANALYSIS_COOLDOWN", "120") or 120)
-    now = _time_mod.monotonic()
-    last_ts, last_result = _analysis_cache.get(symbol, (0.0, None))
-    if now - last_ts < cooldown and last_result is not None:
-        logger.info(f"AI analysis for {symbol} throttled (cooldown {cooldown}s), returning cached result")
-        return last_result
-
     # 构建Prompt
     prompt = build_comprehensive_analysis_prompt(
         symbol, df, current_price, orderbook, market_data, language
@@ -442,7 +421,7 @@ def get_ai_market_analysis(
 
     # 调用AI API
     logger.info(f"Calling AI for comprehensive market analysis of {symbol}...")
-    raw_response = call_ai_with_queue(lambda: call_ai_analysis_api(prompt, config))
+    raw_response = call_ai_analysis_api(prompt, config)
 
     if not raw_response:
         logger.warning("AI analysis failed: no response")
@@ -457,13 +436,6 @@ def get_ai_market_analysis(
 
     # 验证和清理数据
     analysis = validate_and_clean_analysis(analysis, current_price)
-
-    # Cache the result with timestamp
-    _analysis_cache[symbol] = (now, analysis)
-    # Evict stale entries to prevent unbounded growth
-    if len(_analysis_cache) > _ANALYSIS_CACHE_MAX:
-        oldest_key = min(_analysis_cache, key=lambda k: _analysis_cache[k][0])
-        del _analysis_cache[oldest_key]
 
     logger.info(f"AI analysis completed for {symbol}")
     return analysis

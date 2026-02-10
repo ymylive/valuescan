@@ -21,25 +21,15 @@ except Exception:
 
 try:
     from .ai_api_utils import (
-        AI_PROTOCOL_RESPONSES,
         build_payload,
-        override_responses_token_key,
         parse_compatible_content,
-        parse_responses_body,
         resolve_protocol_and_url,
-        resolve_responses_token_key_override,
-        should_force_responses_stream,
     )
 except Exception:
     from ai_api_utils import (  # type: ignore[import-not-found]
-        AI_PROTOCOL_RESPONSES,
         build_payload,
-        override_responses_token_key,
         parse_compatible_content,
-        parse_responses_body,
         resolve_protocol_and_url,
-        resolve_responses_token_key_override,
-        should_force_responses_stream,
     )
 
 try:
@@ -832,13 +822,14 @@ def _call_ai_summary_api(prompt: str, config: Dict[str, Any]) -> Optional[str]:
         return None
 
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
-    max_retries = int(os.getenv("NOFX_AI_API_RETRY", "1") or 1)
+    max_retries = int(os.getenv("NOFX_AI_API_RETRY", "3") or 3)
+    max_retries = max(0, min(3, max_retries))
     timeout_sec = int(os.getenv("NOFX_AI_API_TIMEOUT", "90") or 90)
     connect_timeout = float(os.getenv("NOFX_AI_CONNECT_TIMEOUT", "15") or 15)
+    retry_429_wait_sec = float(os.getenv("NOFX_AI_RETRY_429_WAIT_SEC", "20") or 20)
     max_tokens = int(os.getenv("NOFX_AI_MARKET_MAX_TOKENS", "8000") or 8000)
 
     protocol, resolved_url = resolve_protocol_and_url(api_url, config.get("api_protocol"))
-    stream = should_force_responses_stream(resolved_url, protocol)
     payload = build_payload(
         protocol,
         resolved_url,
@@ -847,7 +838,7 @@ def _call_ai_summary_api(prompt: str, config: Dict[str, Any]) -> Optional[str]:
         prompt,
         max_tokens,
         0.3,
-        stream,
+        False,
     )
 
     proxies = _get_ai_proxies()
@@ -858,8 +849,6 @@ def _call_ai_summary_api(prompt: str, config: Dict[str, Any]) -> Optional[str]:
         try:
             session = requests.Session()
             session.trust_env = bool(use_env_proxy and not proxies)
-            if protocol == AI_PROTOCOL_RESPONSES:
-                headers["Accept"] = "text/event-stream" if stream else "application/json"
             resp = session.post(
                 resolved_url,
                 headers=headers,
@@ -875,7 +864,10 @@ def _call_ai_summary_api(prompt: str, config: Dict[str, Any]) -> Optional[str]:
                     max_retries + 1,
                     exc,
                 )
-                time.sleep(2 + attempt * 2)
+                if "429" in str(exc).lower() or "capacity" in str(exc).lower() or "too many requests" in str(exc).lower():
+                    time.sleep(retry_429_wait_sec)
+                else:
+                    time.sleep(2 + attempt * 2)
                 continue
             logger.warning("Market summary AI call error: %s", exc)
             return None
@@ -883,35 +875,23 @@ def _call_ai_summary_api(prompt: str, config: Dict[str, Any]) -> Optional[str]:
         if resp.status_code != 200:
             if resp.status_code == 429:
                 raise RuntimeError(f"AI_429: {resp.text[:200]}")
-            if protocol == AI_PROTOCOL_RESPONSES and resp.status_code == 400:
-                override_key = resolve_responses_token_key_override(resp.text)
-                if override_key is not None:
-                    payload = override_responses_token_key(payload, override_key, max_tokens)
-                    resp = session.post(
-                        resolved_url,
-                        headers=headers,
-                        json=payload,
-                        timeout=(connect_timeout, timeout_sec),
-                        proxies=proxies,
-                    )
-            if resp.status_code != 200:
-                logger.warning("Market summary AI call failed: %s - %s", resp.status_code, resp.text[:200])
-                if attempt < max_retries and resp.status_code in retry_statuses:
+            logger.warning("Market summary AI call failed: %s - %s", resp.status_code, resp.text[:200])
+            if attempt < max_retries and resp.status_code in retry_statuses:
+                if resp.status_code == 429:
+                    time.sleep(retry_429_wait_sec)
+                else:
                     time.sleep(2 + attempt * 2)
-                    continue
-                return None
+                continue
+            return None
 
         try:
-            if protocol == AI_PROTOCOL_RESPONSES:
-                content = parse_responses_body(resp.text)
-            else:
-                try:
-                    payload_json = resp.json()
-                except Exception:
-                    payload_json = None
-                content = parse_compatible_content(payload_json) if isinstance(payload_json, dict) else ""
-                if not content:
-                    content = (resp.text or "").strip()
+            try:
+                payload_json = resp.json()
+            except Exception:
+                payload_json = None
+            content = parse_compatible_content(payload_json) if isinstance(payload_json, dict) else ""
+            if not content:
+                content = (resp.text or "").strip()
         except Exception as exc:
             if attempt < max_retries:
                 logger.warning(

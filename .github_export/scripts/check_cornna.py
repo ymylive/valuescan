@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-import os
 import paramiko
 
 ssh = paramiko.SSHClient()
 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-ssh.connect('82.158.88.34', username='root', password=os.environ.get('VPS_PASSWORD', ''), timeout=30)
+ssh.connect('82.158.88.34', username='root', password='Qq159741', timeout=30)
 
 # Check cornna.abrdns.com nginx config
 print('=== cornna.abrdns.com.conf ===')

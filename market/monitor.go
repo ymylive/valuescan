@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -16,15 +15,13 @@ type WSMonitor struct {
 	symbols        []string
 	featuresMap    sync.Map
 	alertsChan     chan Alert
-	klineDataMap3m *LRUCache // Store K-line historical data for each trading pair with LRU eviction
-	klineDataMap4h *LRUCache // Store K-line historical data for each trading pair with LRU eviction
-	tickerDataMap  *LRUCache // Store ticker data for each trading pair with LRU eviction
+	klineDataMap3m sync.Map // Store K-line historical data for each trading pair
+	klineDataMap4h sync.Map // Store K-line historical data for each trading pair
+	tickerDataMap  sync.Map // Store ticker data for each trading pair
 	batchSize      int
 	filterSymbols  sync.Map // Use sync.Map to store monitored coins and their status
 	symbolStats    sync.Map // Store symbol statistics
 	FilterSymbol   []string // Filtered symbols
-	cleanupTicker  *time.Ticker
-	stopCleanup    chan struct{}
 }
 type SymbolStats struct {
 	LastActiveTime   time.Time
@@ -43,13 +40,7 @@ func NewWSMonitor(batchSize int) *WSMonitor {
 		combinedClient: NewCombinedStreamsClient(batchSize),
 		alertsChan:     make(chan Alert, 1000),
 		batchSize:      batchSize,
-		klineDataMap3m: NewLRUCache(500, 24*time.Hour), // Max 500 symbols, 24h TTL
-		klineDataMap4h: NewLRUCache(500, 24*time.Hour), // Max 500 symbols, 24h TTL
-		tickerDataMap:  NewLRUCache(500, 24*time.Hour), // Max 500 symbols, 24h TTL
-		stopCleanup:    make(chan struct{}),
 	}
-	// Start periodic cleanup goroutine
-	WSMonitorCli.startPeriodicCleanup()
 	return WSMonitorCli
 }
 
@@ -88,7 +79,7 @@ func (m *WSMonitor) initializeHistoricalData() error {
 	apiClient := NewAPIClient()
 
 	var wg sync.WaitGroup
-	semaphore := make(chan struct{}, 10) // Limit concurrency to 10
+	semaphore := make(chan struct{}, 5) // Limit concurrency
 
 	for _, symbol := range m.symbols {
 		wg.Add(1)
@@ -98,22 +89,8 @@ func (m *WSMonitor) initializeHistoricalData() error {
 			defer wg.Done()
 			defer func() { <-semaphore }()
 
-			// Exponential backoff for rate limiting
-			maxRetries := 3
-			for retry := 0; retry < maxRetries; retry++ {
-				err1 := m.fetchAndStoreKlinesWithRetry(apiClient, s, "3m", m.klineDataMap3m, retry)
-				err2 := m.fetchAndStoreKlinesWithRetry(apiClient, s, "4h", m.klineDataMap4h, retry)
-
-				if err1 == nil && err2 == nil {
-					break
-				}
-
-				if retry < maxRetries-1 {
-					// Exponential backoff: 1s, 2s, 4s
-					backoff := time.Duration(1<<uint(retry)) * time.Second
-					time.Sleep(backoff)
-				}
-			}
+			m.fetchAndStoreKlines(apiClient, s, "3m", &m.klineDataMap3m)
+			m.fetchAndStoreKlines(apiClient, s, "4h", &m.klineDataMap4h)
 		}(symbol)
 	}
 
@@ -121,47 +98,16 @@ func (m *WSMonitor) initializeHistoricalData() error {
 	return nil
 }
 
-func (m *WSMonitor) fetchAndStoreKlinesWithRetry(apiClient *APIClient, symbol, interval string, cache *LRUCache, retryCount int) error {
+func (m *WSMonitor) fetchAndStoreKlines(apiClient *APIClient, symbol, interval string, store *sync.Map) {
 	klines, err := apiClient.GetKlines(symbol, interval, 100)
 	if err != nil {
-		log.Printf("Failed to get %s historical data (%s) [retry %d]: %v", symbol, interval, retryCount, err)
-		return err
+		log.Printf("Failed to get %s historical data (%s): %v", symbol, interval, err)
+		return
 	}
 	if len(klines) > 0 {
-		cache.Set(symbol, klines)
+		store.Store(symbol, klines)
 		log.Printf("Loaded %s historical K-line data-%s: %d entries", symbol, interval, len(klines))
 	}
-	return nil
-}
-
-// startPeriodicCleanup runs cleanup every hour to remove expired entries and log memory stats
-func (m *WSMonitor) startPeriodicCleanup() {
-	m.cleanupTicker = time.NewTicker(1 * time.Hour)
-	go func() {
-		for {
-			select {
-			case <-m.cleanupTicker.C:
-				removed3m := m.klineDataMap3m.CleanExpired()
-				removed4h := m.klineDataMap4h.CleanExpired()
-				removedTicker := m.tickerDataMap.CleanExpired()
-
-				size3m, cap3m := m.klineDataMap3m.Stats()
-				size4h, cap4h := m.klineDataMap4h.Stats()
-				sizeTk, capTk := m.tickerDataMap.Stats()
-
-				var mem runtime.MemStats
-				runtime.ReadMemStats(&mem)
-
-				log.Printf("Cleanup: removed %d 3m, %d 4h, %d tickers | cache: 3m=%d/%d 4h=%d/%d ticker=%d/%d | mem: alloc=%dMB sys=%dMB",
-					removed3m, removed4h, removedTicker,
-					size3m, cap3m, size4h, cap4h, sizeTk, capTk,
-					mem.Alloc/1024/1024, mem.Sys/1024/1024)
-			case <-m.stopCleanup:
-				m.cleanupTicker.Stop()
-				return
-			}
-		}
-	}()
 }
 
 func (m *WSMonitor) Start(coins []string) {
@@ -226,14 +172,16 @@ func (m *WSMonitor) handleKlineData(symbol string, ch <-chan []byte, _time strin
 	}
 }
 
-func (m *WSMonitor) getKlineDataMap(_time string) *LRUCache {
+func (m *WSMonitor) getKlineDataMap(_time string) *sync.Map {
+	var klineDataMap *sync.Map
 	if _time == "3m" {
-		return m.klineDataMap3m
+		klineDataMap = &m.klineDataMap3m
 	} else if _time == "4h" {
-		return m.klineDataMap4h
+		klineDataMap = &m.klineDataMap4h
+	} else {
+		klineDataMap = &sync.Map{}
 	}
-	// Return empty cache for unknown intervals
-	return NewLRUCache(10, 1*time.Hour)
+	return klineDataMap
 }
 func (m *WSMonitor) processKlineUpdate(symbol string, wsData KlineWSData, _time string) {
 	// Convert WebSocket data to Kline structure
@@ -250,36 +198,36 @@ func (m *WSMonitor) processKlineUpdate(symbol string, wsData KlineWSData, _time 
 	kline.QuoteVolume, _ = parseFloat(wsData.Kline.QuoteVolume)
 	kline.TakerBuyBaseVolume, _ = parseFloat(wsData.Kline.TakerBuyBaseVolume)
 	kline.TakerBuyQuoteVolume, _ = parseFloat(wsData.Kline.TakerBuyQuoteVolume)
+	// Update K-line data
+	var klineDataMap = m.getKlineDataMap(_time)
+	value, exists := klineDataMap.Load(symbol)
+	var klines []Kline
+	if exists {
+		klines = value.([]Kline)
 
-	klineDataMap := m.getKlineDataMap(_time)
-
-	// Fast path: update existing entry in-place with a single lock acquisition
-	updated := klineDataMap.UpdateValue(symbol, func(val interface{}) interface{} {
-		klines := val.([]Kline)
+		// Check if it's a new K-line
 		if len(klines) > 0 && klines[len(klines)-1].OpenTime == kline.OpenTime {
-			// In-place update of current kline — no slice reallocation
+			// Update current K-line
 			klines[len(klines)-1] = kline
 		} else {
-			// Append new kline
+			// Add new K-line
 			klines = append(klines, kline)
-			// Maintain max length by shifting without new allocation when possible
+
+			// Maintain data length
 			if len(klines) > 100 {
-				copy(klines, klines[1:])
-				klines = klines[:100]
+				klines = klines[1:]
 			}
 		}
-		return klines
-	})
-
-	// Slow path: first kline for this symbol, use Set
-	if !updated {
-		klineDataMap.Set(symbol, []Kline{kline})
+	} else {
+		klines = []Kline{kline}
 	}
+
+	klineDataMap.Store(symbol, klines)
 }
 
 func (m *WSMonitor) GetCurrentKlines(symbol string, duration string) ([]Kline, error) {
 	// Check if each incoming symbol exists internally, if not subscribe to it
-	value, exists := m.getKlineDataMap(duration).Get(symbol)
+	value, exists := m.getKlineDataMap(duration).Load(symbol)
 	if !exists {
 		// If WS data is not initialized, use API separately - compatibility code (prevents trader from running when not initialized)
 		apiClient := NewAPIClient()
@@ -289,7 +237,7 @@ func (m *WSMonitor) GetCurrentKlines(symbol string, duration string) ([]Kline, e
 		}
 
 		// Dynamically cache into cache
-		m.getKlineDataMap(duration).Set(strings.ToUpper(symbol), klines)
+		m.getKlineDataMap(duration).Store(strings.ToUpper(symbol), klines)
 
 		// Subscribe to WebSocket stream
 		subStr := m.subscribeSymbol(symbol, duration)
@@ -315,5 +263,4 @@ func (m *WSMonitor) GetCurrentKlines(symbol string, duration string) ([]Kline, e
 func (m *WSMonitor) Close() {
 	m.wsClient.Close()
 	close(m.alertsChan)
-	close(m.stopCleanup)
 }

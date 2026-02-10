@@ -1,51 +1,72 @@
 services:
-  nofx-api:
+  backend:
     build:
       context: .
-      dockerfile: ./docker/Dockerfile.backend
-    container_name: nofx-api
+      dockerfile: Dockerfile.backend
+    container_name: valuescan-backend
     restart: unless-stopped
     ports:
-      - "${NOFX_BACKEND_PORT:-8080}:5000"
+      - "8081:5000"
     volumes:
       - ./data:/app/data
-    env_file:
-      - .env
+      - ./signal_monitor:/app/signal_monitor
+      - ./.env:/app/.env
     environment:
-      - TZ=${NOFX_TIMEZONE:-Asia/Shanghai}
-      - NOFX_LOG_FILE=${NOFX_LOG_FILE:-data/signal_monitor.log}
-      - NOFX_API_LOG_FILE=${NOFX_API_LOG_FILE:-data/api.log}
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+    networks:
+      - valuescan-network
 
-  nofx-monitor:
-    build:
-      context: .
-      dockerfile: ./docker/Dockerfile.backend
-    container_name: nofx-monitor
+  monitor:
+    image: valuescan-backend
+    container_name: valuescan-monitor
     restart: unless-stopped
     command: ["python", "-m", "signal_monitor.ai_signal_scheduler"]
-    volumes:
-      - ./data:/app/data
     env_file:
       - .env
+    volumes:
+      - ./data:/app/data
+      - ./signal_monitor:/app/signal_monitor
+      - ./.env:/app/.env
     environment:
-      - TZ=${NOFX_TIMEZONE:-Asia/Shanghai}
-      - NOFX_LOG_FILE=${NOFX_LOG_FILE:-data/signal_monitor.log}
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
     depends_on:
-      - nofx-api
+      - backend
+    networks:
+      - valuescan-network
 
-  nofx-frontend:
+  frontend:
     build:
       context: .
-      dockerfile: ./docker/Dockerfile.frontend
-    container_name: nofx-frontend
+      dockerfile: Dockerfile.frontend
+    container_name: valuescan-frontend
     restart: unless-stopped
     ports:
-      - "${NOFX_FRONTEND_PORT:-3000}:80"
+      - "3001:80"
     depends_on:
-      - nofx-api
+      - backend
+    networks:
+      - valuescan-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: valuescan-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - /var/www/html:/var/www/html:ro
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - valuescan-network
+
+networks:
+  valuescan-network:
+    driver: bridge

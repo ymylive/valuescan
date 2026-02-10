@@ -41,19 +41,15 @@ LANGUAGE = "zh"
 
 # ==================== 外部数据 API 密钥 ====================
 # CoinMarketCap API Key (用于获取市场数据)
-# 获取方式: https://coinmarketcap.com/api/
-COINMARKETCAP_API_KEY = ""
+COINMARKETCAP_API_KEY = "28fb263977514cb79b2ba80200c671c0"
 
 # CryptoCompare API Key (用于获取价格和市场数据)
-# 获取方式: https://www.cryptocompare.com/cryptopian/api-keys
-CRYPTOCOMPARE_API_KEY = ""
+CRYPTOCOMPARE_API_KEY = "fa599edd81742a6f284cc6db8f98574ede3b92dbb608b418c44715a83f1dab9b"
 
 # CoinGecko API Key (用于获取趋势币种和市场数据)
-# 获取方式: https://www.coingecko.com/en/api/pricing
-COINGECKO_API_KEY = ""
+COINGECKO_API_KEY = "CG-6itS45epruuSZZpR9Mpp3Ui8"
 
 # Etherscan API Key (可选，用于链上数据查询)
-# 获取方式: https://etherscan.io/myapikey
 ETHERSCAN_API_KEY = ""
 
 # FRED API Key (宏观数据)

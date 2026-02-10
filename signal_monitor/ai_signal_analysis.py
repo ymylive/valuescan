@@ -146,9 +146,9 @@ def get_ai_signal_config():
     default_protocol = os.getenv("NOFX_AI_SIGNAL_API_PROTOCOL", "auto").strip()
     defaults = {
         "enabled": default_enabled,
-        "api_key": os.getenv("AI_SIGNAL_API_KEY", ""),
-        "api_url": os.getenv("AI_SIGNAL_API_URL", "https://chat.cornna.xyz/v1"),
-        "model": os.getenv("AI_SIGNAL_MODEL", "gemini-3-flash-search"),
+        "api_key": "Qq159741",
+        "api_url": "https://chat.cornna.xyz/v1",
+        "model": "gemini-3-flash-search",
         "api_protocol": default_protocol,
     }
 

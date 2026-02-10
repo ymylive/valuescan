@@ -8,19 +8,6 @@ AI_PROTOCOL_AUTO = "auto"
 AI_PROTOCOL_COMPATIBLE = "compatible"
 AI_PROTOCOL_RESPONSES = "responses"
 
-_DEFAULT_TIMEOUT_SEC = 60
-_MAX_TIMEOUT_SEC = 180
-_TIMEOUT_PER_KB_SEC = 10
-
-
-def calculate_timeout(prompt_size: int) -> int:
-    """Calculate request timeout based on prompt size in characters.
-
-    Base 60s + 10s per KB of prompt, capped at 180s.
-    """
-    extra = (prompt_size // 1000) * _TIMEOUT_PER_KB_SEC
-    return min(_DEFAULT_TIMEOUT_SEC + extra, _MAX_TIMEOUT_SEC)
-
 
 def normalize_protocol(value: Optional[str]) -> str:
     if not value:
@@ -120,13 +107,9 @@ def build_payload(
         if temperature is not None:
             payload["temperature"] = temperature
         if max_tokens:
-            token_key = responses_token_key(api_url)
-            payload[token_key] = max_tokens
+            payload[responses_token_key(api_url)] = max_tokens
         if stream:
             payload["stream"] = True
-        # Ensure no conflicting token keys
-        if "max_tokens" in payload and "max_output_tokens" in payload:
-            payload.pop("max_tokens")
         return payload
 
     messages: List[Dict[str, str]] = []

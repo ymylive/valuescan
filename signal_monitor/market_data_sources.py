@@ -22,13 +22,6 @@ try:
 except Exception:
     fetch_ccxt_snapshot = None
 
-try:
-    from global_rate_limiter import get_global_limiter
-    _GLOBAL_LIMITER_AVAILABLE = True
-except ImportError:
-    _GLOBAL_LIMITER_AVAILABLE = False
-    logger.warning("Global rate limiter not available, using fallback")
-
 BINANCE_BASE = "https://api.binance.com"
 BINANCE_FUT_BASE = "https://fapi.binance.com"
 COINGECKO_BASE = "https://api.coingecko.com/api/v3"
@@ -280,42 +273,11 @@ def _merge_snapshots(base: Dict[str, Any], extra: Dict[str, Any]) -> Dict[str, A
     return merged
 
 
-def _infer_source_from_url(url: str) -> Optional[str]:
-    """从URL推断数据源名称"""
-    url_lower = url.lower()
-    if "binance.com" in url_lower:
-        if "fapi." in url_lower:
-            return "binance_futures"
-        return "binance"
-    if "coingecko.com" in url_lower:
-        return "coingecko"
-    if "coinmarketcap.com" in url_lower:
-        return "cmc"
-    if "cryptocompare.com" in url_lower:
-        return "cryptocompare"
-    return None
-
-
 def _req(url: str, params: Optional[Dict[str, Any]] = None, headers: Optional[Dict[str, str]] = None) -> Optional[Any]:
-    # 全局限流
-    if _GLOBAL_LIMITER_AVAILABLE:
-        source = _infer_source_from_url(url)
-        if source:
-            try:
-                limiter = get_global_limiter()
-                limiter.wait_and_acquire(source, timeout=15.0)
-            except TimeoutError:
-                logger.warning("Rate limit timeout for %s, skipping request", source)
-                return None
-            except Exception as exc:
-                logger.debug("Rate limiter error: %s", exc)
-
     try:
         resp = _session.get(url, params=params, headers=headers, timeout=10)
         if resp.status_code == 200:
             return resp.json()
-        if resp.status_code == 429:
-            logger.warning("HTTP 429 rate limited: %s", url)
     except Exception as exc:
         logger.debug("request failed: %s", exc)
     return None

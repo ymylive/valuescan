@@ -44,8 +44,6 @@ def build_pattern_prompt(
     """
     构建AI形态识别的Prompt
     """
-    language = "zh"
-
     # 准备K线数据
     klines = []
     if 'timestamp' in df.columns:
@@ -80,7 +78,7 @@ def build_pattern_prompt(
 
     payload_json = json.dumps(payload, ensure_ascii=False)
 
-    if False:
+    if language == "en":
         return f"""You are a professional technical analyst. Analyze the chart and identify trend lines and patterns.
 
 Input data (JSON):
@@ -467,17 +465,8 @@ def draw_ai_patterns(
     # 1. 构建Prompt
     prompt = build_pattern_prompt(symbol, df, current_price, local_patterns, language)
 
-    # 2. 调用AI API（使用队列，减少重试）
-    try:
-        from ai_request_queue import call_ai_with_queue
-    except ImportError:
-        from .ai_request_queue import call_ai_with_queue
-
-    raw_response = call_ai_with_queue(
-        lambda: call_ai_pattern_api(prompt, config),
-        attempts=2,
-        retry_delay=5.0
-    )
+    # 2. 调用AI API
+    raw_response = call_ai_pattern_api(prompt, config)
     if not raw_response:
         logger.info("AI pattern detection not available, using local patterns only")
         # 返回本地形态

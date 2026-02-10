@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-import os
 """Check AI models and recent SafeFallback logs."""
 import paramiko
 
 ssh = paramiko.SSHClient()
 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-ssh.connect('82.158.88.34', username='root', password=os.environ.get('VPS_PASSWORD', ''), timeout=30)
+ssh.connect('82.158.88.34', username='root', password='Qq159741', timeout=30)
 
 # Check for any SafeFallback in recent history (last 1000 lines)
 stdin, stdout, stderr = ssh.exec_command('journalctl -u nofx --no-pager -n 1000 | grep -i "SafeFallback\\|gemini\\|Content preview"')

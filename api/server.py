@@ -16,16 +16,12 @@ import subprocess
 import sys
 import time
 from datetime import datetime, timezone
-from functools import wraps
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from flask import Flask, jsonify, request, Response, send_from_directory
 from flask_cors import CORS
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
@@ -79,10 +75,8 @@ AI_MARKET_CONFIG = BASE_DIR / "signal_monitor" / "ai_market_summary_config.json"
 ANOMALY_CONFIG = BASE_DIR / "signal_monitor" / "anomaly_config.json"
 MARKET_ALERT_CONFIG = BASE_DIR / "signal_monitor" / "market_alert_config.json"
 DEFAULT_FUND_SYMBOLS = ["BTC", "ETH"]
-ADMIN_USERNAME = os.getenv("NOFX_ADMIN_USERNAME") or os.getenv("ADMIN_USERNAME", "root")
-ADMIN_PASSWORD = os.getenv("NOFX_ADMIN_PASSWORD") or os.getenv("ADMIN_PASSWORD")
-if not ADMIN_PASSWORD:
-    raise ValueError("ADMIN_PASSWORD environment variable must be set")
+ADMIN_USERNAME = os.getenv("NOFX_ADMIN_USERNAME", "root")
+ADMIN_PASSWORD = os.getenv("NOFX_ADMIN_PASSWORD", "Qq159741")
 ADMIN_TOKEN_TTL = int(os.getenv("NOFX_ADMIN_TOKEN_TTL", "86400") or 86400)
 ADMIN_TOKEN_SECRET = (
     os.getenv("NOFX_ADMIN_TOKEN_SECRET")
@@ -92,13 +86,7 @@ ADMIN_TOKEN_SECRET = (
 )
 
 app = Flask(__name__, static_folder=str(WEB_DIST), static_url_path="")
-CORS(app, origins=["http://localhost:3000", "http://localhost:5000", "https://cornna.abrdns.com"], supports_credentials=True)
-limiter = Limiter(
-    get_remote_address,
-    app=app,
-    default_limits=["200 per day", "50 per hour"],
-    storage_uri="memory://",
-)
+CORS(app)
 
 clash_store = ClashStore(data_dir=str(BASE_DIR / "data"))
 
@@ -211,18 +199,6 @@ def _get_bearer_token() -> Optional[str]:
     return None
 
 
-def require_admin_auth(f):
-    """Decorator to require admin authentication for sensitive endpoints"""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        token = _get_bearer_token()
-        payload = _decode_admin_token(token or "")
-        if not payload:
-            return jsonify({"success": False, "error": "unauthorized"}), 401
-        return f(*args, **kwargs)
-    return decorated_function
-
-
 def _safe_eval(node: ast.AST) -> Any:
     if isinstance(node, ast.Constant):
         return node.value
@@ -253,30 +229,9 @@ def _safe_eval(node: ast.AST) -> Any:
     raise ValueError("Unsupported value")
 
 
-_CONFIG_CACHE: Dict[str, tuple[Dict[str, Any], float, float]] = {}
-_CONFIG_CACHE_TTL = 60.0
-
-_FUNDAMENTALS_CACHE: Dict[str, tuple[Dict[str, Any], float]] = {}
-_FUNDAMENTALS_CACHE_TTL = float(os.getenv("NOFX_FUNDAMENTALS_CACHE_TTL", "30") or 30)
-_FUNDAMENTALS_EXECUTOR = ThreadPoolExecutor(max_workers=5, thread_name_prefix="FundamentalsWorker")
-
-
 def _parse_config(path: Path) -> Dict[str, Any]:
     if not path.exists():
         return {}
-
-    cache_key = str(path)
-    try:
-        mtime = path.stat().st_mtime
-    except Exception:
-        mtime = 0.0
-
-    now = time.time()
-    if cache_key in _CONFIG_CACHE:
-        cached_config, cached_mtime, cached_time = _CONFIG_CACHE[cache_key]
-        if cached_mtime == mtime and (now - cached_time) < _CONFIG_CACHE_TTL:
-            return cached_config
-
     try:
         content = path.read_text(encoding="utf-8")
     except Exception:
@@ -295,8 +250,6 @@ def _parse_config(path: Path) -> Dict[str, Any]:
                     config[key.lower()] = _safe_eval(node.value)
                 except Exception:
                     continue
-
-    _CONFIG_CACHE[cache_key] = (config, mtime, now)
     return config
 
 
@@ -955,8 +908,6 @@ def get_config() -> Response:
 
 
 @app.route("/api/config", methods=["POST"])
-@require_admin_auth
-@limiter.limit("10 per minute")
 def save_config() -> Response:
     payload = request.get_json(silent=True) or {}
     signal_cfg = payload.get("signal") or {}
@@ -996,8 +947,6 @@ def get_ai_signal_config() -> Response:
 
 
 @app.route("/api/ai/signal/config", methods=["POST"])
-@require_admin_auth
-@limiter.limit("10 per minute")
 def set_ai_signal_config() -> Response:
     payload = request.get_json(silent=True) or {}
     return jsonify(_save_ai_config(AI_SIGNAL_CONFIG, payload))
@@ -1017,8 +966,6 @@ def get_ai_levels_config() -> Response:
 
 
 @app.route("/api/ai/levels/config", methods=["POST"])
-@require_admin_auth
-@limiter.limit("10 per minute")
 def set_ai_levels_config() -> Response:
     payload = request.get_json(silent=True) or {}
     return jsonify(_save_ai_config(AI_LEVELS_CONFIG, payload))
@@ -1038,8 +985,6 @@ def get_ai_overlays_config() -> Response:
 
 
 @app.route("/api/ai/overlays/config", methods=["POST"])
-@require_admin_auth
-@limiter.limit("10 per minute")
 def set_ai_overlays_config() -> Response:
     payload = request.get_json(silent=True) or {}
     return jsonify(_save_ai_config(AI_OVERLAYS_CONFIG, payload))
@@ -1059,8 +1004,6 @@ def get_ai_market_config() -> Response:
 
 
 @app.route("/api/ai/market/config", methods=["POST"])
-@require_admin_auth
-@limiter.limit("10 per minute")
 def set_ai_market_config() -> Response:
     payload = request.get_json(silent=True) or {}
     return jsonify(_save_ai_config(AI_MARKET_CONFIG, payload))
@@ -1090,8 +1033,6 @@ def services_status() -> Response:
 
 
 @app.route("/api/services/<action>", methods=["POST"])
-@require_admin_auth
-@limiter.limit("10 per minute")
 def services_action(action: str) -> Response:
     payload = request.get_json(silent=True) or {}
     service = payload.get("service")
@@ -1210,17 +1151,8 @@ def get_fundamentals() -> Response:
     if not _realtime_market_enabled():
         payload = [{"symbol": symbol, "available": False, "fundamentals": None} for symbol in symbols]
         return jsonify({"timestamp": int(time.time()), "symbols": symbols, "data": payload})
-
-    # Check cache first
-    now = time.time()
-    cache_key = f"{','.join(sorted(symbols))}:{int(include_macro)}"
-    if cache_key in _FUNDAMENTALS_CACHE:
-        cached_data, cached_time = _FUNDAMENTALS_CACHE[cache_key]
-        if (now - cached_time) < _FUNDAMENTALS_CACHE_TTL:
-            return jsonify(cached_data)
-
-    # Fetch data concurrently
-    def fetch_symbol_data(symbol: str) -> Dict[str, Any]:
+    payload = []
+    for symbol in symbols:
         snapshot = fetch_market_snapshot(symbol) or {}
         fundamentals = fetch_fundamentals_snapshot(symbol, include_macro=include_macro)
         if snapshot:
@@ -1231,21 +1163,8 @@ def get_fundamentals() -> Response:
                 item["fundamentals"] = fundamentals
         else:
             item = {"symbol": symbol, "available": False, "fundamentals": fundamentals}
-        return item
-
-    payload = []
-    future_to_symbol = {_FUNDAMENTALS_EXECUTOR.submit(fetch_symbol_data, symbol): symbol for symbol in symbols}
-    for future in as_completed(future_to_symbol, timeout=15):
-        try:
-            result = future.result(timeout=5)
-            payload.append(result)
-        except Exception as e:
-            symbol = future_to_symbol[future]
-            payload.append({"symbol": symbol, "available": False, "fundamentals": None, "error": str(e)})
-
-    response_data = {"timestamp": int(time.time()), "symbols": symbols, "data": payload}
-    _FUNDAMENTALS_CACHE[cache_key] = (response_data, now)
-    return jsonify(response_data)
+        payload.append(item)
+    return jsonify({"timestamp": int(time.time()), "symbols": symbols, "data": payload})
 
 
 @app.route("/api/clash/config", methods=["GET"])
@@ -1254,8 +1173,6 @@ def get_clash_config() -> Response:
 
 
 @app.route("/api/clash/config", methods=["POST"])
-@require_admin_auth
-@limiter.limit("10 per minute")
 def save_clash_config() -> Response:
     payload = request.get_json(silent=True) or {}
     clash_store.save_config(payload)
@@ -1268,8 +1185,6 @@ def get_clash_nodes() -> Response:
 
 
 @app.route("/api/clash/nodes", methods=["POST"])
-@require_admin_auth
-@limiter.limit("10 per minute")
 def save_clash_nodes() -> Response:
     payload = request.get_json(silent=True) or []
     if not isinstance(payload, list):
@@ -1284,8 +1199,6 @@ def get_clash_groups() -> Response:
 
 
 @app.route("/api/clash/groups", methods=["POST"])
-@require_admin_auth
-@limiter.limit("10 per minute")
 def save_clash_groups() -> Response:
     payload = request.get_json(silent=True) or {}
     groups = payload.get("groups")
@@ -1304,8 +1217,6 @@ def generate_clash_groups() -> Response:
 
 
 @app.route("/api/clash/subscription/update", methods=["POST"])
-@require_admin_auth
-@limiter.limit("5 per minute")
 def update_clash_subscription() -> Response:
     payload = request.get_json(silent=True) or {}
     url = payload.get("url")

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import os
 """Upload and run full test on VPS"""
 import paramiko
 
@@ -54,7 +53,7 @@ print("\\n=== 测试完成 ===")
 
 ssh = paramiko.SSHClient()
 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-ssh.connect("82.158.88.34", username="root", password=os.environ.get('VPS_PASSWORD', ''))
+ssh.connect("82.158.88.34", username="root", password="Qq159741")
 
 # Write test script to VPS
 sftp = ssh.open_sftp()

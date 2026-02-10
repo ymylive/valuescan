@@ -3,64 +3,33 @@
 整合所有免费加密货币数据API
 """
 
-import os
 import time
 import requests
 from functools import wraps
 from logger import logger
 
-try:
-    from global_rate_limiter import get_global_limiter
-except ImportError:
-    # Fallback if global_rate_limiter not available
-    get_global_limiter = None
-
 # ==================== API配置 ====================
-ETHERSCAN_API_KEY = os.getenv("ETHERSCAN_API_KEY", "")
+ETHERSCAN_API_KEY = "HDEJ9NFX5BN63E9CPAZ16QJJJDE5X91W75"
 
 # ==================== 频率限制装饰器 ====================
 
 def rate_limit(calls_per_minute):
-    """频率限制装饰器（已升级为使用全局限流器）"""
+    """频率限制装饰器"""
     min_interval = 60.0 / calls_per_minute
     last_called = [0.0]
 
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            # 优先使用全局限流器
-            if get_global_limiter:
-                # 从函数名推断数据源
-                source = _infer_source_from_func(func)
-                limiter = get_global_limiter()
-                limiter.wait_and_acquire(source, timeout=10.0)
-            else:
-                # Fallback到旧的限流逻辑
-                elapsed = time.time() - last_called[0]
-                left_to_wait = min_interval - elapsed
-                if left_to_wait > 0:
-                    time.sleep(left_to_wait)
-                last_called[0] = time.time()
-
-            return func(*args, **kwargs)
+            elapsed = time.time() - last_called[0]
+            left_to_wait = min_interval - elapsed
+            if left_to_wait > 0:
+                time.sleep(left_to_wait)
+            ret = func(*args, **kwargs)
+            last_called[0] = time.time()
+            return ret
         return wrapper
     return decorator
-
-
-def _infer_source_from_func(func):
-    """从函数名推断数据源"""
-    func_name = func.__name__.lower()
-    if 'binance' in func_name:
-        if 'futures' in func_name or 'funding' in func_name or 'open_interest' in func_name:
-            return 'binance_futures'
-        return 'binance'
-    elif 'coingecko' in func_name:
-        return 'coingecko'
-    elif 'defillama' in func_name:
-        return 'defillama'
-    elif 'etherscan' in func_name:
-        return 'etherscan'
-    return 'unknown'
 
 
 # ==================== 重试机制 ====================
