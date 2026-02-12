@@ -96,6 +96,13 @@ DEFAULT_CMD_TIMEOUT_SEC = float(os.getenv("NOFX_CMD_TIMEOUT_SEC", "8") or 8)
 SYSTEMCTL_TIMEOUT_SEC = float(os.getenv("NOFX_SYSTEMCTL_TIMEOUT_SEC", str(DEFAULT_CMD_TIMEOUT_SEC)) or DEFAULT_CMD_TIMEOUT_SEC)
 JOURNALCTL_TIMEOUT_SEC = float(os.getenv("NOFX_JOURNALCTL_TIMEOUT_SEC", str(DEFAULT_CMD_TIMEOUT_SEC)) or DEFAULT_CMD_TIMEOUT_SEC)
 SIGNALS_LIMIT_MAX = int(os.getenv("NOFX_SIGNALS_LIMIT_MAX", "200") or 200)
+PRIMARY_SIGNAL_MONITOR_UNIT = str(os.getenv("NOFX_SIGNAL_MONITOR_UNIT") or "valuescan-monitor").strip() or "valuescan-monitor"
+PRIMARY_SIGNAL_API_UNIT = str(os.getenv("NOFX_SIGNAL_API_UNIT") or "valuescan-api").strip() or "valuescan-api"
+PRIMARY_TOKEN_REFRESHER_UNIT = str(os.getenv("NOFX_TOKEN_REFRESHER_UNIT") or "valuescan-token-refresher").strip() or "valuescan-token-refresher"
+
+SIGNAL_MONITOR_UNITS = [PRIMARY_SIGNAL_MONITOR_UNIT, "signal-monitor"]
+SIGNAL_API_UNITS = [PRIMARY_SIGNAL_API_UNIT, "signal-api"]
+TOKEN_REFRESHER_UNITS = [PRIMARY_TOKEN_REFRESHER_UNIT, "token-refresher"]
 
 
 def _allowed_cors_origins() -> List[str]:
@@ -836,6 +843,45 @@ def _systemctl_status(service: str) -> str:
     return "running" if status == "active" else "stopped"
 
 
+def _service_candidates(service: str) -> List[str]:
+    def _dedupe(items: List[str]) -> List[str]:
+        seen: set[str] = set()
+        output: List[str] = []
+        for item in items:
+            if item and item not in seen:
+                seen.add(item)
+                output.append(item)
+        return output
+
+    if service == "signal-monitor":
+        return _dedupe(SIGNAL_MONITOR_UNITS)
+    if service == "signal-api":
+        return _dedupe(SIGNAL_API_UNITS)
+    if service == "token-refresher":
+        return _dedupe(TOKEN_REFRESHER_UNITS)
+    return []
+
+
+def _service_status(service: str) -> str:
+    candidates = _service_candidates(service)
+    if not candidates:
+        return "stopped"
+    for unit in candidates:
+        if _systemctl_status(unit) == "running":
+            return "running"
+    return "stopped"
+
+
+def _service_action(action: str, service: str) -> bool:
+    candidates = _service_candidates(service)
+    if not candidates:
+        return False
+    for unit in candidates:
+        if _systemctl(action, unit):
+            return True
+    return False
+
+
 def _journal_logs(unit: str, lines: int) -> List[Dict[str, Any]]:
     if platform.system().lower().startswith("win"):
         return []
@@ -898,14 +944,16 @@ def _tail_file_lines(path: Path, lines: int) -> List[str]:
 
 
 def _resolve_log_file(unit: str) -> Optional[Path]:
-    if unit == "signal-monitor":
+    if unit in SIGNAL_MONITOR_UNITS:
         log_file = os.getenv("NOFX_LOG_FILE") or os.getenv("LOG_FILE")
         if not log_file:
             log_file = str(BASE_DIR / "data" / "signal_monitor.log")
-    else:
+    elif unit in SIGNAL_API_UNITS:
         log_file = os.getenv("NOFX_API_LOG_FILE") or os.getenv("API_LOG_FILE")
         if not log_file:
             return None
+    else:
+        return None
     path = Path(log_file)
     if not path.is_absolute():
         path = BASE_DIR / path
@@ -1161,8 +1209,8 @@ def services_status() -> Response:
         }
         return jsonify(services)
     services = {
-        "signal-monitor": _systemctl_status("signal-monitor"),
-        "signal-api": _systemctl_status("signal-api"),
+        "signal-monitor": _service_status("signal-monitor"),
+        "signal-api": _service_status("signal-api"),
     }
     return jsonify(services)
 
@@ -1178,15 +1226,43 @@ def services_action(action: str) -> Response:
     allowed = {"signal-monitor", "signal-api"}
     if service not in allowed:
         return jsonify({"success": False, "message": "Service not allowed"}), 400
-    ok = _systemctl(action, service)
+    ok = _service_action(action, service)
     return jsonify({"success": ok})
+
+
+@app.route("/api/logs", methods=["POST"])
+def submit_log() -> Response:
+    payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        return jsonify({"success": False, "message": "invalid payload"}), 400
+
+    level_name = str(payload.get("level") or "INFO").upper()
+    component = str(payload.get("component") or "frontend").strip() or "frontend"
+    message = str(payload.get("message") or "")
+    if not message:
+        return jsonify({"success": False, "message": "message required"}), 400
+
+    logger_name = f"frontend.{component}"
+    logger = logging.getLogger(logger_name)
+    level_map = {
+        "DEBUG": logging.DEBUG,
+        "INFO": logging.INFO,
+        "WARN": logging.WARNING,
+        "WARNING": logging.WARNING,
+        "ERROR": logging.ERROR,
+        "CRITICAL": logging.CRITICAL,
+    }
+    level = level_map.get(level_name, logging.INFO)
+    logger.log(level, "%s", message)
+    return jsonify({"success": True})
 
 
 @app.route("/api/logs/<service>", methods=["GET"])
 def get_logs(service: str) -> Response:
     mapping = {
-        "signal": "signal-monitor",
-        "api": "signal-api",
+        "signal": PRIMARY_SIGNAL_MONITOR_UNIT,
+        "api": PRIMARY_SIGNAL_API_UNIT,
+        "token-refresher": PRIMARY_TOKEN_REFRESHER_UNIT,
     }
     unit = mapping.get(service)
     if not unit:

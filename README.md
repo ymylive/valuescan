@@ -29,6 +29,17 @@ Signal Monitor focuses on real-time signal monitoring, AI signal briefs, macro m
 ## Environment Notes
 - See `.env.example` for the full list of environment variables and defaults.
 
+## Frontend/Backend Routing Policy
+- Canonical API base is same-origin `/api` for production deployments.
+- `VITE_API_BASE_URL` is optional; if provided without `/api`, the frontend appends `/api` automatically.
+- Local dev proxy (`web/vite.config.ts`) reads `VITE_DEV_API_PROXY_TARGET`:
+  - Python backend local run: `http://localhost:5000`
+  - Docker backend local run: `http://localhost:8081`
+- `/ws` proxy is disabled by default. Enable only when backend websocket routes are implemented:
+  - `VITE_ENABLE_WS_PROXY=1`
+  - `VITE_DEV_WS_PROXY_TARGET=ws://<your-backend-host>:<port>`
+- Keep frontend and reverse proxy aligned on `/api` path forwarding to avoid environment drift.
+
 ## Security
 - Keep secrets out of git.
 - For public access, use a reverse proxy (TLS) in front of the frontend container.

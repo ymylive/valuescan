@@ -36,19 +36,21 @@ export const useDashboardData = () => {
   const loadData = async () => {
     setLoading(true);
     const results = await Promise.allSettled([
-      api.get<DbStatus>('/db/status'),
-      api.get<{ signals: SignalItem[] }>('/signals', { params: { limit: 5 } }),
-      api.get<AlertsResponse>('/alerts', { params: { limit: 5 } }),
+      api.get('/db/status'),
+      api.get('/signals', { params: { limit: 5 } }),
+      api.get('/alerts', { params: { limit: 5 } }),
     ]);
 
     if (results[0].status === 'fulfilled') {
-      setDbStatus(results[0].value.data ?? null);
+      const payload = results[0].value as unknown as DbStatus;
+      setDbStatus(payload ?? null);
     }
     if (results[1].status === 'fulfilled') {
-      setSignals(results[1].value.data?.signals || []);
+      const payload = results[1].value as unknown as { signals?: SignalItem[] };
+      setSignals(payload?.signals || []);
     }
     if (results[2].status === 'fulfilled') {
-      const payload = results[2].value.data ?? {};
+      const payload = (results[2].value as unknown as AlertsResponse) || {};
       if (payload.disabled) {
         setAlertsDisabled(true);
         setAlerts([]);

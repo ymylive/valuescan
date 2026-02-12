@@ -5,7 +5,7 @@ import { Button, Badge } from '../../components/ui';
 import { GlassCard } from '../../components/shared';
 import { Play, Square, RotateCcw } from 'lucide-react';
 import { useToastStore } from '../../stores';
-import { buildApiUrl } from '../../services/api';
+import api, { toApiError } from '../../services/api';
 
 interface Service {
   name: string;
@@ -23,13 +23,10 @@ export const ServicesPage = () => {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch(buildApiUrl('/services/status'));
-      if (res.ok) {
-        const data = await res.json();
-        setServices((prev) => prev.map((s) => ({ ...s, status: data[s.name] || 'stopped' })));
-      }
-    } catch {
-      addToast('error', 'Failed to load service status');
+      const data = await api.get('/services/status') as Record<string, Service['status']>;
+      setServices((prev) => prev.map((s) => ({ ...s, status: data[s.name] || 'stopped' })));
+    } catch (error) {
+      addToast('error', toApiError(error).message || 'Failed to load service status');
     }
   }, [addToast]);
 
@@ -43,22 +40,17 @@ export const ServicesPage = () => {
 
   const handleAction = async (name: string, action: 'start' | 'stop' | 'restart') => {
     try {
-      const res = await fetch(buildApiUrl(`/services/${action}`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ service: name }),
-      });
-      if (res.ok) {
+      const res = await api.post(`/services/${action}`, { service: name }) as { success?: boolean; message?: string };
+      if (res?.success) {
         addToast('success', `Service ${action} succeeded`);
         setTimeout(() => {
           void fetchStatus();
         }, 2000);
       } else {
-        const err = await res.json();
-        addToast('error', err.message || 'Action failed');
+        addToast('error', res?.message || 'Action failed');
       }
-    } catch {
-      addToast('error', 'Action failed');
+    } catch (error) {
+      addToast('error', toApiError(error).message || 'Action failed');
     }
   };
 

@@ -11,16 +11,27 @@ const API_HOST_MAPPING: Record<string, string> = {
   'testvalue.cornna.xyz': 'https://api.testvalue.cornna.xyz/api',
 };
 
+const normalizeApiBase = (base: string): string => {
+  const normalized = base.replace(/\/+$/, '');
+  if (!normalized) {
+    return '/api';
+  }
+  if (/\/api(?:\/|$)/i.test(normalized)) {
+    return normalized;
+  }
+  return `${normalized}/api`;
+};
+
 const resolveApiBaseUrl = (): string => {
   const envBase = ((import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_API_BASE_URL || '').trim();
   if (envBase) {
-    return envBase.replace(/\/+$/, '');
+    return normalizeApiBase(envBase);
   }
 
   if (typeof window !== 'undefined') {
     const host = window.location.hostname.toLowerCase();
     if (API_HOST_MAPPING[host]) {
-      return API_HOST_MAPPING[host];
+      return normalizeApiBase(API_HOST_MAPPING[host]);
     }
   }
 
