@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 # -*- coding: utf-8 -*-
 import paramiko
 import sys
@@ -9,7 +10,7 @@ if sys.platform == 'win32':
 
 ssh = paramiko.SSHClient()
 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-ssh.connect("82.158.88.34", username="root", password="Qq159741", look_for_keys=False, allow_agent=False)
+ssh.connect("82.158.88.34", username="root", password=os.getenv("VALUESCAN_VPS_PASSWORD", ""), look_for_keys=False, allow_agent=False)
 
 # 检查send_message_with_async_chart函数的实现
 stdin, stdout, stderr = ssh.exec_command("grep -A 50 'def send_message_with_async_chart' /root/valuescan/signal_monitor/telegram.py")

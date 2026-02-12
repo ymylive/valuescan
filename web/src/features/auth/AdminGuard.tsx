@@ -2,6 +2,7 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { Spinner } from '../../components/ui';
 import { adminCheck } from '../../services/adminAuth';
+import { getAdminToken } from '../../services/api';
 
 const CheckingState = () => (
   <div className="flex h-screen items-center justify-center bg-gray-50 dark:bg-gray-950">
@@ -16,7 +17,7 @@ export const AdminGuard = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     let active = true;
     const runCheck = async () => {
-      const token = localStorage.getItem('token');
+      const token = getAdminToken();
       if (!token) {
         if (active) {
           setStatus('unauth');

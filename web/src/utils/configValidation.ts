@@ -36,6 +36,59 @@ export class ConfigValidator {
         this.addError('ai_signal_analysis_model', 'AI 简评模型不能为空', 'error');
       }
 
+      const hasSecondary = Boolean(
+        config.ai_signal_analysis_secondary_api_url ||
+          config.ai_signal_analysis_secondary_api_key ||
+          config.ai_signal_analysis_secondary_model,
+      );
+      if (hasSecondary) {
+        if (!config.ai_signal_analysis_secondary_api_url) {
+          this.addError('ai_signal_analysis_secondary_api_url', '第二优先级 API URL 不能为空', 'error');
+        } else if (!this.isValidUrl(config.ai_signal_analysis_secondary_api_url)) {
+          this.addError('ai_signal_analysis_secondary_api_url', '第二优先级 API URL 格式不正确', 'error');
+        }
+        if (!config.ai_signal_analysis_secondary_api_key) {
+          this.addError('ai_signal_analysis_secondary_api_key', '第二优先级 API Key 不能为空', 'error');
+        }
+        if (!config.ai_signal_analysis_secondary_model) {
+          this.addError('ai_signal_analysis_secondary_model', '第二优先级模型不能为空', 'error');
+        }
+      }
+
+      const hasTertiary = Boolean(
+        config.ai_signal_analysis_tertiary_api_url ||
+          config.ai_signal_analysis_tertiary_api_key ||
+          config.ai_signal_analysis_tertiary_model,
+      );
+      if (hasTertiary) {
+        if (!config.ai_signal_analysis_tertiary_api_url) {
+          this.addError('ai_signal_analysis_tertiary_api_url', '第三优先级 API URL 不能为空', 'error');
+        } else if (!this.isValidUrl(config.ai_signal_analysis_tertiary_api_url)) {
+          this.addError('ai_signal_analysis_tertiary_api_url', '第三优先级 API URL 格式不正确', 'error');
+        }
+        if (!config.ai_signal_analysis_tertiary_api_key) {
+          this.addError('ai_signal_analysis_tertiary_api_key', '第三优先级 API Key 不能为空', 'error');
+        }
+        if (!config.ai_signal_analysis_tertiary_model) {
+          this.addError('ai_signal_analysis_tertiary_model', '第三优先级模型不能为空', 'error');
+        }
+      }
+
+      if (config.ai_signal_analysis_mcp_enabled) {
+        if (!config.ai_signal_analysis_mcp_source_primary_command) {
+          this.addError('ai_signal_analysis_mcp_source_primary_command', 'MCP 主搜索源 command 不能为空', 'error');
+        }
+        if (!config.ai_signal_analysis_mcp_source_primary_args) {
+          this.addError('ai_signal_analysis_mcp_source_primary_args', 'MCP 主搜索源 args 不能为空', 'error');
+        }
+        if (config.ai_signal_analysis_mcp_timeout_sec < 5 || config.ai_signal_analysis_mcp_timeout_sec > 120) {
+          this.addError('ai_signal_analysis_mcp_timeout_sec', 'MCP 超时应在 5-120 秒', 'warning');
+        }
+        if (config.ai_signal_analysis_mcp_max_results < 1 || config.ai_signal_analysis_mcp_max_results > 20) {
+          this.addError('ai_signal_analysis_mcp_max_results', 'MCP 单源结果数应在 1-20', 'warning');
+        }
+      }
+
       if (config.ai_signal_analysis_interval_hours < 0.1 || config.ai_signal_analysis_interval_hours > 168) {
         this.addError('ai_signal_analysis_interval_hours', 'AI 简评频率应在 0.1-168 小时', 'warning');
       }

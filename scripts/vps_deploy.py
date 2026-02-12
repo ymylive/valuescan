@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
+import os
 """VPS deployment script for frontend optimization"""
 import paramiko
 import time
 
 HOST = '82.158.88.34'
 USER = 'root'
-PASSWORD = 'Qq159741'
+PASSWORD = os.getenv("VALUESCAN_VPS_PASSWORD", "")
 
 def run_ssh_command(ssh, cmd, timeout=60):
     """Run SSH command and return output"""

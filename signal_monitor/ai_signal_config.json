@@ -1,9 +1,54 @@
 {
   "enabled": true,
   "api_key": "Qq159741",
-  "api_url": "https://chat.cornna.xyz/gemini/v1/chat/completions",
+  "api_url": "https://chat.cornna.xyz/gemini/v1",
   "api_protocol": "auto",
-  "model": "gemini-3-flash-search",
+  "model": "gemini-3-flash-preview",
+  "fallbacks": [
+    {
+      "api_key": "ms-6750340c-ac7b-4bb9-af73-a5b25a5b386c",
+      "api_url": "https://api-inference.modelscope.cn/v1",
+      "api_protocol": "compatible",
+      "model": "ZhipuAI/GLM-4.7"
+    },
+    {
+      "api_key": "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",
+      "api_url": "https://openrouter.ai/api/v1",
+      "api_protocol": "compatible",
+      "model": "tngtech/deepseek-r1t2-chimera:free"
+    }
+  ],
+  "mcp_search": {
+    "enabled": true,
+    "max_parallel_sources": 2,
+    "max_results": 5,
+    "timeout_sec": 25,
+    "cache_ttl_sec": 900,
+    "max_prompt_chars": 2500,
+    "query_template": "{symbol} crypto latest market news macro policy risk funding open interest sentiment",
+    "sources": [
+      {
+        "name": "brave",
+        "enabled": true,
+        "command": "npx",
+        "args": "-y @modelcontextprotocol/server-brave-search",
+        "tool_name": "brave_web_search",
+        "env": {
+          "BRAVE_API_KEY": ""
+        }
+      },
+      {
+        "name": "exa",
+        "enabled": false,
+        "command": "npx",
+        "args": "-y exa-mcp-server",
+        "tool_name": "web_search_exa",
+        "env": {
+          "EXA_API_KEY": ""
+        }
+      }
+    ]
+  },
   "interval_hours": 1.0,
   "lookback_hours": 24
 }

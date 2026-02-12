@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
+import os
 """Quick deploy to VPS - git pull and restart API only."""
 import paramiko
 
 HOST = "82.158.88.34"
 USER = "root"
-PASSWORD = "Qq159741"
+PASSWORD = os.getenv("VALUESCAN_VPS_PASSWORD", "")
 
 def main():
     ssh = paramiko.SSHClient()

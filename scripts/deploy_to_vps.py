@@ -277,7 +277,7 @@ def main():
 
     if not SKIP_CLEANUP:
         steps.extend([
-            ("???????", cleanup_cmd),
+            ("清理历史模块", cleanup_cmd),
         ])
 
     if ASYNC_FRONTEND:
@@ -289,18 +289,18 @@ def main():
             "systemctl restart nginx\" "
             ">/tmp/valuescan_web_build.log 2>&1 &"
         )
-        steps.append(("??????", frontend_cmd))
+        steps.append(("异步构建前端", frontend_cmd))
     else:
         steps.extend([
-            ("??????", f"cd {VPS_PATH}/web && npm install"),
-            ("????", f"cd {VPS_PATH}/web && npm run build"),
-            ("?????Nginx??", f"mkdir -p /var/www/valuescan && cp -r {VPS_PATH}/web/dist/* /var/www/valuescan/"),
-            ("?? Nginx", "systemctl restart nginx"),
+            ("安装前端依赖", f"cd {VPS_PATH}/web && npm install"),
+            ("构建前端", f"cd {VPS_PATH}/web && npm run build"),
+            ("部署静态文件到 Nginx", f"mkdir -p /var/www/valuescan && cp -r {VPS_PATH}/web/dist/* /var/www/valuescan/"),
+            ("重启 Nginx", "systemctl restart nginx"),
         ])
 
     steps.extend([
-        ("?? API ??", "systemctl restart valuescan-api"),
-        ("??????", "systemctl restart valuescan-monitor"),
+        ("重启 API 服务", "systemctl restart valuescan-api"),
+        ("重启监控服务", "systemctl restart valuescan-monitor"),
     ])
 
     success = True

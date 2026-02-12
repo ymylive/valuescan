@@ -19,7 +19,7 @@ def login_locally():
         return None
     
     email = "ymy_live@outlook.com"
-    password = "Qq159741."
+    password=os.getenv("VALUESCAN_VPS_PASSWORD", "")
     
     profile_dir = tempfile.mkdtemp(prefix="vs_login_")
     print(f"Using profile: {profile_dir}")

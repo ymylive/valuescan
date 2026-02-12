@@ -1,4 +1,4 @@
-import api, { toApiError } from './api';
+import api, { toApiError, type ApiError } from './api';
 import {
   AIServiceConfig,
   SignalMonitorConfig,
@@ -21,6 +21,12 @@ interface BackendConfig {
   us_market?: Record<string, unknown>;
 }
 
+export interface SaveConfigurationResult {
+  localSaved: boolean;
+  backendSaved: boolean;
+  backendError?: ApiError;
+}
+
 export class ConfigService {
   private readonly LOCAL_STORAGE_KEY = 'app_config';
 
@@ -40,14 +46,24 @@ export class ConfigService {
     }
   }
 
-  async saveConfiguration(config: CompleteConfig): Promise<void> {
+  async saveConfiguration(config: CompleteConfig): Promise<SaveConfigurationResult> {
     this.saveToLocalStorage(config);
 
     try {
       const backendConfig = this.transformFrontendToBackend(config);
       await api.post('/config', backendConfig);
+      return {
+        localSaved: true,
+        backendSaved: true,
+      };
     } catch (error) {
-      console.warn('Failed to save configuration to backend, saved to local storage only:', toApiError(error));
+      const backendError = toApiError(error);
+      console.warn('Failed to save configuration to backend, saved to local storage only:', backendError);
+      return {
+        localSaved: true,
+        backendSaved: false,
+        backendError,
+      };
     }
   }
 
@@ -113,6 +129,33 @@ export class ConfigService {
         ai_signal_analysis_api_url: '',
         ai_signal_analysis_api_protocol: 'auto',
         ai_signal_analysis_model: '',
+        ai_signal_analysis_secondary_api_key: '',
+        ai_signal_analysis_secondary_api_url: '',
+        ai_signal_analysis_secondary_api_protocol: 'auto',
+        ai_signal_analysis_secondary_model: '',
+        ai_signal_analysis_tertiary_api_key: '',
+        ai_signal_analysis_tertiary_api_url: '',
+        ai_signal_analysis_tertiary_api_protocol: 'auto',
+        ai_signal_analysis_tertiary_model: '',
+        ai_signal_analysis_mcp_enabled: false,
+        ai_signal_analysis_mcp_query_template:
+          '{symbol} crypto latest market news macro policy risk funding open interest sentiment',
+        ai_signal_analysis_mcp_max_results: 5,
+        ai_signal_analysis_mcp_timeout_sec: 25,
+        ai_signal_analysis_mcp_cache_ttl_sec: 900,
+        ai_signal_analysis_mcp_max_prompt_chars: 2500,
+        ai_signal_analysis_mcp_source_primary_enabled: true,
+        ai_signal_analysis_mcp_source_primary_name: 'brave',
+        ai_signal_analysis_mcp_source_primary_command: 'npx',
+        ai_signal_analysis_mcp_source_primary_args: '-y @modelcontextprotocol/server-brave-search',
+        ai_signal_analysis_mcp_source_primary_tool_name: 'brave_web_search',
+        ai_signal_analysis_mcp_source_primary_env_json: '{"BRAVE_API_KEY":""}',
+        ai_signal_analysis_mcp_source_secondary_enabled: false,
+        ai_signal_analysis_mcp_source_secondary_name: 'exa',
+        ai_signal_analysis_mcp_source_secondary_command: 'npx',
+        ai_signal_analysis_mcp_source_secondary_args: '-y exa-mcp-server',
+        ai_signal_analysis_mcp_source_secondary_tool_name: 'web_search_exa',
+        ai_signal_analysis_mcp_source_secondary_env_json: '{"EXA_API_KEY":""}',
         enable_ai_signal_analysis_service: false,
         ai_signal_analysis_interval_hours: 1,
         ai_signal_analysis_lookback_hours: 24,
@@ -232,6 +275,33 @@ export class ConfigService {
       ai_signal_analysis_api_url: '',
       ai_signal_analysis_api_protocol: 'auto',
       ai_signal_analysis_model: '',
+      ai_signal_analysis_secondary_api_key: '',
+      ai_signal_analysis_secondary_api_url: '',
+      ai_signal_analysis_secondary_api_protocol: 'auto',
+      ai_signal_analysis_secondary_model: '',
+      ai_signal_analysis_tertiary_api_key: '',
+      ai_signal_analysis_tertiary_api_url: '',
+      ai_signal_analysis_tertiary_api_protocol: 'auto',
+      ai_signal_analysis_tertiary_model: '',
+      ai_signal_analysis_mcp_enabled: false,
+      ai_signal_analysis_mcp_query_template:
+        '{symbol} crypto latest market news macro policy risk funding open interest sentiment',
+      ai_signal_analysis_mcp_max_results: 5,
+      ai_signal_analysis_mcp_timeout_sec: 25,
+      ai_signal_analysis_mcp_cache_ttl_sec: 900,
+      ai_signal_analysis_mcp_max_prompt_chars: 2500,
+      ai_signal_analysis_mcp_source_primary_enabled: true,
+      ai_signal_analysis_mcp_source_primary_name: 'brave',
+      ai_signal_analysis_mcp_source_primary_command: 'npx',
+      ai_signal_analysis_mcp_source_primary_args: '-y @modelcontextprotocol/server-brave-search',
+      ai_signal_analysis_mcp_source_primary_tool_name: 'brave_web_search',
+      ai_signal_analysis_mcp_source_primary_env_json: '{"BRAVE_API_KEY":""}',
+      ai_signal_analysis_mcp_source_secondary_enabled: false,
+      ai_signal_analysis_mcp_source_secondary_name: 'exa',
+      ai_signal_analysis_mcp_source_secondary_command: 'npx',
+      ai_signal_analysis_mcp_source_secondary_args: '-y exa-mcp-server',
+      ai_signal_analysis_mcp_source_secondary_tool_name: 'web_search_exa',
+      ai_signal_analysis_mcp_source_secondary_env_json: '{"EXA_API_KEY":""}',
       enable_ai_signal_analysis_service: false,
       ai_signal_analysis_interval_hours: 1,
       ai_signal_analysis_lookback_hours: 24,

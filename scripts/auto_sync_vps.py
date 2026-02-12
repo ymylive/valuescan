@@ -11,7 +11,7 @@ from pathlib import Path
 # VPS Configuration
 VPS_HOST = "82.158.88.34"
 VPS_USER = "root"
-VPS_PASSWORD = "Qq159741"
+VPS_PASSWORD = os.getenv("VALUESCAN_VPS_PASSWORD", "")
 VPS_PORT = "22"
 VPS_PATH = "/root/valuescan"
 

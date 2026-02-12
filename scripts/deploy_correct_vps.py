@@ -11,7 +11,7 @@ from pathlib import Path
 # 正确的VPS配置
 VPS_HOST = "82.158.88.34"
 VPS_USER = "root"
-VPS_PASSWORD = "Qq159741"
+VPS_PASSWORD = os.getenv("VALUESCAN_VPS_PASSWORD", "")
 VPS_PROJECT_PATH = "/root/valuescan"
 
 # 需要上传的文件

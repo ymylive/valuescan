@@ -72,7 +72,7 @@ class AnomalyConfig:
 
     # 相关性过滤
     correlation_window_minutes: int = 60     # 相关性计算窗口
-    independence_threshold: float = 0.6      # 独立行情阈值 (更新为0.5)
+    independence_threshold: float = 0.6      # 异动监测阈值 (更新为0.5)
 
     # 情绪检测
     fear_extreme: int = 20   # 极度恐惧阈值

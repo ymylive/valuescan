@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
+import os
 import paramiko
 
 ssh = paramiko.SSHClient()
 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-ssh.connect('82.158.88.34', username='root', password='Qq159741')
+ssh.connect('82.158.88.34', username='root', password=os.getenv("VALUESCAN_VPS_PASSWORD", ""))
 
 # Check polling monitor code
 stdin, stdout, stderr = ssh.exec_command('sed -n "690,710p" /root/valuescan/signal_monitor/polling_monitor.py')

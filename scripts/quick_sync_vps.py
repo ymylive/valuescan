@@ -13,7 +13,7 @@ VPS_HOST = "82.158.88.34"
 VPS_USER = "root"
 VPS_PORT = "22"
 VPS_PATH = "/root/valuescan"
-VPS_PASSWORD = "Qq159741"
+VPS_PASSWORD = os.getenv("VALUESCAN_VPS_PASSWORD", "")
 
 # Files to sync
 FILES_TO_SYNC = [

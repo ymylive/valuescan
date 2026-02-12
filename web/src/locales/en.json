@@ -26,7 +26,6 @@
   "nav": {
     "dashboard": "Dashboard",
     "configuration": "Configuration",
-    "proxy": "Proxy",
     "logs": "Logs",
     "services": "Services",
     "forecast": "Forecast"

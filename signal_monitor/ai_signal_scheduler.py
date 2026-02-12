@@ -474,7 +474,7 @@ def _start_anomaly_detector(config: Optional[object] = None) -> None:
         def on_signal(sig: Signal):
             emoji = "🔴" if sig.severity == "alert" else "🟡"
             direction = {"bullish": "📈", "bearish": "📉"}.get(sig.direction, "")
-            independent = " [独立行情]" if sig.is_independent else ""
+            independent = " [异动监测]" if sig.is_independent else ""
             msg = f"{emoji} {sig.symbol} {direction}{independent}\n{sig.description}\n" + "\n".join(sig.triggers)
             try:
                 send_message_with_async_chart(msg, sig.symbol)

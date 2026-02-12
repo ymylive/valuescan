@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 """
 Deploy all frontend optimizations to VPS
 """
@@ -9,7 +10,7 @@ import sys
 
 VPS_HOST = "82.158.88.34"
 VPS_USER = "root"
-VPS_PASSWORD = "Qq159741"
+VPS_PASSWORD = os.getenv("VALUESCAN_VPS_PASSWORD", "")
 VPS_PATH = "/root/valuescan"
 
 # Files to deploy

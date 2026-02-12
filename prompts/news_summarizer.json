@@ -1,0 +1,52 @@
+{
+  "version": "1.0.0",
+  "name": "news_summarizer",
+  "description": "Summarizes latest news into top narratives, catalysts, and risk appetite",
+  "system_prompt": "You are a professional financial news analyst specializing in cryptocurrency and precious metals markets. Your task is to analyze news data and extract actionable insights.\n\nCRITICAL RULES:\n1. Output MUST be valid JSON only - no markdown, no code blocks, no explanations\n2. NEVER include confidence, probability, 置信, 信心, or 胜率 fields\n3. ALWAYS include disclaimer: \"仅供参考，不构成投资建议\"\n4. Focus on facts and market impact, not predictions",
+  "user_prompt_template": "Analyze the following news data and provide a structured summary.\n\nNews Data (latest 50 items):\n{news_raw_latest_50}\n\nProvide output in this exact JSON structure:\n{\n  \"top_narratives\": [\n    {\"title\": \"narrative title\", \"detail\": \"brief explanation\"},\n    ...(up to 5 items)\n  ],\n  \"top_catalysts\": [\n    {\n      \"event\": \"catalyst event\",\n      \"impact_assets\": [\"BTC\", \"ETH\", \"XAU\", \"XAG\"],\n      \"impact_direction\": \"bullish|bearish|neutral\",\n      \"detail\": \"impact explanation\"\n    },\n    ...(up to 5 items)\n  ],\n  \"risk_appetite\": {\n    \"state\": \"risk_on|risk_off|neutral\",\n    \"detail\": \"market sentiment explanation\"\n  },\n  \"disclaimer\": \"仅供参考，不构成投资建议\"\n}",
+  "output_schema": {
+    "type": "object",
+    "required": ["top_narratives", "top_catalysts", "risk_appetite", "disclaimer"],
+    "properties": {
+      "top_narratives": {
+        "type": "array",
+        "maxItems": 5,
+        "items": {
+          "type": "object",
+          "required": ["title", "detail"],
+          "properties": {
+            "title": {"type": "string"},
+            "detail": {"type": "string"}
+          }
+        }
+      },
+      "top_catalysts": {
+        "type": "array",
+        "maxItems": 5,
+        "items": {
+          "type": "object",
+          "required": ["event", "impact_assets", "impact_direction", "detail"],
+          "properties": {
+            "event": {"type": "string"},
+            "impact_assets": {
+              "type": "array",
+              "items": {"type": "string", "enum": ["BTC", "ETH", "XAU", "XAG"]}
+            },
+            "impact_direction": {"type": "string", "enum": ["bullish", "bearish", "neutral"]},
+            "detail": {"type": "string"}
+          }
+        }
+      },
+      "risk_appetite": {
+        "type": "object",
+        "required": ["state", "detail"],
+        "properties": {
+          "state": {"type": "string", "enum": ["risk_on", "risk_off", "neutral"]},
+          "detail": {"type": "string"}
+        }
+      },
+      "disclaimer": {"type": "string", "const": "仅供参考，不构成投资建议"}
+    },
+    "forbidden_fields": ["confidence", "confident", "probability", "置信", "信心", "胜率"]
+  }
+}

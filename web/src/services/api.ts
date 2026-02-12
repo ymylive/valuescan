@@ -6,6 +6,32 @@ export type ApiError = {
   data?: unknown;
 };
 
+const ADMIN_TOKEN_KEY = 'token';
+
+export const getAdminToken = (): string => {
+  const sessionToken = sessionStorage.getItem(ADMIN_TOKEN_KEY);
+  if (sessionToken) {
+    return sessionToken;
+  }
+  const legacyToken = localStorage.getItem(ADMIN_TOKEN_KEY);
+  if (legacyToken) {
+    sessionStorage.setItem(ADMIN_TOKEN_KEY, legacyToken);
+    localStorage.removeItem(ADMIN_TOKEN_KEY);
+    return legacyToken;
+  }
+  return '';
+};
+
+export const setAdminToken = (token: string): void => {
+  sessionStorage.setItem(ADMIN_TOKEN_KEY, token);
+  localStorage.removeItem(ADMIN_TOKEN_KEY);
+};
+
+export const clearAdminToken = (): void => {
+  sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+  localStorage.removeItem(ADMIN_TOKEN_KEY);
+};
+
 const api = axios.create({
   baseURL: '/api',
   timeout: 10000,
@@ -15,7 +41,7 @@ const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
+  const token = getAdminToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -28,9 +54,7 @@ api.interceptors.response.use((response) => {
   return response.data;
 }, (error) => {
   if (error.response && error.response.status === 401) {
-    
-    localStorage.removeItem('token');
-    
+    clearAdminToken();
   }
   return Promise.reject(error);
 });

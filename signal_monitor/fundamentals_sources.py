@@ -1670,3 +1670,122 @@ def fetch_macro_snapshot(ttl_sec: Optional[int] = None) -> Dict[str, Any]:
 
     _cache_set(cache_key, payload)
     return payload
+
+
+def fetch_jin10_news_latest(limit: int = 50) -> List[Dict[str, Any]]:
+    """
+    Fetch latest Jin10 news items.
+
+    Returns:
+        List of news items matching SCHEMAS_V3.md format:
+        {
+            "time": str (ISO 8601),
+            "title": str,
+            "content": str,
+            "tags": [str],
+            "importance": "high|medium|low",
+            "source": "jin10"
+        }
+    """
+    try:
+        from signal_monitor.jin10_news import fetch_jin10_news
+        return fetch_jin10_news(limit=limit)
+    except Exception as exc:
+        logger.error("Failed to fetch Jin10 news: %s", exc)
+        return []
+
+
+def fetch_econ_events_upcoming() -> List[Dict[str, Any]]:
+    """
+    Fetch upcoming economic events.
+
+    Returns:
+        List of economic events matching SCHEMAS_V3.md format:
+        {
+            "name": str,
+            "country": str,
+            "importance": "high|medium|low",
+            "time": str (ISO 8601),
+            "previous": float,
+            "forecast": float,
+            "actual": float,
+            "description": str
+        }
+    """
+    macro = fetch_macro_snapshot()
+    calendar_items = _extract_macro_items((macro.get("macro") or {}).get("calendar"))
+
+    now = datetime.now(timezone.utc)
+    upcoming = []
+
+    for item in calendar_items:
+        if not isinstance(item, dict):
+            continue
+
+        event_time = _parse_macro_time(item.get("date") or item.get("time"))
+        if not event_time or event_time < now:
+            continue
+
+        name = _translate_macro_title(_safe_text(
+            item.get("title") or item.get("event") or item.get("name") or ""
+        ))
+        if not name:
+            continue
+
+        upcoming.append({
+            "name": name,
+            "country": item.get("country") or "US",
+            "importance": str(item.get("importance") or item.get("impact") or "medium").lower(),
+            "time": event_time.isoformat(),
+            "previous": item.get("previous"),
+            "forecast": item.get("forecast") or item.get("consensus"),
+            "actual": item.get("actual"),
+            "description": _safe_text(item.get("description") or "")
+        })
+
+    return upcoming[:50]
+
+
+def fetch_econ_events_history(days: int = 7) -> List[Dict[str, Any]]:
+    """
+    Fetch historical economic events.
+
+    Args:
+        days: Number of days to look back
+
+    Returns:
+        List of economic events matching SCHEMAS_V3.md format
+    """
+    macro = fetch_macro_snapshot()
+    recent_items = _extract_macro_items((macro.get("macro") or {}).get("recent_releases"))
+
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=days)
+    history = []
+
+    for item in recent_items:
+        if not isinstance(item, dict):
+            continue
+
+        event_time = _parse_macro_time(item.get("date") or item.get("time"))
+        if not event_time or event_time < cutoff or event_time > now:
+            continue
+
+        name = _translate_macro_title(_safe_text(
+            item.get("title") or item.get("event") or item.get("name") or ""
+        ))
+        if not name:
+            continue
+
+        history.append({
+            "name": name,
+            "country": item.get("country") or "US",
+            "importance": str(item.get("importance") or item.get("impact") or "medium").lower(),
+            "time": event_time.isoformat(),
+            "previous": item.get("previous"),
+            "forecast": item.get("forecast") or item.get("consensus"),
+            "actual": item.get("actual"),
+            "description": _safe_text(item.get("description") or "")
+        })
+
+    return history[:50]

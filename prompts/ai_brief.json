@@ -1,0 +1,60 @@
+{
+  "version": "1.0.0",
+  "name": "ai_brief",
+  "description": "Generates dual-track trading plans (futures + spot) based on technical and fundamental analysis",
+  "system_prompt": "You are a professional trading analyst providing dual-track analysis for both futures traders and spot investors.\n\nCRITICAL RULES:\n1. Output MUST be valid JSON only - no markdown, no code blocks, no explanations\n2. NEVER include confidence, probability, 置信, 信心, or 胜率 fields\n3. ALWAYS include disclaimer: \"仅供参考，不构成投资建议\"\n4. Futures plan: aggressive, directional, with clear stop loss\n5. Spot plan: conservative, accumulation-focused, longer timeframe\n6. All price levels must be realistic and based on provided support/resistance",
+  "user_prompt_template": "Generate a comprehensive trading brief for {asset}.\n\nMarket Data:\n- Current Price: {current_price}\n- Support Levels: {support_levels}\n- Resistance Levels: {resistance_levels}\n\nTechnical Analysis (Multi-Timeframe):\n{macro_features}\n\nFundamental Context:\n- News Summary: {news_summary}\n- Economic Summary: {econ_summary}\n\nAnomaly Signals (if any):\n{anomaly_signals}\n\nProvide output in this exact JSON structure:\n{\n  \"asset\": \"{asset}\",\n  \"time_focus\": [\"15m\", \"1h\", \"4h\", \"1d\"],\n  \"key_levels\": {\n    \"support\": [float, float, ...],\n    \"resistance\": [float, float, ...]\n  },\n  \"market_state\": {\n    \"regime\": \"trend|range|transition\",\n    \"drivers\": [\"driver1\", \"driver2\", ...]\n  },\n  \"futures_plan\": {\n    \"bias\": \"long|short|neutral\",\n    \"long_zone\": [low, high],\n    \"short_zone\": [low, high],\n    \"invalid_level\": float,\n    \"take_profit\": [tp1, tp2, tp3],\n    \"risk_control\": \"risk management explanation\"\n  },\n  \"spot_plan\": {\n    \"bias\": \"buy_dip|breakout_follow|wait\",\n    \"buy_zone\": [low, high],\n    \"sell_zone\": [low, high],\n    \"take_profit\": [tp1, tp2],\n    \"risk_control\": \"risk management explanation\"\n  },\n  \"one_sentence_summary\": \"concise market summary\",\n  \"disclaimer\": \"仅供参考，不构成投资建议\"\n}",
+  "output_schema": {
+    "type": "object",
+    "required": ["asset", "time_focus", "key_levels", "market_state", "futures_plan", "spot_plan", "one_sentence_summary", "disclaimer"],
+    "properties": {
+      "asset": {"type": "string", "enum": ["BTC", "ETH", "XAU", "XAG"]},
+      "time_focus": {
+        "type": "array",
+        "items": {"type": "string", "enum": ["15m", "1h", "4h", "1d"]}
+      },
+      "key_levels": {
+        "type": "object",
+        "required": ["support", "resistance"],
+        "properties": {
+          "support": {"type": "array", "items": {"type": "number"}},
+          "resistance": {"type": "array", "items": {"type": "number"}}
+        }
+      },
+      "market_state": {
+        "type": "object",
+        "required": ["regime", "drivers"],
+        "properties": {
+          "regime": {"type": "string", "enum": ["trend", "range", "transition"]},
+          "drivers": {"type": "array", "items": {"type": "string"}}
+        }
+      },
+      "futures_plan": {
+        "type": "object",
+        "required": ["bias", "long_zone", "short_zone", "invalid_level", "take_profit", "risk_control"],
+        "properties": {
+          "bias": {"type": "string", "enum": ["long", "short", "neutral"]},
+          "long_zone": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
+          "short_zone": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
+          "invalid_level": {"type": "number"},
+          "take_profit": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+          "risk_control": {"type": "string"}
+        }
+      },
+      "spot_plan": {
+        "type": "object",
+        "required": ["bias", "buy_zone", "sell_zone", "take_profit", "risk_control"],
+        "properties": {
+          "bias": {"type": "string", "enum": ["buy_dip", "breakout_follow", "wait"]},
+          "buy_zone": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
+          "sell_zone": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
+          "take_profit": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
+          "risk_control": {"type": "string"}
+        }
+      },
+      "one_sentence_summary": {"type": "string"},
+      "disclaimer": {"type": "string", "const": "仅供参考，不构成投资建议"}
+    },
+    "forbidden_fields": ["confidence", "confident", "probability", "置信", "信心", "胜率"]
+  }
+}

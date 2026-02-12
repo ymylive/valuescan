@@ -1,4 +1,3 @@
-import { useTranslation } from 'react-i18next';
 import { Database, Radar, AlertTriangle, Activity } from 'lucide-react';
 import { PageContainer } from '../../components/layout';
 import { StatCard, GlassCard } from '../../components/shared';
@@ -42,7 +41,6 @@ const SignalList = ({ items, emptyLabel }: { items: SignalItem[]; emptyLabel: st
 );
 
 export const DashboardPage = () => {
-  const { t } = useTranslation();
   const { dbStatus, signals, alerts, alertsDisabled, loading, totalMessages, signalCount, alertCount } = useDashboardData();
 
   if (loading) {
@@ -95,7 +93,7 @@ export const DashboardPage = () => {
 
           <GlassCard className="p-6 h-96">
             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">最新预警</h3>
-            <SignalList items={alerts} emptyLabel={alertsDisabled ? '???????' : '????'} />
+            <SignalList items={alerts} emptyLabel={alertsDisabled ? '预警已关闭' : '暂无预警'} />
           </GlassCard>
         </div>
       </div>

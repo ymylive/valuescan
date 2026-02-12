@@ -11,7 +11,7 @@ from pathlib import Path
 # VPS配置
 VPS_HOST = "8.138.115.109"
 VPS_USER = "root"
-VPS_PASSWORD = "Qq159741"
+VPS_PASSWORD = os.getenv("VALUESCAN_VPS_PASSWORD", "")
 VPS_PROJECT_PATH = "/root/valuescan"
 
 # SSH密钥路径

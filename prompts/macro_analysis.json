@@ -1,0 +1,56 @@
+{
+  "version": "1.0.0",
+  "name": "macro_analysis",
+  "description": "Analyzes multi-timeframe technical features and generates market structure insights",
+  "system_prompt": "You are a professional technical analyst specializing in multi-timeframe analysis for cryptocurrency and precious metals markets.\n\nCRITICAL RULES:\n1. Output MUST be valid JSON only - no markdown, no code blocks, no explanations\n2. NEVER include confidence, probability, 置信, 信心, or 胜率 fields\n3. ALWAYS include disclaimer: \"仅供参考，不构成投资建议\"\n4. Analyze trend alignment across timeframes\n5. Identify key support/resistance levels\n6. Assess momentum and volatility conditions",
+  "user_prompt_template": "Analyze the following multi-timeframe technical data for {asset}.\n\nTechnical Features:\n{macro_features}\n\nSupport/Resistance Levels:\n{sr_levels}\n\nProvide output in this exact JSON structure:\n{\n  \"asset\": \"{asset}\",\n  \"trend_alignment\": {\n    \"direction\": \"bullish|bearish|mixed\",\n    \"strength\": \"strong|moderate|weak\",\n    \"timeframes_aligned\": [\"15m\", \"1h\", \"4h\", \"1d\"],\n    \"detail\": \"trend analysis explanation\"\n  },\n  \"momentum_state\": {\n    \"condition\": \"overbought|oversold|neutral\",\n    \"divergence_detected\": true|false,\n    \"detail\": \"momentum analysis explanation\"\n  },\n  \"volatility_state\": {\n    \"level\": \"high|normal|low\",\n    \"expanding\": true|false,\n    \"detail\": \"volatility analysis explanation\"\n  },\n  \"key_levels\": {\n    \"support\": [float, float, ...],\n    \"resistance\": [float, float, ...]\n  },\n  \"structure_notes\": \"market structure observations\",\n  \"disclaimer\": \"仅供参考，不构成投资建议\"\n}",
+  "output_schema": {
+    "type": "object",
+    "required": ["asset", "trend_alignment", "momentum_state", "volatility_state", "key_levels", "structure_notes", "disclaimer"],
+    "properties": {
+      "asset": {"type": "string", "enum": ["BTC", "ETH", "XAU", "XAG"]},
+      "trend_alignment": {
+        "type": "object",
+        "required": ["direction", "strength", "timeframes_aligned", "detail"],
+        "properties": {
+          "direction": {"type": "string", "enum": ["bullish", "bearish", "mixed"]},
+          "strength": {"type": "string", "enum": ["strong", "moderate", "weak"]},
+          "timeframes_aligned": {
+            "type": "array",
+            "items": {"type": "string", "enum": ["15m", "1h", "4h", "1d"]}
+          },
+          "detail": {"type": "string"}
+        }
+      },
+      "momentum_state": {
+        "type": "object",
+        "required": ["condition", "divergence_detected", "detail"],
+        "properties": {
+          "condition": {"type": "string", "enum": ["overbought", "oversold", "neutral"]},
+          "divergence_detected": {"type": "boolean"},
+          "detail": {"type": "string"}
+        }
+      },
+      "volatility_state": {
+        "type": "object",
+        "required": ["level", "expanding", "detail"],
+        "properties": {
+          "level": {"type": "string", "enum": ["high", "normal", "low"]},
+          "expanding": {"type": "boolean"},
+          "detail": {"type": "string"}
+        }
+      },
+      "key_levels": {
+        "type": "object",
+        "required": ["support", "resistance"],
+        "properties": {
+          "support": {"type": "array", "items": {"type": "number"}},
+          "resistance": {"type": "array", "items": {"type": "number"}}
+        }
+      },
+      "structure_notes": {"type": "string"},
+      "disclaimer": {"type": "string", "const": "仅供参考，不构成投资建议"}
+    },
+    "forbidden_fields": ["confidence", "confident", "probability", "置信", "信心", "胜率"]
+  }
+}

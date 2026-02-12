@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
+import os
 """Test login after stopping monitor service."""
 import paramiko
 import time
 
 HOST = "82.158.88.34"
 USER = "root"
-PASSWORD = "Qq159741"
+PASSWORD = os.getenv("VALUESCAN_VPS_PASSWORD", "")
 
 def main():
     ssh = paramiko.SSHClient()

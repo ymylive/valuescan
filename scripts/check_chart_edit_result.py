@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 # -*- coding: utf-8 -*-
 """
 检查图表编辑结果
@@ -12,7 +13,7 @@ if sys.platform == 'win32':
 
 ssh = paramiko.SSHClient()
 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-ssh.connect("82.158.88.34", username="root", password="Qq159741",
+ssh.connect("82.158.88.34", username="root", password=os.getenv("VALUESCAN_VPS_PASSWORD", ""),
            look_for_keys=False, allow_agent=False)
 
 print("检查图表生成和编辑的完整日志...")

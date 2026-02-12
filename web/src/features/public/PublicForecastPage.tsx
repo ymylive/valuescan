@@ -3,7 +3,6 @@ import { Button, Card, CardContent, CardHeader, Input } from '../../components/u
 import { fetchForecast } from '../../services/forecastApi';
 import { toApiError } from '../../services/api';
 import { NetworkMesh } from '../../components/visuals/NetworkMesh';
-import { MarketLogicLab } from './MarketLogicLab';
 
 const quickSymbols = [
   { label: 'BTC', value: 'BTC' },
@@ -334,16 +333,6 @@ export const PublicForecastPage = () => {
             </section>
           </div>
 
-          <section className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-xs uppercase tracking-[0.3em] text-neutral-500">MiroFish Logic</p>
-                <h2 className="text-xl font-semibold text-white">Market Intelligence Graph</h2>
-              </div>
-              <span className="text-xs text-neutral-500">Embedded analysis path + logic node graph</span>
-            </div>
-            <MarketLogicLab symbol={symbol} summary={summary} />
-          </section>
         </main>
       </div>
     </div>

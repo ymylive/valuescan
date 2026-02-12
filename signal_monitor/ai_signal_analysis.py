@@ -28,6 +28,9 @@ import os
 import time
 
 
+import threading
+
+
 from pathlib import Path
 
 
@@ -69,6 +72,11 @@ try:
 except Exception:
     from ai_request_queue import call_ai_with_queue  # type: ignore[import-not-found]
 
+try:
+    from .mcp_search_research import collect_mcp_research_context
+except Exception:
+    from mcp_search_research import collect_mcp_research_context  # type: ignore[import-not-found]
+
 
 
 
@@ -108,6 +116,8 @@ _YAHOO_KLINES_TTL = int(os.getenv("NOFX_YAHOO_KLINES_TTL", "21600") or 21600)
 _YAHOO_KLINES_CACHE: Dict[str, Dict[str, Any]] = {}
 _YAHOO_KLINES_CACHE_PATH = Path(__file__).parent / "yahoo_klines_cache.json"
 _YAHOO_KLINES_CACHE_LOADED = False
+_GEMINI_SUSPEND_UNTIL = 0.0
+_GEMINI_SUSPEND_LOCK = threading.Lock()
 
 
 try:
@@ -119,6 +129,34 @@ try:
     _NOFX_STRATEGY_LIMIT = int(os.getenv("NOFX_AI_NOFX_STRATEGY_LIMIT", "5") or 5)
 except ValueError:
     _NOFX_STRATEGY_LIMIT = 5
+
+
+def _is_gemini_provider(provider: Dict[str, Any]) -> bool:
+    model = str(provider.get("model") or "").lower()
+    url = str(provider.get("api_url") or "").lower()
+    return "gemini" in model or "gemini" in url
+
+
+def _is_quota_exhausted_message(_status_code: Optional[int], text: str) -> bool:
+    return "quota" in (text or "").lower()
+
+
+def _is_gemini_suspended() -> bool:
+    with _GEMINI_SUSPEND_LOCK:
+        return _GEMINI_SUSPEND_UNTIL > time.time()
+
+
+def _suspend_gemini(reason: str) -> None:
+    global _GEMINI_SUSPEND_UNTIL
+    try:
+        cooldown_sec = int(os.getenv("NOFX_GEMINI_QUOTA_SUSPEND_SEC", "3600") or 3600)
+    except (TypeError, ValueError):
+        cooldown_sec = 3600
+    cooldown_sec = max(60, min(cooldown_sec, 86400))
+    until = time.time() + cooldown_sec
+    with _GEMINI_SUSPEND_LOCK:
+        _GEMINI_SUSPEND_UNTIL = max(_GEMINI_SUSPEND_UNTIL, until)
+    logger.warning("Gemini suspended for %ss due to quota issue: %s", cooldown_sec, (reason or "")[:200])
 
 
 
@@ -146,10 +184,11 @@ def get_ai_signal_config():
     default_protocol = os.getenv("NOFX_AI_SIGNAL_API_PROTOCOL", "auto").strip()
     defaults = {
         "enabled": default_enabled,
-        "api_key": "Qq159741",
-        "api_url": "https://chat.cornna.xyz/v1",
-        "model": "gemini-3-flash-search",
+        "api_key": (os.getenv("NOFX_AI_SIGNAL_API_KEY") or "").strip(),
+        "api_url": "https://chat.cornna.xyz/gemini/v1",
+        "model": "gemini-3-flash-preview",
         "api_protocol": default_protocol,
+        "fallbacks": [],
     }
 
     if config_path.exists():
@@ -2103,6 +2142,7 @@ def _build_metals_prompt(
         "macro_data": snapshot.get("macro_data", {}),
         "source_data": snapshot.get("source_data"),
         "signal": signal_info,
+        "external_research": snapshot.get("mcp_search"),
     }
 
     if analysis_time_bj:
@@ -2121,6 +2161,7 @@ def _build_metals_prompt(
         "- Use only raw price action (structure/range/high-low) + supply/demand + geopolitics/major news.",
         "- Do NOT use or mention RSI/MACD/MAs/VWAP/ATR or any indicators.",
         "- Must reference macro_snapshot/macro_data/macro_fred/macro_gdelt when present (e.g., NFP/CPI/Fed policy/news).",
+        "- If external_research exists, combine latest events with macro/supply-demand and explain impact.",
         "- If supply/demand or news is missing, explicitly state insufficient data.",
         "Rules:",
         "0. Must cover: trend, price structure, supply/demand, geopolitics/news, macro backdrop, risks.",
@@ -2185,6 +2226,7 @@ def _build_prompt(
         "macro_data": snapshot.get("macro_data", {}),
         "source_data": snapshot.get("source_data"),
         "signal": signal_info,
+        "external_research": snapshot.get("mcp_search"),
     }
 
     if analysis_time_bj:
@@ -2202,6 +2244,7 @@ def _build_prompt(
         'JSON schema: {"analysis":"...","trend_status":"uptrend/downtrend/sideways","supports":[...],"resistances":[...],"stop_loss":null,"take_profit":null,"rr":null,"risk_level":"low/medium/high","entry_decision":"yes/no","direction":"long/short/none","leverage_suggestion":"1-5x/5-10x/10-20x/no_trade","overlays":[]}',
         "数据使用说明：",
         "- 需要综合所有输入字段：K线、盘口、形态、资金流、市场概览、基本面、宏观快照/宏观日历、众包/策略、信号上下文与近24小时信号。",
+        "- 若 external_research 存在，提炼与当前币种相关的最新事件/政策/风险并给出方向影响。",
         "- 与技术面、资金流、盘口与宏观交叉验证，并指出冲突或缺失。",
         "- 若有指标数据（EMA/RSI/MACD/VWAP/ATR等），必须在分析中明确提及并给出结论。",
         "规则：",
@@ -3529,6 +3572,41 @@ def _get_ai_proxies() -> Optional[Dict[str, str]]:
 
 
     return {"http": proxy_url, "https": proxy_url}
+def _build_ai_provider_chain(config: Dict[str, Any]) -> List[Dict[str, Any]]:
+
+
+    providers: List[Dict[str, Any]] = []
+
+
+    primary = {
+        "api_key": (config.get("api_key") or "").strip(),
+        "api_url": (config.get("api_url") or "").strip(),
+        "model": (config.get("model") or "").strip(),
+        "api_protocol": (config.get("api_protocol") or "auto").strip() or "auto",
+    }
+
+
+    if primary["api_key"] and primary["api_url"] and primary["model"]:
+        providers.append(primary)
+
+
+    raw_fallbacks = config.get("fallbacks")
+    if isinstance(raw_fallbacks, list):
+        for item in raw_fallbacks:
+            if not isinstance(item, dict):
+                continue
+            provider = {
+                "api_key": (item.get("api_key") or "").strip(),
+                "api_url": (item.get("api_url") or "").strip(),
+                "model": (item.get("model") or "").strip(),
+                "api_protocol": (item.get("api_protocol") or "auto").strip() or "auto",
+            }
+            if provider["api_key"] and provider["api_url"] and provider["model"]:
+                providers.append(provider)
+
+
+    return providers
+
 
 
 
@@ -3538,15 +3616,6 @@ def _get_ai_proxies() -> Optional[Dict[str, str]]:
 
 
 def _call_ai_api(prompt: str, config: Dict[str, Any], language: str = "zh") -> Optional[str]:
-
-
-    api_key = (config.get("api_key") or "").strip()
-
-
-    api_url = (config.get("api_url") or "").strip()
-
-
-    model = (config.get("model") or "").strip()
 
 
     max_retries = int(os.getenv("NOFX_AI_API_RETRY", "1") or 1)
@@ -3561,42 +3630,16 @@ def _call_ai_api(prompt: str, config: Dict[str, Any], language: str = "zh") -> O
     max_tokens = int(os.getenv("NOFX_AI_MAX_TOKENS", "8000") or 8000)
 
 
+    providers = _build_ai_provider_chain(config)
 
 
-
-    if not api_key or not api_url or not model:
+    if not providers:
 
 
         return None
 
 
-
-
-
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
-
-
     system_prompt = "你是专业的量化分析师，要求多维度全面分析，仅返回严格 JSON，analysis 字段必须使用中文。"
-
-
-
-
-
-    protocol, resolved_url = resolve_protocol_and_url(api_url, config.get("api_protocol"))
-    stream = should_force_responses_stream(resolved_url, protocol)
-    payload = build_payload(
-        protocol,
-        resolved_url,
-        model,
-        system_prompt,
-        prompt,
-        max_tokens,
-        0.4,
-        stream,
-    )
-
-
-
 
 
     proxies = _get_ai_proxies()
@@ -3605,91 +3648,140 @@ def _call_ai_api(prompt: str, config: Dict[str, Any], language: str = "zh") -> O
     use_env_proxy = os.getenv("NOFX_AI_TRUST_ENV", "0").lower() in ("1", "true", "yes", "on")
 
 
-    for attempt in range(max_retries + 1):
+    for provider_idx, provider in enumerate(providers, start=1):
 
 
-        try:
+        is_gemini = _is_gemini_provider(provider)
 
 
-            session = requests.Session()
+        if is_gemini and _is_gemini_suspended():
+            logger.warning("Skip Gemini provider %s due to active quota suspension", provider_idx)
+            continue
 
 
-            session.trust_env = bool(use_env_proxy and not proxies)
+        api_key = provider["api_key"]
 
 
-            if protocol == AI_PROTOCOL_RESPONSES:
-                headers["Accept"] = "text/event-stream" if stream else "application/json"
-            resp = session.post(
-                resolved_url,
-                headers=headers,
-                json=payload,
-                timeout=(connect_timeout, timeout_sec),
-                proxies=proxies,
-            )
-            if resp.status_code != 200:
-                if resp.status_code == 429:
-                    raise RuntimeError(f"AI_429: {resp.text[:200]}")
-                if protocol == AI_PROTOCOL_RESPONSES and resp.status_code == 400:
-                    override_key = resolve_responses_token_key_override(resp.text)
-                    if override_key is not None:
-                        payload = override_responses_token_key(payload, override_key, max_tokens)
-                        resp = session.post(
-                            resolved_url,
-                            headers=headers,
-                            json=payload,
-                            timeout=(connect_timeout, timeout_sec),
-                            proxies=proxies,
-                        )
+        api_url = provider["api_url"]
+
+
+        model = provider["model"]
+
+
+        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
+
+
+        protocol, resolved_url = resolve_protocol_and_url(api_url, provider.get("api_protocol"))
+        stream = should_force_responses_stream(resolved_url, protocol)
+        payload = build_payload(
+            protocol,
+            resolved_url,
+            model,
+            system_prompt,
+            prompt,
+            max_tokens,
+            0.4,
+            stream,
+        )
+
+
+        for attempt in range(max_retries + 1):
+
+
+            try:
+
+
+                session = requests.Session()
+
+
+                session.trust_env = bool(use_env_proxy and not proxies)
+
+
+                if protocol == AI_PROTOCOL_RESPONSES:
+                    headers["Accept"] = "text/event-stream" if stream else "application/json"
+                resp = session.post(
+                    resolved_url,
+                    headers=headers,
+                    json=payload,
+                    timeout=(connect_timeout, timeout_sec),
+                    proxies=proxies,
+                )
                 if resp.status_code != 200:
-                    logger.warning("AI API call failed: %s - %s", resp.status_code, resp.text[:200])
-                    if attempt < max_retries and resp.status_code >= 500:
-                        time.sleep(2 + attempt * 2)
-                        continue
-                    return None
+                    quota_issue = _is_quota_exhausted_message(resp.status_code, resp.text)
+                    if is_gemini and quota_issue:
+                        _suspend_gemini(resp.text)
+                        break
+                    if resp.status_code == 429:
+                        raise RuntimeError(f"AI_429: {resp.text[:200]}")
+                    if protocol == AI_PROTOCOL_RESPONSES and resp.status_code == 400:
+                        override_key = resolve_responses_token_key_override(resp.text)
+                        if override_key is not None:
+                            payload = override_responses_token_key(payload, override_key, max_tokens)
+                            resp = session.post(
+                                resolved_url,
+                                headers=headers,
+                                json=payload,
+                                timeout=(connect_timeout, timeout_sec),
+                                proxies=proxies,
+                            )
+                            if resp.status_code != 200:
+                                quota_issue = _is_quota_exhausted_message(resp.status_code, resp.text)
+                                if is_gemini and quota_issue:
+                                    _suspend_gemini(resp.text)
+                                    break
+                    if resp.status_code != 200:
+                        logger.warning("AI API call failed (provider %s): %s - %s", provider_idx, resp.status_code, resp.text[:200])
+                        if attempt < max_retries and resp.status_code >= 500:
+                            time.sleep(2 + attempt * 2)
+                            continue
+                        break
 
-            if protocol == AI_PROTOCOL_RESPONSES:
-                try:
-                    content = parse_responses_body(resp.text)
-                except Exception as exc:
-                    logger.warning("AI API response parse error: %s", exc)
-                    content = ""
-            else:
-                data = resp.json()
-                content = parse_compatible_content(data)
+                if resp.status_code == 200:
+                    if protocol == AI_PROTOCOL_RESPONSES:
+                        try:
+                            content = parse_responses_body(resp.text)
+                        except Exception as exc:
+                            logger.warning("AI API response parse error: %s", exc)
+                            content = ""
+                    else:
+                        data = resp.json()
+                        content = parse_compatible_content(data)
 
-            if content:
-                return _strip_thoughts(content)
+                    if content:
+                        return _strip_thoughts(content)
 
-
-
-            if attempt < max_retries:
-
-
-                time.sleep(2 + attempt * 2)
-
-
-                continue
-
-
-            return None
-
-
-        except Exception as exc:
-
-
-            logger.warning("AI API call error: %s", exc)
-
-
-            if attempt < max_retries:
-
-
-                time.sleep(2 + attempt * 2)
-
-
-                continue
+                if attempt < max_retries:
 
 
-            return None
+                    time.sleep(2 + attempt * 2)
+
+
+                    continue
+                break
+
+
+            except Exception as exc:
+
+
+                logger.warning("AI API call error (provider %s): %s", provider_idx, exc)
+
+
+                if is_gemini and _is_quota_exhausted_message(None, str(exc)):
+                    _suspend_gemini(str(exc))
+                    break
+
+
+                if attempt < max_retries:
+
+
+                    time.sleep(2 + attempt * 2)
+
+
+                    continue
+                break
+
+
+    return None
 
 
 
@@ -4018,6 +4110,16 @@ def analyze_signal(symbol: str, signal_payload: Optional[Dict[str, Any]] = None)
 
 
         return None
+
+
+    try:
+        mcp_research = collect_mcp_research_context(_safe_symbol(symbol), snapshot, signal_payload, config)
+    except Exception as exc:
+        logger.debug("[AI Signal] MCP research fetch failed: %s", exc)
+        mcp_research = None
+    if mcp_research:
+        snapshot = dict(snapshot)
+        snapshot["mcp_search"] = mcp_research
 
 
     language = _get_language()

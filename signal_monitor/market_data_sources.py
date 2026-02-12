@@ -6,6 +6,7 @@ Sources: Binance, CoinMarketCap, CryptoCompare, CoinGecko.
 import os
 import time
 import json
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from pathlib import Path
@@ -613,8 +614,49 @@ def fetch_binance_futures_snapshot(symbol: str) -> Optional[Dict[str, Any]]:
     pair = f"{sym}USDT"
 
     payload: Dict[str, Any] = {"source": "binance_futures"}
+    end_ms = int(time.time() * 1000)
+    start_ms = end_ms - 24 * 60 * 60 * 1000
 
-    funding = _req(f"{BINANCE_FUT_BASE}/fapi/v1/fundingRate", params={"symbol": pair, "limit": 1})
+    requests_map = {
+        "funding": (
+            f"{BINANCE_FUT_BASE}/fapi/v1/fundingRate",
+            {"symbol": pair, "limit": 1},
+        ),
+        "open_interest": (
+            f"{BINANCE_FUT_BASE}/fapi/v1/openInterest",
+            {"symbol": pair},
+        ),
+        "oi_hist": (
+            f"{BINANCE_FUT_BASE}/futures/data/openInterestHist",
+            {"symbol": pair, "period": "1h", "limit": 2},
+        ),
+        "ls_ratio": (
+            f"{BINANCE_FUT_BASE}/futures/data/globalLongShortAccountRatio",
+            {"symbol": pair, "period": "5m", "limit": 1},
+        ),
+        "taker": (
+            f"{BINANCE_FUT_BASE}/futures/data/takerlongshortRatio",
+            {"symbol": pair, "period": "15m", "limit": 1},
+        ),
+        "liq": (
+            f"{BINANCE_FUT_BASE}/fapi/v1/forceOrders",
+            {"symbol": pair, "startTime": start_ms, "endTime": end_ms, "limit": 1000},
+        ),
+    }
+
+    results: Dict[str, Any] = {}
+    with ThreadPoolExecutor(max_workers=len(requests_map)) as executor:
+        future_map = {
+            key: executor.submit(_req, url, params=params)
+            for key, (url, params) in requests_map.items()
+        }
+        for key, future in future_map.items():
+            try:
+                results[key] = future.result()
+            except Exception:
+                results[key] = None
+
+    funding = results.get("funding")
     if isinstance(funding, list) and funding:
         try:
             payload["funding_rate"] = float(funding[-1].get("fundingRate", 0) or 0)
@@ -622,17 +664,14 @@ def fetch_binance_futures_snapshot(symbol: str) -> Optional[Dict[str, Any]]:
         except Exception:
             pass
 
-    open_interest = _req(f"{BINANCE_FUT_BASE}/fapi/v1/openInterest", params={"symbol": pair})
+    open_interest = results.get("open_interest")
     if isinstance(open_interest, dict):
         try:
             payload["open_interest"] = float(open_interest.get("openInterest", 0) or 0)
         except Exception:
             pass
 
-    oi_hist = _req(
-        f"{BINANCE_FUT_BASE}/futures/data/openInterestHist",
-        params={"symbol": pair, "period": "1h", "limit": 2},
-    )
+    oi_hist = results.get("oi_hist")
     if isinstance(oi_hist, list) and len(oi_hist) >= 2:
         try:
             prev = float(oi_hist[-2].get("sumOpenInterest", 0) or 0)
@@ -642,10 +681,7 @@ def fetch_binance_futures_snapshot(symbol: str) -> Optional[Dict[str, Any]]:
         except Exception:
             pass
 
-    ls_ratio = _req(
-        f"{BINANCE_FUT_BASE}/futures/data/globalLongShortAccountRatio",
-        params={"symbol": pair, "period": "5m", "limit": 1},
-    )
+    ls_ratio = results.get("ls_ratio")
     if isinstance(ls_ratio, list) and ls_ratio:
         row = ls_ratio[-1] if isinstance(ls_ratio[-1], dict) else None
         if row:
@@ -656,10 +692,7 @@ def fetch_binance_futures_snapshot(symbol: str) -> Optional[Dict[str, Any]]:
                 "timestamp": row.get("timestamp"),
             }
 
-    taker = _req(
-        f"{BINANCE_FUT_BASE}/futures/data/takerlongshortRatio",
-        params={"symbol": pair, "period": "15m", "limit": 1},
-    )
+    taker = results.get("taker")
     if isinstance(taker, list) and taker:
         row = taker[-1] if isinstance(taker[-1], dict) else None
         if row:
@@ -677,12 +710,7 @@ def fetch_binance_futures_snapshot(symbol: str) -> Optional[Dict[str, Any]]:
                 "ratio": buy_vol / total if total > 0 else 0.5,
             }
 
-    end_ms = int(time.time() * 1000)
-    start_ms = end_ms - 24 * 60 * 60 * 1000
-    liq = _req(
-        f"{BINANCE_FUT_BASE}/fapi/v1/forceOrders",
-        params={"symbol": pair, "startTime": start_ms, "endTime": end_ms, "limit": 1000},
-    )
+    liq = results.get("liq")
     liq_stats = _calc_liquidation_stats(liq)
     if liq_stats:
         payload["liquidations_24h"] = liq_stats

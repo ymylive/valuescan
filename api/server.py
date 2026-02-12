@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -27,9 +28,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-from api.clash_store import ClashStore
-from api.clash_parser import parse_clash_subscription, parse_base64_subscription
-from api.clash_exporter import generate_clash_yaml, generate_proxy_groups_from_nodes
 from signal_monitor.market_data_sources import (
     fetch_market_snapshot,
     fetch_binance_ticker,
@@ -54,8 +52,6 @@ from signal_monitor.ai_api_utils import (
     resolve_responses_token_key_override,
     should_force_responses_stream,
 )
-from signal_monitor.btc_forecast import build_btc_forecast
-from signal_monitor.forecast_engine import build_market_forecast
 from signal_monitor.nofx_data_sources import (
     fetch_nofx_competition,
     fetch_nofx_top_traders,
@@ -76,29 +72,17 @@ ANOMALY_CONFIG = BASE_DIR / "signal_monitor" / "anomaly_config.json"
 MARKET_ALERT_CONFIG = BASE_DIR / "signal_monitor" / "market_alert_config.json"
 DEFAULT_FUND_SYMBOLS = ["BTC", "ETH"]
 ADMIN_USERNAME = os.getenv("NOFX_ADMIN_USERNAME", "root")
-ADMIN_PASSWORD = os.getenv("NOFX_ADMIN_PASSWORD", "Qq159741")
+ADMIN_PASSWORD = (os.getenv("NOFX_ADMIN_PASSWORD") or "").strip()
 ADMIN_TOKEN_TTL = int(os.getenv("NOFX_ADMIN_TOKEN_TTL", "86400") or 86400)
 ADMIN_TOKEN_SECRET = (
     os.getenv("NOFX_ADMIN_TOKEN_SECRET")
     or os.getenv("NOFX_JWT_SECRET")
     or os.getenv("JWT_SECRET")
-    or "valuescan-admin-secret"
+    or ""
 )
 
 app = Flask(__name__, static_folder=str(WEB_DIST), static_url_path="")
 CORS(app)
-
-clash_store = ClashStore(data_dir=str(BASE_DIR / "data"))
-
-try:
-    from mirofish.api import graph_bp, simulation_bp, report_bp, forecast_bp
-
-    app.register_blueprint(graph_bp, url_prefix="/api/mirofish/graph")
-    app.register_blueprint(simulation_bp, url_prefix="/api/mirofish/simulation")
-    app.register_blueprint(report_bp, url_prefix="/api/mirofish/report")
-    app.register_blueprint(forecast_bp, url_prefix="/api/mirofish/forecast")
-except Exception as exc:
-    logging.getLogger(__name__).warning("MiroFish integration unavailable: %s", exc)
 
 
 def _is_docker() -> bool:
@@ -196,6 +180,41 @@ def _get_bearer_token() -> Optional[str]:
         return None
     if auth_header.lower().startswith("bearer "):
         return auth_header[7:].strip()
+    return None
+
+
+def _admin_auth_ready() -> bool:
+    return bool(ADMIN_PASSWORD and ADMIN_TOKEN_SECRET)
+
+
+def _admin_auth_error() -> Response:
+    return jsonify({"success": False, "error": "admin auth not configured"}), 503
+
+
+def _require_admin_auth() -> Optional[Response]:
+    if not _admin_auth_ready():
+        return _admin_auth_error()
+    token = _get_bearer_token()
+    payload = _decode_admin_token(token or "")
+    if not payload:
+        return jsonify({"success": False, "error": "unauthorized"}), 401
+    return None
+
+
+ADMIN_PROTECTED_PREFIXES = (
+    "/api/config",
+    "/api/ai/",
+    "/api/services",
+    "/api/logs",
+    "/api/db/status",
+)
+
+
+@app.before_request
+def _protect_admin_routes() -> Optional[Response]:
+    path = request.path or ""
+    if any(path.startswith(prefix) for prefix in ADMIN_PROTECTED_PREFIXES):
+        return _require_admin_auth()
     return None
 
 
@@ -631,7 +650,7 @@ def _ai_macro_highlights(items: List[Dict[str, Any]], top: int) -> Optional[Dict
                 "time": item.get("date") or "",
                 "impact": item.get("impact") or "",
                 "actual": item.get("actual") or "",
-                "forecast": item.get("forecast") or "",
+                "expected": item.get("expected") or "",
                 "previous": item.get("previous") or "",
             }
         )
@@ -693,8 +712,53 @@ def _call_ai_test(api_url: str, api_key: str, model: str, api_protocol: Optional
     return {"success": True}
 
 
+def _call_ai_test_with_fallbacks(config: Dict[str, Any]) -> Dict[str, Any]:
+    providers: List[Dict[str, Any]] = []
+
+    primary = {
+        "api_url": str(config.get("api_url") or "").strip(),
+        "api_key": str(config.get("api_key") or "").strip(),
+        "model": str(config.get("model") or "").strip(),
+        "api_protocol": config.get("api_protocol"),
+    }
+    if primary["api_url"] and primary["api_key"] and primary["model"]:
+        providers.append(primary)
+
+    raw_fallbacks = config.get("fallbacks")
+    if isinstance(raw_fallbacks, list):
+        for item in raw_fallbacks:
+            if not isinstance(item, dict):
+                continue
+            provider = {
+                "api_url": str(item.get("api_url") or "").strip(),
+                "api_key": str(item.get("api_key") or "").strip(),
+                "model": str(item.get("model") or "").strip(),
+                "api_protocol": item.get("api_protocol"),
+            }
+            if provider["api_url"] and provider["api_key"] and provider["model"]:
+                providers.append(provider)
+
+    if not providers:
+        return {"success": False, "message": "API Key 未配置"}
+
+    for idx, provider in enumerate(providers, start=1):
+        result = _call_ai_test(provider["api_url"], provider["api_key"], provider["model"], provider["api_protocol"])
+        if result.get("success"):
+            if idx > 1:
+                result["provider_index"] = idx
+            return result
+    return {"success": False, "message": "all providers failed"}
+
+
 def _systemctl_available() -> bool:
     return shutil.which("systemctl") is not None
+
+
+_UNIT_NAME_RE = re.compile(r"^[A-Za-z0-9_.@-]{1,128}$")
+
+
+def _is_safe_unit_name(value: str) -> bool:
+    return bool(_UNIT_NAME_RE.match((value or "").strip()))
 
 
 def _systemctl(action: str, service: str) -> bool:
@@ -702,8 +766,12 @@ def _systemctl(action: str, service: str) -> bool:
         return False
     if not _systemctl_available():
         return False
+    if action not in {"start", "stop", "restart"}:
+        return False
+    if not _is_safe_unit_name(service):
+        return False
     try:
-        subprocess.run(["systemctl", action, service], check=True, capture_output=True, text=True)
+        subprocess.run(["systemctl", action, "--", service], check=True, capture_output=True, text=True)
         return True
     except Exception:
         return False
@@ -714,9 +782,11 @@ def _systemctl_status(service: str) -> str:
         return "stopped"
     if not _systemctl_available():
         return "stopped"
+    if not _is_safe_unit_name(service):
+        return "stopped"
     try:
         result = subprocess.run(
-            ["systemctl", "is-active", service],
+            ["systemctl", "is-active", "--", service],
             check=False,
             capture_output=True,
             text=True,
@@ -732,9 +802,12 @@ def _journal_logs(unit: str, lines: int) -> List[Dict[str, Any]]:
         return []
     if not shutil.which("journalctl"):
         return []
+    if not _is_safe_unit_name(unit):
+        return []
+    safe_lines = max(1, min(int(lines or 2000), 5000))
     try:
         result = subprocess.run(
-            ["journalctl", "-u", unit, "-n", str(lines), "--no-pager", "-o", "json"],
+            ["journalctl", "-u", unit, "-n", str(safe_lines), "--no-pager", "-o", "json"],
             check=False,
             capture_output=True,
             text=True,
@@ -845,6 +918,8 @@ def healthcheck() -> Response:
 
 @app.route("/api/v1/admin/login", methods=["POST"])
 def api_v1_admin_login() -> Response:
+    if not _admin_auth_ready():
+        return _admin_auth_error()
     payload = request.get_json(silent=True) or {}
     username = str(payload.get("username") or "").strip()
     password = str(payload.get("password") or "").strip()
@@ -859,6 +934,8 @@ def api_v1_admin_login() -> Response:
 
 @app.route("/api/v1/admin/check", methods=["GET"])
 def api_v1_admin_check() -> Response:
+    if not _admin_auth_ready():
+        return _admin_auth_error()
     token = _get_bearer_token()
     payload = _decode_admin_token(token or "")
     if not payload:
@@ -955,9 +1032,7 @@ def set_ai_signal_config() -> Response:
 @app.route("/api/ai/signal/test", methods=["POST"])
 def test_ai_signal() -> Response:
     cfg = _load_ai_config(AI_SIGNAL_CONFIG)
-    if not cfg.get("api_key"):
-        return jsonify({"success": False, "message": "API Key ???"})
-    return jsonify(_call_ai_test(cfg.get("api_url"), cfg.get("api_key"), cfg.get("model"), cfg.get("api_protocol")))
+    return jsonify(_call_ai_test_with_fallbacks(cfg))
 
 
 @app.route("/api/ai/levels/config", methods=["GET"])
@@ -975,7 +1050,7 @@ def set_ai_levels_config() -> Response:
 def test_ai_levels() -> Response:
     cfg = _load_ai_config(AI_LEVELS_CONFIG)
     if not cfg.get("api_key"):
-        return jsonify({"success": False, "message": "API Key ???"})
+        return jsonify({"success": False, "message": "API Key 未配置"})
     return jsonify(_call_ai_test(cfg.get("api_url"), cfg.get("api_key"), cfg.get("model"), cfg.get("api_protocol")))
 
 
@@ -994,7 +1069,7 @@ def set_ai_overlays_config() -> Response:
 def test_ai_overlays() -> Response:
     cfg = _load_ai_config(AI_OVERLAYS_CONFIG)
     if not cfg.get("api_key"):
-        return jsonify({"success": False, "message": "API Key ???"})
+        return jsonify({"success": False, "message": "API Key 未配置"})
     return jsonify(_call_ai_test(cfg.get("api_url"), cfg.get("api_key"), cfg.get("model"), cfg.get("api_protocol")))
 
 
@@ -1013,7 +1088,7 @@ def set_ai_market_config() -> Response:
 def test_ai_market() -> Response:
     cfg = _load_ai_config(AI_MARKET_CONFIG)
     if not cfg.get("api_key"):
-        return jsonify({"success": False, "message": "API Key ???"})
+        return jsonify({"success": False, "message": "API Key 未配置"})
     return jsonify(_call_ai_test(cfg.get("api_url"), cfg.get("api_key"), cfg.get("model"), cfg.get("api_protocol")))
 
 
@@ -1056,11 +1131,31 @@ def get_logs(service: str) -> Response:
     unit = mapping.get(service)
     if not unit:
         return jsonify({"logs": []})
-    lines = int(request.args.get("lines", 2000))
+    try:
+        lines = int(request.args.get("lines", 2000))
+    except (TypeError, ValueError):
+        lines = 2000
+    lines = max(1, min(lines, 5000))
     logs = _journal_logs(unit, lines)
     if not logs:
         logs = _file_logs(unit, lines)
     return jsonify({"logs": logs})
+
+
+def _build_fundamental_item(symbol: str, include_macro: bool) -> Dict[str, Any]:
+    try:
+        snapshot = fetch_market_snapshot(symbol) or {}
+        fundamentals = fetch_fundamentals_snapshot(symbol, include_macro=include_macro)
+        if snapshot:
+            item = dict(snapshot)
+            item["symbol"] = symbol
+            item["available"] = True
+            if fundamentals:
+                item["fundamentals"] = fundamentals
+            return item
+        return {"symbol": symbol, "available": False, "fundamentals": fundamentals}
+    except Exception:
+        return {"symbol": symbol, "available": False, "fundamentals": None}
 
 
 @app.route("/api/db/status", methods=["GET"])
@@ -1151,138 +1246,17 @@ def get_fundamentals() -> Response:
     if not _realtime_market_enabled():
         payload = [{"symbol": symbol, "available": False, "fundamentals": None} for symbol in symbols]
         return jsonify({"timestamp": int(time.time()), "symbols": symbols, "data": payload})
-    payload = []
-    for symbol in symbols:
-        snapshot = fetch_market_snapshot(symbol) or {}
-        fundamentals = fetch_fundamentals_snapshot(symbol, include_macro=include_macro)
-        if snapshot:
-            item = dict(snapshot)
-            item["symbol"] = symbol
-            item["available"] = True
-            if fundamentals:
-                item["fundamentals"] = fundamentals
-        else:
-            item = {"symbol": symbol, "available": False, "fundamentals": fundamentals}
-        payload.append(item)
-    return jsonify({"timestamp": int(time.time()), "symbols": symbols, "data": payload})
-
-
-@app.route("/api/clash/config", methods=["GET"])
-def get_clash_config() -> Response:
-    return jsonify(clash_store.get_config())
-
-
-@app.route("/api/clash/config", methods=["POST"])
-def save_clash_config() -> Response:
-    payload = request.get_json(silent=True) or {}
-    clash_store.save_config(payload)
-    return jsonify({"success": True})
-
-
-@app.route("/api/clash/nodes", methods=["GET"])
-def get_clash_nodes() -> Response:
-    return jsonify(clash_store.get_nodes())
-
-
-@app.route("/api/clash/nodes", methods=["POST"])
-def save_clash_nodes() -> Response:
-    payload = request.get_json(silent=True) or []
-    if not isinstance(payload, list):
-        return jsonify({"success": False, "message": "nodes must be a list"}), 400
-    clash_store.save_nodes(payload)
-    return jsonify({"success": True})
-
-
-@app.route("/api/clash/groups", methods=["GET"])
-def get_clash_groups() -> Response:
-    return jsonify(clash_store.get_proxy_groups())
-
-
-@app.route("/api/clash/groups", methods=["POST"])
-def save_clash_groups() -> Response:
-    payload = request.get_json(silent=True) or {}
-    groups = payload.get("groups")
-    if not isinstance(groups, list):
-        return jsonify({"success": False, "message": "groups must be a list"}), 400
-    clash_store.save_proxy_groups(groups)
-    return jsonify({"success": True})
-
-
-@app.route("/api/clash/groups/generate", methods=["POST"])
-def generate_clash_groups() -> Response:
-    nodes = clash_store.get_nodes()
-    groups = generate_proxy_groups_from_nodes(nodes)
-    clash_store.save_proxy_groups(groups)
-    return jsonify({"groups": groups})
-
-
-@app.route("/api/clash/subscription/update", methods=["POST"])
-def update_clash_subscription() -> Response:
-    payload = request.get_json(silent=True) or {}
-    url = payload.get("url")
-    sub_type = payload.get("type", "clash")
-    if not url:
-        return jsonify({"success": False, "message": "url required"}), 400
-    import requests
-
-    resp = requests.get(url, timeout=30)
-    if resp.status_code != 200:
-        return jsonify({"success": False, "message": "fetch failed"}), 400
-    content = resp.text
-    nodes: List[Dict[str, Any]] = []
-    groups: List[Dict[str, Any]] = []
-    if sub_type == "clash":
-        nodes, groups, rules, proxy_providers, rule_providers = parse_clash_subscription(content)
-        if proxy_providers is not None:
-            config = clash_store.get_config()
-            config["proxyProviders"] = proxy_providers
-            clash_store.save_config(config)
-        if rule_providers is not None:
-            config = clash_store.get_config()
-            config["ruleProviders"] = rule_providers
-            clash_store.save_config(config)
-        if rules is not None:
-            config = clash_store.get_config()
-            config["rules"] = rules
-            clash_store.save_config(config)
+    try:
+        workers_env = int(os.getenv("NOFX_FUNDAMENTALS_WORKERS", "4") or 4)
+    except (TypeError, ValueError):
+        workers_env = 4
+    worker_count = max(1, min(len(symbols), workers_env))
+    if worker_count == 1:
+        payload = [_build_fundamental_item(symbol, include_macro) for symbol in symbols]
     else:
-        nodes = parse_base64_subscription(content)
-    return jsonify({"nodes": nodes, "groups": groups})
-
-
-@app.route("/api/clash/test-node", methods=["POST"])
-def test_clash_node() -> Response:
-    payload = request.get_json(silent=True) or {}
-    node_id = payload.get("nodeId") or ""
-    return jsonify({"nodeId": node_id, "delay": -1, "success": False, "error": "?????"})
-
-
-@app.route("/api/clash/stats", methods=["GET"])
-def clash_stats() -> Response:
-    return jsonify({"uploadTotal": 0, "downloadTotal": 0, "connections": 0, "uploadSpeed": 0, "downloadSpeed": 0})
-
-
-@app.route("/api/clash/service/status", methods=["GET"])
-def clash_service_status() -> Response:
-    service_name = os.getenv("NOFX_CLASH_SERVICE", "clash")
-    return jsonify({"status": _systemctl_status(service_name)})
-
-
-@app.route("/api/clash/service/<action>", methods=["POST"])
-def clash_service_action(action: str) -> Response:
-    service_name = os.getenv("NOFX_CLASH_SERVICE", "clash")
-    if action not in {"start", "stop", "restart"}:
-        return jsonify({"success": False, "message": "Invalid action"}), 400
-    ok = _systemctl(action, service_name)
-    return jsonify({"success": ok})
-
-
-@app.route("/api/clash/export", methods=["GET"])
-def export_clash_config() -> Response:
-    config = clash_store.get_config()
-    nodes = clash_store.get_nodes()
-    yaml_text = generate_clash_yaml(config, nodes)
-    return Response(yaml_text, mimetype="text/yaml")
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            payload = list(executor.map(lambda symbol: _build_fundamental_item(symbol, include_macro), symbols))
+    return jsonify({"timestamp": int(time.time()), "symbols": symbols, "data": payload})
 
 
 # ==================== Trader Evaluation API ====================
@@ -1387,18 +1361,6 @@ def api_v1_help() -> Response:
                 "snapshot": {"path": "/market/snapshot/<symbol>", "method": "GET", "desc": "聚合行情快照(多数据源)", "params": {"symbol": "币种"}},
                 "news": {"path": "/market/news", "method": "GET", "desc": "加密货币新闻", "params": {"limit": "数量(默认10)"}},
                 "trending": {"path": "/market/trending", "method": "GET", "desc": "热门币种", "params": {"limit": "数量(默认10)"}},
-                "btc_forecast": {
-                    "path": "/market/btc-forecast",
-                    "method": "GET",
-                    "desc": "BTC forecast",
-                    "params": {"use_llm": "optional 1/0 to enable AI forecast"},
-                },
-                "forecast": {
-                    "path": "/market/forecast/<symbol>",
-                    "method": "GET",
-                    "desc": "Symbol forecast (crypto/stocks/futures)",
-                    "params": {"symbol": "asset symbol", "use_llm": "optional 1/0 to enable AI forecast"},
-                },
             },
             "fundamentals": {
                 "symbol": {"path": "/fundamentals/<symbol>", "method": "GET", "desc": "币种基本面数据", "params": {"symbol": "币种", "include_macro": "是否包含宏观数据(默认true)"}},
@@ -1427,9 +1389,6 @@ def api_v1_help() -> Response:
             "external_top_traders": "/api/v1/external/top-traders",
             "external_strategies": "/api/v1/external/strategies/public?limit=10",
             "market_ticker": "/api/v1/market/ticker/BTC",
-            "market_btc_forecast": "/api/v1/market/btc-forecast",
-            "market_forecast": "/api/v1/market/forecast/BTC",
-            "market_forecast_gold": "/api/v1/market/forecast/GC=F",
             "fundamentals": "/api/v1/fundamentals/ETH",
             "trader_evaluate": "/api/v1/trader/evaluate/4826460952808447745",
         },
@@ -1468,19 +1427,6 @@ def api_v1_market_trending() -> Response:
     limit = int(request.args.get("limit", 10))
     data = fetch_trending(limit)
     return jsonify({"success": True, "timestamp": int(time.time()), "count": len(data), "data": data})
-
-
-@app.route("/api/v1/market/btc-forecast", methods=["GET"])
-def api_v1_market_btc_forecast() -> Response:
-    """BTC forecast"""
-    use_llm_raw = request.args.get("use_llm")
-    use_llm = None
-    if use_llm_raw is not None:
-        use_llm = use_llm_raw.strip().lower() in ("1", "true", "yes", "on")
-    data = build_btc_forecast("BTC", use_llm=use_llm)
-    if not data:
-        return jsonify({"success": False, "error": "Failed to build BTC forecast"}), 502
-    return jsonify({"success": True, "timestamp": int(time.time()), "data": data})
 
 
 @app.route("/api/v1/macro/calendar", methods=["GET"])
@@ -1527,19 +1473,6 @@ def api_v1_macro_forexfactory() -> Response:
             "summary": summary,
         }
     )
-
-
-@app.route("/api/v1/market/forecast/<symbol>", methods=["GET"])
-def api_v1_market_forecast(symbol: str) -> Response:
-    """Symbol forecast"""
-    use_llm_raw = request.args.get("use_llm")
-    use_llm = None
-    if use_llm_raw is not None:
-        use_llm = use_llm_raw.strip().lower() in ("1", "true", "yes", "on")
-    data = build_market_forecast(symbol, use_llm=use_llm)
-    if not data:
-        return jsonify({"success": False, "error": "Failed to build forecast"}), 502
-    return jsonify({"success": True, "timestamp": int(time.time()), "symbol": symbol.upper(), "data": data})
 
 
 @app.route("/api/v1/fundamentals/<symbol>", methods=["GET"])

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 """Clear tokens and test login via API."""
 import paramiko
 import requests
@@ -6,7 +7,7 @@ import json
 
 HOST = "82.158.88.34"
 USER = "root"
-PASSWORD = "Qq159741"
+PASSWORD = os.getenv("VALUESCAN_VPS_PASSWORD", "")
 
 def main():
     # Clear tokens on VPS

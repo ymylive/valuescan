@@ -15,6 +15,29 @@ export const aiConfigApi = {
     api_key: string;
     api_protocol: string;
     model: string;
+    fallbacks?: Array<{
+      api_url?: string;
+      api_key?: string;
+      api_protocol?: string;
+      model?: string;
+    }>;
+    mcp_search?: {
+      enabled?: boolean;
+      query_template?: string;
+      max_results?: number;
+      timeout_sec?: number;
+      cache_ttl_sec?: number;
+      max_prompt_chars?: number;
+      max_parallel_sources?: number;
+      sources?: Array<{
+        enabled?: boolean;
+        name?: string;
+        command?: string;
+        args?: string | string[];
+        tool_name?: string;
+        env?: Record<string, string>;
+      }>;
+    };
     enabled: boolean;
     interval_hours: number;
     lookback_hours: number;

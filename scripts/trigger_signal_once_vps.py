@@ -6,7 +6,7 @@ import paramiko
 
 HOST = os.getenv("VPS_HOST", "82.158.88.34")
 USER = os.getenv("VPS_USER", "root")
-PASSWORD = os.getenv("VPS_PASSWORD") or os.getenv("VALUESCAN_VPS_PASSWORD", "Qq159741")
+PASSWORD = os.getenv("VPS_PASSWORD") or os.getenv("VALUESCAN_VPS_PASSWORD", "")
 RUN_MACRO = os.getenv("VALUESCAN_TRIGGER_MACRO_SUMMARY", "0").lower() in ("1", "true", "yes", "on")
 
 if hasattr(sys.stdout, "reconfigure"):

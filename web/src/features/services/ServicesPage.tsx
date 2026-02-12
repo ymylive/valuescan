@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { PageContainer } from '../../components/layout';
 import { Button, Badge } from '../../components/ui';
 import { GlassCard } from '../../components/shared';
 import { Play, Square, RotateCcw } from 'lucide-react';
-import { useToast } from '../../hooks';
+import { useToastStore } from '../../stores';
 
 interface Service {
   name: string;
@@ -14,13 +14,13 @@ interface Service {
 }
 
 export const ServicesPage = () => {
-  const toast = useToast();
+  const addToast = useToastStore((state) => state.addToast);
   const [services, setServices] = useState<Service[]>([
     { name: 'signal-monitor', displayName: 'Signal Monitor', description: 'Signal monitor service', status: 'loading' },
     { name: 'signal-api', displayName: 'API Server', description: 'API service', status: 'loading' },
   ]);
 
-  const fetchStatus = async () => {
+  const fetchStatus = useCallback(async () => {
     try {
       const res = await fetch('/api/services/status');
       if (res.ok) {
@@ -28,15 +28,17 @@ export const ServicesPage = () => {
         setServices((prev) => prev.map((s) => ({ ...s, status: data[s.name] || 'stopped' })));
       }
     } catch {
-      toast.error('Failed to load service status');
+      addToast('error', 'Failed to load service status');
     }
-  };
+  }, [addToast]);
 
   useEffect(() => {
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 10000);
+    void fetchStatus();
+    const interval = setInterval(() => {
+      void fetchStatus();
+    }, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchStatus]);
 
   const handleAction = async (name: string, action: 'start' | 'stop' | 'restart') => {
     try {
@@ -46,14 +48,16 @@ export const ServicesPage = () => {
         body: JSON.stringify({ service: name }),
       });
       if (res.ok) {
-        toast.success(`Service ${action} succeeded`);
-        setTimeout(fetchStatus, 2000);
+        addToast('success', `Service ${action} succeeded`);
+        setTimeout(() => {
+          void fetchStatus();
+        }, 2000);
       } else {
         const err = await res.json();
-        toast.error(err.message || 'Action failed');
+        addToast('error', err.message || 'Action failed');
       }
     } catch {
-      toast.error('Action failed');
+      addToast('error', 'Action failed');
     }
   };
 

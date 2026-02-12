@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
+import os
 """Check NOFX logs for Gemini response issues."""
 import paramiko
 
 ssh = paramiko.SSHClient()
 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-ssh.connect('82.158.88.34', username='root', password='Qq159741', timeout=30)
+ssh.connect('82.158.88.34', username='root', password=os.getenv("VALUESCAN_VPS_PASSWORD", ""), timeout=30)
 
 # Find NOFX data directory and recent decision files
 commands = [

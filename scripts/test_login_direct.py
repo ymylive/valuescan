@@ -24,7 +24,7 @@ from pathlib import Path
 from DrissionPage import ChromiumOptions, ChromiumPage
 
 email = "ymy_live@outlook.com"
-password = "Qq159741."
+password=os.getenv("VALUESCAN_VPS_PASSWORD", "")
 
 # Stop signal monitor to free memory
 print("Stopping signal monitor to free memory...")

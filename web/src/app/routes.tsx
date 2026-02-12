@@ -8,7 +8,6 @@ import { AdminGuard } from '../features/auth/AdminGuard';
 
 const DashboardPage = lazy(() => import('../features/dashboard/DashboardPage'));
 const ConfigurationPage = lazy(() => import('../features/configuration/ConfigurationPage'));
-const ProxyPage = lazy(() => import('../features/proxy/ProxyPage'));
 const LogsPage = lazy(() => import('../features/logs/LogsPage'));
 const ServicesPage = lazy(() => import('../features/services/ServicesPage'));
 const ForecastPage = lazy(() => import('../features/forecast/ForecastPage'));
@@ -44,7 +43,6 @@ export const AppRoutes = () => {
           >
             <Route index element={<DashboardPage />} />
             <Route path="configuration" element={<ConfigurationPage />} />
-            <Route path="proxy" element={<ProxyPage />} />
             <Route path="logs" element={<LogsPage />} />
             <Route path="services" element={<ServicesPage />} />
             <Route path="forecast" element={<ForecastPage />} />

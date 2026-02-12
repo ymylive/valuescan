@@ -5,11 +5,12 @@
 
 import time
 import requests
+import os
 from functools import wraps
 from logger import logger
 
 # ==================== API配置 ====================
-ETHERSCAN_API_KEY = "HDEJ9NFX5BN63E9CPAZ16QJJJDE5X91W75"
+ETHERSCAN_API_KEY = (os.getenv("ETHERSCAN_API_KEY") or "").strip()
 
 # ==================== 频率限制装饰器 ====================
 
@@ -60,7 +61,7 @@ def get_proxies():
         from config import SOCKS5_PROXY
         if SOCKS5_PROXY:
             proxies = {'http': SOCKS5_PROXY, 'https': SOCKS5_PROXY}
-    except:
+    except (ImportError, AttributeError):
         pass
     return proxies
 

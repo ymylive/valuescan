@@ -7,7 +7,7 @@ import paramiko
 
 HOST = os.getenv("VALUESCAN_VPS_HOST", "82.158.88.34")
 USER = os.getenv("VALUESCAN_VPS_USER", "root")
-PASSWORD = os.getenv("VALUESCAN_VPS_PASSWORD", "Qq159741")
+PASSWORD = os.getenv("VALUESCAN_VPS_PASSWORD", "")
 
 LOCAL_ROOT = Path(r"E:\project\valuescan")
 LOCAL_FILE = LOCAL_ROOT / "metacubexd" / "composables" / "useApi.ts"
@@ -88,7 +88,7 @@ def restart_service(ssh: paramiko.SSHClient):
         ssh, "command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' || true"
     )
     for name in out.splitlines():
-        if "metacubexd" in name or "clash" in name:
+        if "metacubexd" in name:
             run_ssh(ssh, f"docker restart {name}")
             return
 
@@ -96,6 +96,10 @@ def restart_service(ssh: paramiko.SSHClient):
 
 
 def main():
+    if not PASSWORD:
+        print("VALUESCAN_VPS_PASSWORD is required.")
+        sys.exit(1)
+
     if not LOCAL_FILE.exists():
         print(f"Local file not found: {LOCAL_FILE}")
         sys.exit(1)

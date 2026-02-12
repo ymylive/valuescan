@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 # -*- coding: utf-8 -*-
 """
 修复VPS服务配置问题
@@ -7,7 +8,7 @@ import paramiko
 
 VPS_HOST = "82.158.88.34"
 VPS_USER = "root"
-VPS_PASSWORD = "Qq159741"
+VPS_PASSWORD = os.getenv("VALUESCAN_VPS_PASSWORD", "")
 
 def fix_service():
     print("连接VPS...")

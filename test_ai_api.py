@@ -5,8 +5,8 @@ import json
 import sys
 from pathlib import Path
 
-# 直接读取 AI Signal 配置文件
-config_path = Path('/root/valuescan/signal_monitor/ai_signal_config.json')
+# 直接读取 AI Signal 配置文件（优先本地项目路径）
+config_path = Path(__file__).resolve().parent / 'signal_monitor' / 'ai_signal_config.json'
 if config_path.exists():
     with open(config_path) as f:
         config = json.load(f)
@@ -15,9 +15,12 @@ else:
 
 print("Config:", json.dumps(config, indent=2, ensure_ascii=False))
 
-api_url = config.get('api_url', 'https://chat.cornna.xyz/gemini/v1/chat/completions')
+api_url = config.get('api_url', 'https://chat.cornna.xyz/gemini/v1')
 api_key = config.get('api_key', '')
-model = config.get('model', 'gemini-2.0-flash-exp')
+model = config.get('model', 'gemini-3-flash-preview')
+
+if '/chat/completions' not in api_url and '/responses' not in api_url:
+    api_url = api_url.rstrip('/') + '/chat/completions'
 
 print(f"\nAPI URL: {api_url}")
 print(f"Model: {model}")

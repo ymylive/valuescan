@@ -31,7 +31,7 @@ msg = """🟡 BTC 📈 [测试信号]
 异动检测系统测试
 • 成交量突增 5.2x
 • 资金费率: -0.015%
-• 独立行情确认"""
+• 异动监测确认"""
 
 send_message_with_async_chart(msg, "BTC")
 print("Anomaly signal sent!")

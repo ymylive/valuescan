@@ -4,13 +4,16 @@
 import os
 import sys
 
-# Set credentials
-os.environ["VALUESCAN_EMAIL"] = "ymy_live@outlook.com"
-os.environ["VALUESCAN_PASSWORD"] = "Qq159741."
+# Set credentials from environment
+os.environ["VALUESCAN_EMAIL"] = os.environ.get("VALUESCAN_EMAIL", "")
+os.environ["VALUESCAN_PASSWORD"] = os.environ.get("VALUESCAN_PASSWORD", "")
 os.environ["VALUESCAN_VPS_PASSWORD"] = os.environ.get("VALUESCAN_VPS_PASSWORD", "")
 
 if not os.environ["VALUESCAN_VPS_PASSWORD"]:
     print("Error: VALUESCAN_VPS_PASSWORD environment variable is required")
+    sys.exit(1)
+if not os.environ["VALUESCAN_EMAIL"] or not os.environ["VALUESCAN_PASSWORD"]:
+    print("Error: VALUESCAN_EMAIL and VALUESCAN_PASSWORD environment variables are required")
     sys.exit(1)
 
 # Import and run the deployment

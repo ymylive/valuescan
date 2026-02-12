@@ -25,7 +25,7 @@ class Signal:
     severity: str   # alert / warning / info
     description: str
     triggers: List[str] = field(default_factory=list)
-    is_independent: bool = False  # 是否独立行情
+    is_independent: bool = False  # 是否异动监测
     timestamp: float = field(default_factory=time.time)
     data: Dict[str, Any] = field(default_factory=dict)
     score: Optional[float] = None  # 综合评分
@@ -116,7 +116,7 @@ class SignalDetector:
         extreme_signals = self._detect_extreme_cases(snapshot)
         signals.extend(extreme_signals)
 
-        # 标记独立行情（需要核心波动且非BTC）
+        # 标记异动监测（需要核心波动且非BTC）
         if (
             snapshot.correlation
             and snapshot.correlation.is_independent

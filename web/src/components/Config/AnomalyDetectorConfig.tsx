@@ -4,7 +4,7 @@ import { GlassCard } from '../shared';
 import { Input } from '../ui';
 import {
   Activity, TrendingUp, BarChart3, BookOpen,
-  Link2, Heart, Zap, Target, ChevronDown, ChevronUp, Radio
+  Link2, Heart, Zap, Target, ChevronDown, Radio
 } from 'lucide-react';
 import { AnomalyDetectorConfig } from '../../types/config';
 import { useTranslation } from 'react-i18next';

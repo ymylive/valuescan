@@ -134,6 +134,275 @@ export const AIServiceConfigComponent: React.FC<AIServiceConfigProps> = ({ confi
                 />
               </div>
 
+              <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4 space-y-4">
+                <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-200">第二优先级模型</h4>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    API 基础 URL
+                  </label>
+                  <Input
+                    type="text"
+                    value={config.ai_signal_analysis_secondary_api_url}
+                    onChange={(e) => handleChange('ai_signal_analysis_secondary_api_url', e.target.value)}
+                    placeholder="https://api-inference.modelscope.cn/v1"
+                    className="w-full"
+                  />
+                </div>
+                {renderProtocolToggle(
+                  config.ai_signal_analysis_secondary_api_protocol,
+                  (next) => handleChange('ai_signal_analysis_secondary_api_protocol', next),
+                )}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    API Key
+                  </label>
+                  <Input
+                    type="password"
+                    value={config.ai_signal_analysis_secondary_api_key}
+                    onChange={(e) => handleChange('ai_signal_analysis_secondary_api_key', e.target.value)}
+                    placeholder="sk-..."
+                    className="w-full"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    模型名称
+                  </label>
+                  <Input
+                    type="text"
+                    value={config.ai_signal_analysis_secondary_model}
+                    onChange={(e) => handleChange('ai_signal_analysis_secondary_model', e.target.value)}
+                    placeholder="ZhipuAI/GLM-4.7"
+                    className="w-full"
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4 space-y-4">
+                <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-200">第三优先级模型</h4>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    API 基础 URL
+                  </label>
+                  <Input
+                    type="text"
+                    value={config.ai_signal_analysis_tertiary_api_url}
+                    onChange={(e) => handleChange('ai_signal_analysis_tertiary_api_url', e.target.value)}
+                    placeholder="https://openrouter.ai/api/v1"
+                    className="w-full"
+                  />
+                </div>
+                {renderProtocolToggle(
+                  config.ai_signal_analysis_tertiary_api_protocol,
+                  (next) => handleChange('ai_signal_analysis_tertiary_api_protocol', next),
+                )}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    API Key
+                  </label>
+                  <Input
+                    type="password"
+                    value={config.ai_signal_analysis_tertiary_api_key}
+                    onChange={(e) => handleChange('ai_signal_analysis_tertiary_api_key', e.target.value)}
+                    placeholder="sk-or-..."
+                    className="w-full"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    模型名称
+                  </label>
+                  <Input
+                    type="text"
+                    value={config.ai_signal_analysis_tertiary_model}
+                    onChange={(e) => handleChange('ai_signal_analysis_tertiary_model', e.target.value)}
+                    placeholder="tngtech/deepseek-r1t2-chimera:free"
+                    className="w-full"
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4 space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-200">MCP 主动搜索增强</h4>
+                  <input
+                    type="checkbox"
+                    checked={config.ai_signal_analysis_mcp_enabled}
+                    onChange={(e) => handleChange('ai_signal_analysis_mcp_enabled', e.target.checked)}
+                    className="w-5 h-5 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                  />
+                </div>
+
+                {config.ai_signal_analysis_mcp_enabled && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        搜索查询模板
+                      </label>
+                      <Input
+                        type="text"
+                        value={config.ai_signal_analysis_mcp_query_template}
+                        onChange={(e) => handleChange('ai_signal_analysis_mcp_query_template', e.target.value)}
+                        placeholder="{symbol} crypto latest market news macro policy risk"
+                        className="w-full"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          单源结果数
+                        </label>
+                        <Input
+                          type="number"
+                          value={config.ai_signal_analysis_mcp_max_results}
+                          onChange={(e) => handleChange('ai_signal_analysis_mcp_max_results', parseIntSafe(e.target.value, config.ai_signal_analysis_mcp_max_results))}
+                          min={1}
+                          max={20}
+                          className="w-full"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          超时(秒)
+                        </label>
+                        <Input
+                          type="number"
+                          value={config.ai_signal_analysis_mcp_timeout_sec}
+                          onChange={(e) => handleChange('ai_signal_analysis_mcp_timeout_sec', parseIntSafe(e.target.value, config.ai_signal_analysis_mcp_timeout_sec))}
+                          min={5}
+                          max={120}
+                          className="w-full"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          缓存TTL(秒)
+                        </label>
+                        <Input
+                          type="number"
+                          value={config.ai_signal_analysis_mcp_cache_ttl_sec}
+                          onChange={(e) => handleChange('ai_signal_analysis_mcp_cache_ttl_sec', parseIntSafe(e.target.value, config.ai_signal_analysis_mcp_cache_ttl_sec))}
+                          min={0}
+                          max={86400}
+                          className="w-full"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          注入Prompt字符上限
+                        </label>
+                        <Input
+                          type="number"
+                          value={config.ai_signal_analysis_mcp_max_prompt_chars}
+                          onChange={(e) => handleChange('ai_signal_analysis_mcp_max_prompt_chars', parseIntSafe(e.target.value, config.ai_signal_analysis_mcp_max_prompt_chars))}
+                          min={200}
+                          max={6000}
+                          className="w-full"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="rounded-md border border-gray-200 dark:border-gray-700 p-4 space-y-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <h5 className="text-sm font-semibold text-gray-800 dark:text-gray-200">搜索源 #1（主）</h5>
+                        <input
+                          type="checkbox"
+                          checked={config.ai_signal_analysis_mcp_source_primary_enabled}
+                          onChange={(e) => handleChange('ai_signal_analysis_mcp_source_primary_enabled', e.target.checked)}
+                          className="w-5 h-5 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                        />
+                      </div>
+                      <Input
+                        type="text"
+                        value={config.ai_signal_analysis_mcp_source_primary_name}
+                        onChange={(e) => handleChange('ai_signal_analysis_mcp_source_primary_name', e.target.value)}
+                        placeholder="brave"
+                        className="w-full"
+                      />
+                      <Input
+                        type="text"
+                        value={config.ai_signal_analysis_mcp_source_primary_command}
+                        onChange={(e) => handleChange('ai_signal_analysis_mcp_source_primary_command', e.target.value)}
+                        placeholder="npx"
+                        className="w-full"
+                      />
+                      <Input
+                        type="text"
+                        value={config.ai_signal_analysis_mcp_source_primary_args}
+                        onChange={(e) => handleChange('ai_signal_analysis_mcp_source_primary_args', e.target.value)}
+                        placeholder="-y @modelcontextprotocol/server-brave-search"
+                        className="w-full"
+                      />
+                      <Input
+                        type="text"
+                        value={config.ai_signal_analysis_mcp_source_primary_tool_name}
+                        onChange={(e) => handleChange('ai_signal_analysis_mcp_source_primary_tool_name', e.target.value)}
+                        placeholder="brave_web_search"
+                        className="w-full"
+                      />
+                      <Input
+                        type="text"
+                        value={config.ai_signal_analysis_mcp_source_primary_env_json}
+                        onChange={(e) => handleChange('ai_signal_analysis_mcp_source_primary_env_json', e.target.value)}
+                        placeholder='{"BRAVE_API_KEY":""}'
+                        className="w-full"
+                      />
+                    </div>
+
+                    <div className="rounded-md border border-gray-200 dark:border-gray-700 p-4 space-y-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <h5 className="text-sm font-semibold text-gray-800 dark:text-gray-200">搜索源 #2（并行）</h5>
+                        <input
+                          type="checkbox"
+                          checked={config.ai_signal_analysis_mcp_source_secondary_enabled}
+                          onChange={(e) => handleChange('ai_signal_analysis_mcp_source_secondary_enabled', e.target.checked)}
+                          className="w-5 h-5 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                        />
+                      </div>
+                      <Input
+                        type="text"
+                        value={config.ai_signal_analysis_mcp_source_secondary_name}
+                        onChange={(e) => handleChange('ai_signal_analysis_mcp_source_secondary_name', e.target.value)}
+                        placeholder="exa"
+                        className="w-full"
+                      />
+                      <Input
+                        type="text"
+                        value={config.ai_signal_analysis_mcp_source_secondary_command}
+                        onChange={(e) => handleChange('ai_signal_analysis_mcp_source_secondary_command', e.target.value)}
+                        placeholder="npx"
+                        className="w-full"
+                      />
+                      <Input
+                        type="text"
+                        value={config.ai_signal_analysis_mcp_source_secondary_args}
+                        onChange={(e) => handleChange('ai_signal_analysis_mcp_source_secondary_args', e.target.value)}
+                        placeholder="-y exa-mcp-server"
+                        className="w-full"
+                      />
+                      <Input
+                        type="text"
+                        value={config.ai_signal_analysis_mcp_source_secondary_tool_name}
+                        onChange={(e) => handleChange('ai_signal_analysis_mcp_source_secondary_tool_name', e.target.value)}
+                        placeholder="web_search_exa"
+                        className="w-full"
+                      />
+                      <Input
+                        type="text"
+                        value={config.ai_signal_analysis_mcp_source_secondary_env_json}
+                        onChange={(e) => handleChange('ai_signal_analysis_mcp_source_secondary_env_json', e.target.value)}
+                        placeholder='{"EXA_API_KEY":""}'
+                        className="w-full"
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">

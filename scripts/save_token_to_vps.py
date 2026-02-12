@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
+import os
 """Save ValueScan tokens to VPS."""
 import paramiko
 import json
 
 HOST = "82.158.88.34"
 USER = "root"
-PASSWORD = "Qq159741"
+PASSWORD = os.getenv("VALUESCAN_VPS_PASSWORD", "")
 
 # Tokens from browser login
 tokens = {

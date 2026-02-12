@@ -35,9 +35,12 @@ def main():
         print("Please install Google Chrome to test CDP login")
         return 1
 
-    # Set environment variables
-    os.environ["VALUESCAN_EMAIL"] = "ymy_live@outlook.com"
-    os.environ["VALUESCAN_PASSWORD"] = "Qq159741."
+    # Use environment variables
+    os.environ["VALUESCAN_EMAIL"] = os.environ.get("VALUESCAN_EMAIL", "")
+    os.environ["VALUESCAN_PASSWORD"] = os.environ.get("VALUESCAN_PASSWORD", "")
+    if not os.environ["VALUESCAN_EMAIL"] or not os.environ["VALUESCAN_PASSWORD"]:
+        print("[ERROR] VALUESCAN_EMAIL and VALUESCAN_PASSWORD are required")
+        return 1
 
     print("\n[*] Testing CDP token refresh...")
     print("[*] This will:")

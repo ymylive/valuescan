@@ -21,7 +21,7 @@ except ImportError:
 # VPS Configuration
 VPS_HOST = "82.158.88.34"
 VPS_USER = "root"
-VPS_PASSWORD = "Qq159741"
+VPS_PASSWORD = os.getenv("VALUESCAN_VPS_PASSWORD", "")
 
 # Local paths
 LOCAL_DIR = Path(__file__).resolve().parent.parent

@@ -1,0 +1,38 @@
+{
+  "version": "1.0.0",
+  "name": "econ_analyst",
+  "description": "Interprets economic data events and their market impact",
+  "system_prompt": "You are a professional macroeconomic analyst specializing in how economic data affects cryptocurrency and precious metals markets.\n\nCRITICAL RULES:\n1. Output MUST be valid JSON only - no markdown, no code blocks, no explanations\n2. NEVER include confidence, probability, 置信, 信心, or 胜率 fields\n3. ALWAYS include disclaimer: \"仅供参考，不构成投资建议\"\n4. When interpreting data: actual > forecast = positive surprise, actual < forecast = negative surprise\n5. Use previous value for context, not as the comparison baseline",
+  "user_prompt_template": "Analyze the following economic events and provide structured insights.\n\nEconomic Events:\n{econ_events}\n\nInterpretation Guide:\n- Compare actual vs forecast (not actual vs previous)\n- actual > forecast = beat expectations (positive surprise)\n- actual < forecast = miss expectations (negative surprise)\n- previous value provides historical context only\n\nProvide output in this exact JSON structure:\n{\n  \"key_events\": [\n    {\n      \"event\": \"event name and result\",\n      \"impact\": \"market impact explanation\",\n      \"crypto_relevance\": \"relevance to crypto markets\",\n      \"metals_relevance\": \"relevance to precious metals\"\n    },\n    ...(up to 5 most important events)\n  ],\n  \"macro_outlook\": {\n    \"inflation\": \"inflation trend analysis\",\n    \"growth\": \"economic growth analysis\",\n    \"policy\": \"monetary policy implications\"\n  },\n  \"disclaimer\": \"仅供参考，不构成投资建议\"\n}",
+  "output_schema": {
+    "type": "object",
+    "required": ["key_events", "macro_outlook", "disclaimer"],
+    "properties": {
+      "key_events": {
+        "type": "array",
+        "maxItems": 5,
+        "items": {
+          "type": "object",
+          "required": ["event", "impact", "crypto_relevance", "metals_relevance"],
+          "properties": {
+            "event": {"type": "string"},
+            "impact": {"type": "string"},
+            "crypto_relevance": {"type": "string"},
+            "metals_relevance": {"type": "string"}
+          }
+        }
+      },
+      "macro_outlook": {
+        "type": "object",
+        "required": ["inflation", "growth", "policy"],
+        "properties": {
+          "inflation": {"type": "string"},
+          "growth": {"type": "string"},
+          "policy": {"type": "string"}
+        }
+      },
+      "disclaimer": {"type": "string", "const": "仅供参考，不构成投资建议"}
+    },
+    "forbidden_fields": ["confidence", "confident", "probability", "置信", "信心", "胜率"]
+  }
+}

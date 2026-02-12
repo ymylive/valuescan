@@ -1,10 +1,10 @@
-﻿import os
+import os
 from pathlib import Path
 import paramiko
 
 HOST = '82.158.88.34'
 USER = 'root'
-PASSWORD = 'Qq159741'
+PASSWORD = os.getenv("VALUESCAN_VPS_PASSWORD", "")
 
 LOCAL_ROOT = Path(r"E:\project\valuescan\metacubexd")
 LOCAL_OUTPUT = LOCAL_ROOT / ".output"
@@ -73,7 +73,7 @@ def restart_service(ssh):
         ssh, "command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' || true"
     )
     for name in out.splitlines():
-        if "metacubexd" in name or "clash" in name:
+        if "metacubexd" in name:
             run_ssh(ssh, f"docker restart {name}")
             return
 

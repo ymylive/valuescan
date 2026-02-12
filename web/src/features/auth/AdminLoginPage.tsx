@@ -2,7 +2,7 @@
 import { type Location, useLocation, useNavigate } from 'react-router-dom';
 import { Button, Card, CardContent, CardHeader, Input } from '../../components/ui';
 import { adminLogin } from '../../services/adminAuth';
-import { toApiError } from '../../services/api';
+import { setAdminToken, toApiError } from '../../services/api';
 
 export const AdminLoginPage = () => {
   const navigate = useNavigate();
@@ -22,7 +22,7 @@ export const AdminLoginPage = () => {
         setError(response?.error || 'Invalid credentials.');
         return;
       }
-      localStorage.setItem('token', response.token);
+      setAdminToken(response.token);
       const state = location.state as { from?: Location } | null;
       const target = state?.from?.pathname || '/admin';
       navigate(target, { replace: true });
@@ -70,7 +70,6 @@ export const AdminLoginPage = () => {
             <Button type="submit" disabled={loading} className="w-full">
               {loading ? 'Authenticating...' : 'Enter Admin Panel'}
             </Button>
-            <div className="text-xs text-gray-500">Default credentials: root / Qq159741</div>
           </form>
         </CardContent>
       </Card>

@@ -1,2 +1,4 @@
 pandas>=2.2.0
 numpy>=1.26.0
+PyYAML>=6.0
+pyarrow>=16.0.0

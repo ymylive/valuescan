@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 """Debug AI config flow on VPS."""
 
 import paramiko
@@ -6,7 +7,7 @@ import json
 
 ssh = paramiko.SSHClient()
 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-ssh.connect('82.158.88.34', username='root', password='Qq159741')
+ssh.connect('82.158.88.34', username='root', password=os.getenv("VALUESCAN_VPS_PASSWORD", ""))
 
 # 1. Check current config file
 print("=== 1. Current config file ===")

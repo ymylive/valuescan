@@ -1,7 +1,7 @@
 """
 相关性特征计算器
-识别独立行情 - 过滤大盘联动
-基于专业建议: BTC相关性 < 0.5 = 独立行情
+识别异动监测 - 过滤大盘联动
+基于专业建议: BTC相关性 < 0.5 = 异动监测
 """
 
 from __future__ import annotations
@@ -25,9 +25,9 @@ class CorrelationFeatures:
     """
     相关性特征计算器
 
-    识别独立行情:
-    - 与BTC相关性 < 0.5 时标记为独立行情 (专业建议)
-    - 独立行情 = Smart Money行为
+    识别异动监测:
+    - 与BTC相关性 < 0.5 时标记为异动监测 (专业建议)
+    - 异动监测 = Smart Money行为
     """
 
     def __init__(self, config: Optional[AnomalyConfig] = None):
@@ -177,14 +177,14 @@ class CorrelationFeatures:
 
     def is_independent_move(self, symbol: str, has_anomaly: bool) -> bool:
         """
-        判断是否为独立行情
+        判断是否为异动监测
 
         条件:
         1. 检测到异动信号
         2. 与BTC相关性 < threshold
 
         Returns:
-            True = 独立行情 (Smart Money行为)
+            True = 异动监测 (Smart Money行为)
             False = 大盘联动 (可过滤)
         """
         if not has_anomaly:

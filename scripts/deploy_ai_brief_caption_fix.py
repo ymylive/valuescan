@@ -1,10 +1,11 @@
 ﻿import os
+import os
 from pathlib import Path
 import paramiko
 
 HOST = os.getenv("VALUESCAN_VPS_HOST", "82.158.88.34")
 USER = os.getenv("VALUESCAN_VPS_USER", "root")
-PASSWORD = os.getenv("VALUESCAN_VPS_PASSWORD", "Qq159741")
+PASSWORD = os.getenv("VALUESCAN_VPS_PASSWORD", "")
 
 LOCAL_ROOT = Path(r"E:\project\valuescan")
 LOCAL_FILE = LOCAL_ROOT / "signal_monitor" / "telegram.py"
@@ -26,6 +27,8 @@ def run_ssh(ssh, cmd, timeout=60):
 
 
 def main():
+    if not PASSWORD:
+        raise SystemExit("Missing VALUESCAN_VPS_PASSWORD.")
     if not LOCAL_FILE.exists():
         raise SystemExit(f"Local file not found: {LOCAL_FILE}")
 

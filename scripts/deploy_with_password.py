@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
+import os
 """Deploy to VPS with password authentication using paramiko."""
 import paramiko
 import sys
 
 HOST = "82.158.88.34"
 USER = "root"
-PASSWORD = "Qq159741"
+PASSWORD = os.getenv("VALUESCAN_VPS_PASSWORD", "")
 
 def run_ssh_command(ssh, cmd, desc):
     print(f"\n[{desc}] Running: {cmd}")

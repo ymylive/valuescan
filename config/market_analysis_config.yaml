@@ -1,0 +1,52 @@
+runtime:
+  random_seed: 42
+
+schema:
+  currency: USD
+  timezone: UTC
+  grain: day
+  primary_key: [date, channel, segment]
+  fields:
+    - {name: date, type: date, required: true, unit: day, missing: drop}
+    - {name: channel, type: str, required: true, unit: text, missing: drop}
+    - {name: segment, type: str, required: true, unit: text, missing: drop}
+    - {name: country, type: str, required: false, unit: iso2, missing: allow}
+    - {name: product_line, type: str, required: false, unit: text, missing: allow}
+    - {name: currency, type: str, required: true, unit: iso4217, missing: drop}
+    - {name: visitors, type: float, required: true, unit: users, missing: zero}
+    - {name: signups, type: float, required: true, unit: users, missing: zero}
+    - {name: activated, type: float, required: true, unit: users, missing: zero}
+    - {name: paid_customers, type: float, required: true, unit: users, missing: zero}
+    - {name: marketing_spend, type: float, required: true, unit: usd, missing: zero}
+    - {name: new_customers, type: float, required: true, unit: users, missing: zero}
+    - {name: active_customers, type: float, required: true, unit: users, missing: zero}
+    - {name: retained_d1, type: float, required: true, unit: users, missing: zero}
+    - {name: retained_d7, type: float, required: true, unit: users, missing: zero}
+    - {name: retained_d30, type: float, required: true, unit: users, missing: zero}
+    - {name: revenue, type: float, required: true, unit: usd, missing: zero}
+    - {name: gmv, type: float, required: true, unit: usd, missing: zero}
+    - {name: cogs, type: float, required: true, unit: usd, missing: zero}
+    - {name: operating_cost, type: float, required: true, unit: usd, missing: zero}
+    - {name: price, type: float, required: true, unit: usd, missing: zero}
+    - {name: competitor_price, type: float, required: true, unit: usd, missing: zero}
+    - {name: units_sold, type: float, required: true, unit: units, missing: zero}
+
+modeling:
+  min_train_size: 20
+  test_window: 5
+  seasonal_period: 7
+  embargo: 1
+  forecast_horizon: 7
+  n_bootstrap: 200
+  bootstrap_block_size: 5
+
+definitions:
+  kpi_version: v1.0
+  attribution_window_days: 30
+
+sensitivity:
+  deltas:
+    conversion_rate: 0.05
+    retention_d30: 0.04
+    cac: -0.08
+    price: 0.03

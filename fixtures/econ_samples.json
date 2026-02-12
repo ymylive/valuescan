@@ -1,0 +1,52 @@
+[
+  {
+    "name": "美国非农就业人数",
+    "country": "US",
+    "importance": "high",
+    "time": "2026-02-14T13:30:00Z",
+    "previous": 216000,
+    "forecast": 180000,
+    "actual": null,
+    "description": "衡量美国非农业部门新增就业人数，是最重要的就业指标之一"
+  },
+  {
+    "name": "美国失业率",
+    "country": "US",
+    "importance": "high",
+    "time": "2026-02-14T13:30:00Z",
+    "previous": 3.7,
+    "forecast": 3.7,
+    "actual": null,
+    "description": "失业人口占劳动力总数的百分比"
+  },
+  {
+    "name": "美国CPI年率",
+    "country": "US",
+    "importance": "high",
+    "time": "2026-02-13T13:30:00Z",
+    "previous": 3.4,
+    "forecast": 3.2,
+    "actual": null,
+    "description": "消费者物价指数同比变化，衡量通胀水平"
+  },
+  {
+    "name": "美国核心CPI年率",
+    "country": "US",
+    "importance": "high",
+    "time": "2026-02-13T13:30:00Z",
+    "previous": 3.9,
+    "forecast": 3.7,
+    "actual": null,
+    "description": "剔除食品和能源的CPI，更能反映潜在通胀趋势"
+  },
+  {
+    "name": "美国零售销售月率",
+    "country": "US",
+    "importance": "medium",
+    "time": "2026-02-15T13:30:00Z",
+    "previous": 0.6,
+    "forecast": 0.3,
+    "actual": null,
+    "description": "衡量零售商品销售额的月度变化"
+  }
+]

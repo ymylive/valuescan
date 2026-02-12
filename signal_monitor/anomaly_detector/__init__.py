@@ -13,7 +13,11 @@
 
 from .config import AnomalyConfig
 from .detector import SignalDetector, Signal
-from .engine import AnomalyDetectorEngine
+
+try:
+    from .engine import AnomalyDetectorEngine
+except ModuleNotFoundError:
+    AnomalyDetectorEngine = None
 
 __all__ = [
     "AnomalyConfig",

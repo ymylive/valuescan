@@ -1,12 +1,40 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --font-sans: 'Space Grotesk', 'Segoe UI', 'Noto Sans', sans-serif;
+    --font-mono: 'JetBrains Mono', 'Consolas', 'Courier New', monospace;
+
+    --color-bg: 210 33% 98%;
+    --color-foreground: 220 33% 13%;
+    --color-surface: 0 0% 100%;
+    --color-surface-muted: 210 40% 96%;
+    --color-border: 217 30% 84%;
+    --color-muted: 218 18% 42%;
+    --color-focus-ring: 196 87% 46%;
+    --color-focus-ring-soft: 196 87% 46% / 0.24;
+    --shell-shadow: 0 14px 38px -26px rgb(15 23 42 / 0.5);
+  }
+
+  .dark {
+    --color-bg: 222 41% 8%;
+    --color-foreground: 210 33% 96%;
+    --color-surface: 221 33% 13%;
+    --color-surface-muted: 221 29% 18%;
+    --color-border: 220 24% 26%;
+    --color-muted: 217 20% 70%;
+    --color-focus-ring: 188 94% 47%;
+    --color-focus-ring-soft: 188 94% 47% / 0.28;
+    --shell-shadow: 0 18px 46px -28px rgb(2 6 23 / 0.82);
+  }
+
   * {
     -webkit-tap-highlight-color: transparent;
+    border-color: hsl(var(--color-border) / 0.6);
   }
 
   html {
@@ -14,10 +42,45 @@
   }
 
   body {
-    @apply antialiased text-gray-900 dark:text-gray-100 bg-gray-50 dark:bg-gray-950;
+    @apply antialiased;
+    font-family: var(--font-sans);
+    color: hsl(var(--color-foreground));
+    background-color: hsl(var(--color-bg));
+    background-image:
+      radial-gradient(circle at 12% 18%, hsl(191 90% 55% / 0.1), transparent 36%),
+      radial-gradient(circle at 88% 2%, hsl(220 88% 62% / 0.08), transparent 30%),
+      linear-gradient(180deg, hsl(var(--color-bg)), hsl(var(--color-bg)) 58%, hsl(210 38% 96% / 0.45));
+    min-height: 100vh;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overscroll-behavior: none;
+  }
+
+  .dark body {
+    background-image:
+      radial-gradient(circle at 10% 10%, hsl(188 88% 40% / 0.16), transparent 34%),
+      radial-gradient(circle at 90% 6%, hsl(216 86% 58% / 0.12), transparent 30%),
+      linear-gradient(180deg, hsl(var(--color-bg)), hsl(222 39% 7%));
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+  }
+
+  ::selection {
+    background: hsl(var(--color-focus-ring) / 0.28);
+  }
+
+  :where(a, button, input, textarea, select, summary, [role='button'], [tabindex]):focus-visible {
+    outline: 2px solid hsl(var(--color-focus-ring));
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px hsl(var(--color-focus-ring-soft));
   }
 }
 
@@ -39,6 +102,14 @@
   .touch-manipulation {
     touch-action: manipulation;
   }
+
+  .shell-divider {
+    border-color: hsl(var(--color-border) / 0.75);
+  }
+
+  .shell-muted-text {
+    color: hsl(var(--color-muted));
+  }
 }
 
 @layer components {
@@ -52,6 +123,19 @@
 
   .animate-scale-in {
     animation: scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .shell-panel {
+    background: hsl(var(--color-surface) / 0.82);
+    border: 1px solid hsl(var(--color-border) / 0.75);
+    box-shadow: var(--shell-shadow);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+
+  .shell-panel-muted {
+    background: hsl(var(--color-surface-muted) / 0.72);
+    border: 1px solid hsl(var(--color-border) / 0.7);
   }
 }
 
@@ -83,5 +167,16 @@
   to {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
