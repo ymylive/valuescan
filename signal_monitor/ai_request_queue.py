@@ -23,7 +23,11 @@ class _Task:
     event: threading.Event = field(default_factory=threading.Event)
 
 
-_TASK_QUEUE: "queue.Queue[_Task]" = queue.Queue()
+_queue_max_size = int(os.getenv("NOFX_AI_QUEUE_MAX_SIZE", "1000") or 1000)
+if _queue_max_size <= 0:
+    _queue_max_size = 1000
+
+_TASK_QUEUE: "queue.Queue[_Task]" = queue.Queue(maxsize=_queue_max_size)
 _WORKER_STARTED = False
 _WORKER_LOCK = threading.Lock()
 _RATE_LOCK = threading.Lock()
@@ -80,19 +84,21 @@ def _is_429_error(exc: BaseException) -> bool:
 
 def _sleep_until_ready() -> None:
     global _LAST_REQUEST_TS, _CURRENT_MIN_INTERVAL
-    with _RATE_LOCK:
-        now = time.time()
-        if _LAST_429_TS and (now - _LAST_429_TS) >= _RECOVER_AFTER_SEC:
-            _CURRENT_MIN_INTERVAL = _MIN_INTERVAL_FAST_SEC
-        wait_for = 0.0
-        if now < _COOLDOWN_UNTIL:
-            wait_for = _COOLDOWN_UNTIL - now
-        min_wait = (_LAST_REQUEST_TS + _CURRENT_MIN_INTERVAL) - now
-        if min_wait > wait_for:
-            wait_for = min_wait
-        if wait_for > 0:
-            time.sleep(wait_for)
-        _LAST_REQUEST_TS = time.time()
+    while True:
+        with _RATE_LOCK:
+            now = time.time()
+            if _LAST_429_TS and (now - _LAST_429_TS) >= _RECOVER_AFTER_SEC:
+                _CURRENT_MIN_INTERVAL = _MIN_INTERVAL_FAST_SEC
+            wait_for = 0.0
+            if now < _COOLDOWN_UNTIL:
+                wait_for = _COOLDOWN_UNTIL - now
+            min_wait = (_LAST_REQUEST_TS + _CURRENT_MIN_INTERVAL) - now
+            if min_wait > wait_for:
+                wait_for = min_wait
+            if wait_for <= 0:
+                _LAST_REQUEST_TS = now
+                return
+        time.sleep(wait_for)
 
 
 def _worker() -> None:

@@ -1,18 +1,18 @@
 {
   "enabled": true,
-  "api_key": "Qq159741",
+  "api_key": "<SET_IN_ENV>",
   "api_url": "https://chat.cornna.xyz/gemini/v1",
   "api_protocol": "auto",
   "model": "gemini-3-flash-search",
   "fallbacks": [
     {
-      "api_key": "ms-6750340c-ac7b-4bb9-af73-a5b25a5b386c",
+      "api_key": "<SET_IN_ENV>",
       "api_url": "https://api-inference.modelscope.cn/v1",
       "api_protocol": "compatible",
       "model": "ZhipuAI/GLM-5"
     },
     {
-      "api_key": "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",
+      "api_key": "<SET_IN_ENV>",
       "api_url": "https://openrouter.ai/api/v1",
       "api_protocol": "compatible",
       "model": "tngtech/deepseek-r1t2-chimera:free"
@@ -21,31 +21,38 @@
   "mcp_search": {
     "enabled": true,
     "max_parallel_sources": 2,
-    "max_results": 5,
-    "timeout_sec": 25,
+    "max_results": 8,
+    "timeout_sec": 30,
     "cache_ttl_sec": 900,
-    "max_prompt_chars": 2500,
-    "query_template": "{symbol} crypto latest market news macro policy risk funding open interest sentiment",
+    "max_prompt_chars": 3200,
+    "query_template": "{symbol} {title} latest market news macro policy risk funding sentiment onchain derivatives",
     "sources": [
       {
-        "name": "brave",
+        "name": "tavily",
         "enabled": true,
         "command": "npx",
-        "args": "-y @modelcontextprotocol/server-brave-search",
-        "tool_name": "brave_web_search",
+        "args": "-y tavily-mcp@latest",
+        "tool_name": "tavily-search",
+        "jsonrpc_mode": "line",
+        "timeout_sec": 60,
+        "max_results": 8,
+        "arguments": {
+          "query": "{query}",
+          "max_results": 8,
+          "search_depth": "advanced"
+        },
         "env": {
-          "BRAVE_API_KEY": ""
+          "TAVILY_API_KEY": "${NOFX_TAVILY_API_KEY}"
         }
       },
       {
-        "name": "exa",
-        "enabled": false,
-        "command": "npx",
-        "args": "-y exa-mcp-server",
-        "tool_name": "web_search_exa",
-        "env": {
-          "EXA_API_KEY": ""
-        }
+        "name": "jin10",
+        "enabled": true,
+        "command": "python",
+        "args": "-u scripts/jin10_search_mcp_server.py",
+        "tool_name": "jin10_news_search",
+        "timeout_sec": 12,
+        "max_results": 6
       }
     ]
   },

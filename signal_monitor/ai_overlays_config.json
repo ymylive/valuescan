@@ -1,6 +1,6 @@
 {
   "enabled": false,
-  "api_key": "Qq159741",
+  "api_key": "<SET_IN_ENV>",
   "api_url": "https://chat.cornna.xyz/gemini/v1",
   "api_protocol": "auto",
   "model": "gemini-3-flash-search"

@@ -92,6 +92,10 @@ DEFAULT_CORS_ORIGINS = [
     "http://127.0.0.1:3001",
 ]
 ADMIN_LOGIN_RATE_LIMIT = (os.getenv("NOFX_ADMIN_LOGIN_RATE_LIMIT") or "5 per minute").strip() or "5 per minute"
+DEFAULT_CMD_TIMEOUT_SEC = float(os.getenv("NOFX_CMD_TIMEOUT_SEC", "8") or 8)
+SYSTEMCTL_TIMEOUT_SEC = float(os.getenv("NOFX_SYSTEMCTL_TIMEOUT_SEC", str(DEFAULT_CMD_TIMEOUT_SEC)) or DEFAULT_CMD_TIMEOUT_SEC)
+JOURNALCTL_TIMEOUT_SEC = float(os.getenv("NOFX_JOURNALCTL_TIMEOUT_SEC", str(DEFAULT_CMD_TIMEOUT_SEC)) or DEFAULT_CMD_TIMEOUT_SEC)
+SIGNALS_LIMIT_MAX = int(os.getenv("NOFX_SIGNALS_LIMIT_MAX", "200") or 200)
 
 
 def _allowed_cors_origins() -> List[str]:
@@ -777,6 +781,23 @@ def _systemctl_available() -> bool:
     return shutil.which("systemctl") is not None
 
 
+def _run_command(command: List[str], timeout_sec: float, check: bool = False) -> Optional[subprocess.CompletedProcess]:
+    safe_timeout = max(1.0, float(timeout_sec or 0))
+    try:
+        return subprocess.run(
+            command,
+            check=check,
+            capture_output=True,
+            text=True,
+            timeout=safe_timeout,
+        )
+    except subprocess.TimeoutExpired:
+        logging.getLogger(__name__).warning("Command timed out after %ss: %s", safe_timeout, " ".join(command))
+        return None
+    except Exception:
+        return None
+
+
 _UNIT_NAME_RE = re.compile(r"^[A-Za-z0-9_.@-]{1,128}$")
 
 
@@ -793,11 +814,8 @@ def _systemctl(action: str, service: str) -> bool:
         return False
     if not _is_safe_unit_name(service):
         return False
-    try:
-        subprocess.run(["systemctl", action, "--", service], check=True, capture_output=True, text=True)
-        return True
-    except Exception:
-        return False
+    result = _run_command(["systemctl", action, "--", service], SYSTEMCTL_TIMEOUT_SEC, check=True)
+    return result is not None
 
 
 def _systemctl_status(service: str) -> str:
@@ -807,17 +825,15 @@ def _systemctl_status(service: str) -> str:
         return "stopped"
     if not _is_safe_unit_name(service):
         return "stopped"
-    try:
-        result = subprocess.run(
-            ["systemctl", "is-active", "--", service],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        status = result.stdout.strip()
-        return "running" if status == "active" else "stopped"
-    except Exception:
+    result = _run_command(
+        ["systemctl", "is-active", "--", service],
+        SYSTEMCTL_TIMEOUT_SEC,
+        check=False,
+    )
+    if result is None:
         return "stopped"
+    status = result.stdout.strip()
+    return "running" if status == "active" else "stopped"
 
 
 def _journal_logs(unit: str, lines: int) -> List[Dict[str, Any]]:
@@ -828,32 +844,57 @@ def _journal_logs(unit: str, lines: int) -> List[Dict[str, Any]]:
     if not _is_safe_unit_name(unit):
         return []
     safe_lines = max(1, min(int(lines or 2000), 5000))
-    try:
-        result = subprocess.run(
-            ["journalctl", "-u", unit, "-n", str(safe_lines), "--no-pager", "-o", "json"],
-            check=False,
-            capture_output=True,
-            text=True,
+    result = _run_command(
+        ["journalctl", "-u", unit, "-n", str(safe_lines), "--no-pager", "-o", "json"],
+        JOURNALCTL_TIMEOUT_SEC,
+        check=False,
+    )
+    if result is None:
+        return []
+    logs: List[Dict[str, Any]] = []
+    for line in result.stdout.splitlines():
+        try:
+            entry = json.loads(line)
+        except Exception:
+            continue
+        ts_raw = entry.get("__REALTIME_TIMESTAMP")
+        ts = int(int(ts_raw) / 1_000_000) if ts_raw else int(time.time())
+        logs.append(
+            {
+                "timestamp": ts,
+                "level": entry.get("PRIORITY", "6"),
+                "component": unit,
+                "message": entry.get("MESSAGE", ""),
+            }
         )
-        logs: List[Dict[str, Any]] = []
-        for line in result.stdout.splitlines():
-            try:
-                entry = json.loads(line)
-            except Exception:
-                continue
-            ts_raw = entry.get("__REALTIME_TIMESTAMP")
-            ts = int(int(ts_raw) / 1_000_000) if ts_raw else int(time.time())
-            logs.append(
-                {
-                    "timestamp": ts,
-                    "level": entry.get("PRIORITY", "6"),
-                    "component": unit,
-                    "message": entry.get("MESSAGE", ""),
-                }
-            )
-        return logs
+    return logs
+
+
+def _tail_file_lines(path: Path, lines: int) -> List[str]:
+    safe_lines = max(1, int(lines or 1))
+    try:
+        with path.open("rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            position = handle.tell()
+            if position <= 0:
+                return []
+            buffer = bytearray()
+            while position > 0 and buffer.count(b"\n") <= safe_lines:
+                read_size = min(8192, position)
+                position -= read_size
+                handle.seek(position)
+                buffer[:0] = handle.read(read_size)
     except Exception:
         return []
+
+    lines_bytes = buffer.splitlines()[-safe_lines:]
+    output: List[str] = []
+    for line in lines_bytes:
+        try:
+            output.append(line.decode("utf-8"))
+        except UnicodeDecodeError:
+            output.append(line.decode("gb18030", errors="replace"))
+    return output
 
 
 def _resolve_log_file(unit: str) -> Optional[Path]:
@@ -917,17 +958,12 @@ def _file_logs(unit: str, lines: int) -> List[Dict[str, Any]]:
     path = _resolve_log_file(unit)
     if not path or not path.exists():
         return []
-    try:
-        raw = path.read_bytes()
-        try:
-            text = raw.decode("utf-8")
-        except UnicodeDecodeError:
-            text = raw.decode("gb18030", errors="replace")
-        raw_lines = text.splitlines()
-    except Exception:
+    safe_lines = max(1, min(int(lines or 2000), 5000))
+    raw_lines = _tail_file_lines(path, safe_lines)
+    if not raw_lines:
         return []
     logs: List[Dict[str, Any]] = []
-    for line in raw_lines[-lines:]:
+    for line in raw_lines:
         entry = _parse_log_line(line, unit)
         if entry:
             logs.append(entry)
@@ -1254,7 +1290,11 @@ def _realtime_market_enabled() -> bool:
 
 @app.route("/api/signals", methods=["GET"])
 def get_signals() -> Response:
-    limit = int(request.args.get("limit", 5))
+    try:
+        limit = int(request.args.get("limit", 5))
+    except (TypeError, ValueError):
+        limit = 5
+    limit = max(1, min(limit, SIGNALS_LIMIT_MAX))
     signals = _fetch_messages_by_types([110, 113], limit)
     return jsonify({"signals": signals})
 
