@@ -4,6 +4,7 @@
 """
 
 import time
+import os
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 from logger import logger
@@ -13,6 +14,8 @@ BEIJING_TZ = timezone(timedelta(hours=8))
 
 # 信号时间窗口：2小时 (7200秒)
 SIGNAL_WINDOW_SECONDS = 2 * 60 * 60
+MAX_SIGNALS_PER_TYPE = int(os.getenv('NOFX_SIGNAL_TRACKER_MAX_PER_TYPE', '256') or 256)
+SENT_SIGNAL_TTL_SECONDS = int(os.getenv('NOFX_SIGNAL_TRACKER_SENT_TTL', '86400') or 86400)
 
 
 class SignalTracker:
@@ -37,6 +40,8 @@ class SignalTracker:
         self.sent_confluence_signals = {}
         # 融合信号冷却时间：发送后1小时内不再重复发送
         self.confluence_cooldown = 60 * 60  # 1小时
+        self.max_signals_per_type = MAX_SIGNALS_PER_TYPE
+        self.sent_signal_ttl_seconds = SENT_SIGNAL_TTL_SECONDS
 
     def add_signal(self, symbol, signal_type, price, message_id, timestamp_ms):
         """
@@ -57,6 +62,7 @@ class SignalTracker:
 
         # 清理过期信号
         self._clean_expired_signals(symbol, timestamp_ms)
+        self._clean_sent_signals(timestamp_ms)
 
         # 添加新信号
         signal_data = {
@@ -65,6 +71,7 @@ class SignalTracker:
             'message_id': message_id
         }
         self.signals[symbol][signal_type].append(signal_data)
+        self._trim_signal_buffer(symbol, signal_type)
 
         logger.info(f"📊 添加 {signal_type.upper()} 信号: ${symbol}, 价格: ${price}")
 
@@ -87,6 +94,28 @@ class SignalTracker:
                 sig for sig in self.signals[symbol][signal_type]
                 if sig['timestamp'] >= cutoff_time
             ]
+
+        if not self.signals[symbol]['alpha'] and not self.signals[symbol]['fomo']:
+            self.signals.pop(symbol, None)
+
+    def _trim_signal_buffer(self, symbol, signal_type):
+        signals = self.signals[symbol][signal_type]
+        if self.max_signals_per_type <= 0:
+            return
+        overflow = len(signals) - self.max_signals_per_type
+        if overflow > 0:
+            del signals[:overflow]
+
+    def _clean_sent_signals(self, current_timestamp_ms):
+        ttl_ms = self.sent_signal_ttl_seconds * 1000
+        if ttl_ms <= 0:
+            return
+        expired = [
+            symbol for symbol, sent_ts in self.sent_confluence_signals.items()
+            if current_timestamp_ms - sent_ts > ttl_ms
+        ]
+        for symbol in expired:
+            self.sent_confluence_signals.pop(symbol, None)
 
     def _check_confluence(self, symbol, current_timestamp_ms):
         """

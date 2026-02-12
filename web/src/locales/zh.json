@@ -27,8 +27,7 @@
     "dashboard": "仪表盘",
     "configuration": "配置",
     "logs": "日志",
-    "services": "服务",
-    "forecast": "预测"
+    "services": "服务"
   },
   "dashboard": {
     "title": "系统概览",
@@ -151,5 +150,47 @@
     "ports": "端口配置",
     "security": "安全配置",
     "logging": "日志配置"
+  },
+  "app": {
+    "title": "ValueScan 管理控制台",
+    "subtitle": "管理控制台"
+  },
+  "settings": {
+    "language": "切换语言",
+    "theme": "切换主题",
+    "currentLanguage": "当前语言",
+    "zh": "中文",
+    "en": "English"
+  },
+  "logs": {
+    "title": "系统日志",
+    "sourceFrontend": "前端",
+    "sourceBackend": "后端",
+    "backendServiceSignal": "信号监控",
+    "backendServiceApi": "API 服务",
+    "backendServiceTokenRefresher": "Token 刷新",
+    "autoRefresh": "自动刷新",
+    "manualRefresh": "手动刷新",
+    "export": "导出",
+    "clearFrontend": "清空前端日志",
+    "statsFrontendTotal": "前端总数",
+    "statsErrors": "错误",
+    "statsWarnings": "警告",
+    "statsInfos": "信息",
+    "loggerSettingsTitle": "前端日志设置",
+    "loggerEnabled": "启用日志",
+    "consoleOutput": "控制台输出",
+    "persistLocal": "持久化到本地存储",
+    "sendErrorsToBackend": "错误日志发送到后端",
+    "logLevel": "日志级别",
+    "maxEntries": "最大条目数",
+    "resetLogger": "重置日志设置",
+    "searchPlaceholder": "搜索日志...",
+    "allLevels": "全部级别",
+    "search": "搜索",
+    "entries": "日志条目",
+    "noLogs": "暂无日志",
+    "clearConfirm": "确认清空所有前端日志吗？",
+    "showPayload": "查看数据"
   }
 }

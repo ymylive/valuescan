@@ -19,7 +19,7 @@ STOCK_SOURCE_WEIGHTS = {
     "twelvedata": 0.05,
 }
 
-FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY") or os.getenv("NOFX_FINNHUB_API_KEY") or "ctdj3t1r01qhb4a7lmagctdj3t1r01qhb4a7lmb0"
+FINNHUB_API_KEY = (os.getenv("FINNHUB_API_KEY") or os.getenv("NOFX_FINNHUB_API_KEY") or "").strip()
 ALPHAVANTAGE_API_KEY = os.getenv("ALPHAVANTAGE_API_KEY") or os.getenv("NOFX_ALPHAVANTAGE_API_KEY")
 TWELVEDATA_API_KEY = os.getenv("TWELVEDATA_API_KEY") or os.getenv("NOFX_TWELVEDATA_API_KEY")
 

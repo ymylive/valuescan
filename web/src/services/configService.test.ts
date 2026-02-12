@@ -32,7 +32,7 @@ describe('configService', () => {
   it('normalizes partial backend configuration with defaults', async () => {
     mockedGet.mockResolvedValueOnce({
       signal: {
-        poll_interval: 18,
+        ai_signal_interval_minutes: 18,
         language: 'en',
       },
       anomaly: {
@@ -50,7 +50,7 @@ describe('configService', () => {
     const service = new ConfigService();
     const config = await service.loadConfiguration();
 
-    expect(config.signal_monitor.poll_interval).toBe(18);
+    expect(config.signal_monitor.ai_signal_interval_minutes).toBe(18);
     expect(config.signal_monitor.language).toBe('en');
     expect(config.anomaly.scoring_weights.volume_price).toBe(0.55);
     expect(config.anomaly.scoring_weights.derivatives).toBe(
@@ -66,7 +66,7 @@ describe('configService', () => {
     mockedGet.mockRejectedValueOnce(new Error('backend offline'));
     vi.spyOn(Storage.prototype, 'getItem').mockReturnValueOnce(
       JSON.stringify({
-        signal_monitor: { poll_interval: 42 },
+        signal_monitor: { ai_signal_interval_minutes: 42 },
         anomaly: { scoring_weights: { sentiment: 0.2 } },
       })
     );
@@ -74,7 +74,7 @@ describe('configService', () => {
     const service = new ConfigService();
     const config = await service.loadConfiguration();
 
-    expect(config.signal_monitor.poll_interval).toBe(42);
+    expect(config.signal_monitor.ai_signal_interval_minutes).toBe(42);
     expect(config.anomaly.scoring_weights.sentiment).toBe(0.2);
     expect(config.anomaly.scoring_weights.volume_price).toBe(
       DEFAULT_ANOMALY_CONFIG.scoring_weights.volume_price
@@ -88,7 +88,7 @@ describe('configService', () => {
     const service = new ConfigService();
     const config = await service.loadConfiguration();
 
-    expect(config.signal_monitor.poll_interval).toBe(10);
+    expect(config.signal_monitor.ai_signal_interval_minutes).toBe(30);
     expect(config.logging.log_level).toBe('INFO');
     expect(config.us_market).toEqual(DEFAULT_US_MARKET_CONFIG);
   });

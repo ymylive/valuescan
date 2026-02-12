@@ -42,29 +42,13 @@ ssh.connect(HOST, username=USER, password=PASSWORD, port=PORT, timeout=30)
 
 try:
     py = _pick_python(ssh)
-    print("[1/4] Check ValueScan API responses...")
+    print("[1/4] Check backend health endpoint...")
     api_cmd = (
-        "cd /root/valuescan/signal_monitor && " + py + " - << 'PY'\n"
+        "cd /root/valuescan && " + py + " - << 'PY'\n"
         "import requests\n"
-        "from valuescan_api import build_valuescan_headers, get_valuescan_base_url\n"
-        "headers = build_valuescan_headers()\n"
-        "base = get_valuescan_base_url()\n"
-        "\n"
-        "def call(path, method=\"get\"):\n"
-        "    url = base + \"/\" + path\n"
-        "    if method == \"post\":\n"
-        "        resp = requests.post(url, headers=headers, json={\"page\": 1, \"pageSize\": 20}, timeout=15)\n"
-        "    else:\n"
-        "        resp = requests.get(url, headers=headers, timeout=15)\n"
-        "    print(f\"{path} status={resp.status_code}\")\n"
-        "    try:\n"
-        "        data = resp.json()\n"
-        "        print(str(data)[:400])\n"
-        "    except Exception:\n"
-        "        print(resp.text[:400])\n"
-        "\n"
-        "call(\"api/account/message/getWarnMessage\", \"get\")\n"
-        "call(\"api/account/message/aiMessagePage\", \"post\")\n"
+        "resp = requests.get('http://127.0.0.1:8081/api/health', timeout=15)\n"
+        "print('status=', resp.status_code)\n"
+        "print(resp.text[:400])\n"
         "PY"
     )
     print(_exec(ssh, api_cmd, timeout=120))

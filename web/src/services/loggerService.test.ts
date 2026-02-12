@@ -71,4 +71,48 @@ describe('loggerService', () => {
     expect(logger.exportLogs()).toBe('[]');
     expect(JSON.parse(localStorage.getItem('nofx_logs') || 'null')).toEqual([]);
   });
+
+  it('persists logger config and restores it on next initialization', async () => {
+    const { logger } = await import('./loggerService');
+
+    logger.setConfig({
+      level: LogLevel.ERROR,
+      maxEntries: 350,
+      consoleOutput: false,
+    });
+
+    const persisted = JSON.parse(localStorage.getItem('nofx_log_config') || '{}');
+    expect(persisted.level).toBe(LogLevel.ERROR);
+    expect(persisted.maxEntries).toBe(350);
+    expect(persisted.consoleOutput).toBe(false);
+
+    vi.resetModules();
+    const { logger: reloadedLogger } = await import('./loggerService');
+    const reloaded = reloadedLogger.getConfig();
+    expect(reloaded.level).toBe(LogLevel.ERROR);
+    expect(reloaded.maxEntries).toBe(350);
+    expect(reloaded.consoleOutput).toBe(false);
+  });
+
+  it('resets logger config to defaults', async () => {
+    const { logger } = await import('./loggerService');
+
+    logger.setConfig({
+      enabled: false,
+      level: LogLevel.ERROR,
+      maxEntries: 120,
+      sendToBackend: true,
+      consoleOutput: false,
+    });
+
+    const reset = logger.resetConfig();
+    expect(reset).toMatchObject({
+      enabled: true,
+      level: LogLevel.INFO,
+      maxEntries: 2000,
+      persistToLocalStorage: true,
+      sendToBackend: false,
+      consoleOutput: true,
+    });
+  });
 });

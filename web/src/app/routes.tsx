@@ -10,8 +10,6 @@ const DashboardPage = lazy(() => import('../features/dashboard/DashboardPage'));
 const ConfigurationPage = lazy(() => import('../features/configuration/ConfigurationPage'));
 const LogsPage = lazy(() => import('../features/logs/LogsPage'));
 const ServicesPage = lazy(() => import('../features/services/ServicesPage'));
-const ForecastPage = lazy(() => import('../features/forecast/ForecastPage'));
-const PublicForecastPage = lazy(() => import('../features/public/PublicForecastPage'));
 const AdminLoginPage = lazy(() => import('../features/auth/AdminLoginPage'));
 
 const PageLoader = () => (
@@ -31,7 +29,7 @@ export const AppRoutes = () => {
     <AnimatePresence mode="wait">
       <Suspense fallback={<PageLoader />}>
         <Routes>
-          <Route path="/" element={<PublicForecastPage />} />
+          <Route path="/" element={<Navigate to="/admin" replace />} />
           <Route path="/admin/login" element={<AdminLoginPage />} />
           <Route
             path="/admin"
@@ -45,9 +43,8 @@ export const AppRoutes = () => {
             <Route path="configuration" element={<ConfigurationPage />} />
             <Route path="logs" element={<LogsPage />} />
             <Route path="services" element={<ServicesPage />} />
-            <Route path="forecast" element={<ForecastPage />} />
           </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/admin" replace />} />
         </Routes>
       </Suspense>
     </AnimatePresence>

@@ -76,8 +76,12 @@ def fetch_jin10_news(limit: int = 50, ttl: int = 300) -> List[Dict[str, Any]]:
         logger.debug("Returning cached Jin10 news (%d items)", len(cached))
         return cached
 
-    # Try API first
-    news = _fetch_jin10_api(limit)
+    # Try API first; if unavailable, continue with fixtures fallback.
+    try:
+        news = _fetch_jin10_api(limit)
+    except Exception as exc:
+        logger.debug("Jin10 API unavailable: %s", exc)
+        news = None
 
     # Fallback to fixtures
     if not news:

@@ -170,20 +170,8 @@ export class ConfigValidator {
       }
     }
 
-    if (config.chrome_debug_port < 1024 || config.chrome_debug_port > 65535) {
-      this.addError('chrome_debug_port', 'Chrome 调试端口应在 1024-65535 之间', 'error');
-    }
-
-    if (config.poll_interval < 1) {
-      this.addError('poll_interval', '轮询间隔必须大于 0', 'error');
-    }
-
     if (config.ai_signal_interval_minutes < 1 || config.ai_signal_interval_minutes > 1440) {
       this.addError('ai_signal_interval_minutes', '信号发送间隔应在 1-1440 分钟', 'warning');
-    }
-
-    if (config.request_timeout < 5) {
-      this.addError('request_timeout', '请求超时建议不低于 5 秒', 'warning');
     }
 
     if (config.enable_ipc_forwarding) {

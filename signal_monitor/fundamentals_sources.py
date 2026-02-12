@@ -63,6 +63,21 @@ DEFAULT_ERC20_CONTRACTS = {
 
 _SESSION = requests.Session()
 _CACHE: Dict[str, Dict[str, Any]] = {}
+_CACHE_MAX_SIZE = int(os.getenv("NOFX_FUNDAMENTALS_CACHE_MAX_SIZE", "512") or 512)
+
+
+def _prune_cache(max_size: int = _CACHE_MAX_SIZE) -> None:
+    now = time.time()
+    expired_keys = [key for key, value in _CACHE.items() if now - float(value.get("ts", 0)) > 86400]
+    for key in expired_keys:
+        _CACHE.pop(key, None)
+
+    if max_size <= 0 or len(_CACHE) <= max_size:
+        return
+
+    ordered = sorted(_CACHE.items(), key=lambda item: float(item[1].get("ts", 0)))
+    for key, _ in ordered[: len(_CACHE) - max_size]:
+        _CACHE.pop(key, None)
 
 
 def _env_or_config(name: str, default: str = "") -> str:
@@ -119,6 +134,7 @@ def _req_text(url: str, params: Optional[Dict[str, Any]] = None, headers: Option
 
 
 def _cache_get(key: str, ttl: int) -> Optional[Dict[str, Any]]:
+    _prune_cache()
     cached = _CACHE.get(key)
     if not cached:
         return None
@@ -128,7 +144,9 @@ def _cache_get(key: str, ttl: int) -> Optional[Dict[str, Any]]:
 
 
 def _cache_set(key: str, value: Dict[str, Any]) -> None:
+    _prune_cache()
     _CACHE[key] = {"ts": time.time(), "value": value}
+    _prune_cache()
 
 
 def _coingecko_number(value: Any) -> Optional[float]:

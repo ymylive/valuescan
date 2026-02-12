@@ -12,12 +12,14 @@ import (
 )
 
 type CombinedStreamsClient struct {
-	conn        *websocket.Conn
-	mu          sync.RWMutex
-	subscribers map[string]chan []byte
-	reconnect   bool
-	done        chan struct{}
-	batchSize   int // Number of streams per batch subscription
+	conn         *websocket.Conn
+	mu           sync.RWMutex
+	subscribers  map[string]chan []byte
+	reconnect    bool
+	done         chan struct{}
+	batchSize    int // Number of streams per batch subscription
+	reconnectMu  sync.Mutex
+	reconnecting bool
 }
 
 func NewCombinedStreamsClient(batchSize int) *CombinedStreamsClient {
@@ -41,8 +43,13 @@ func (c *CombinedStreamsClient) Connect() error {
 	}
 
 	c.mu.Lock()
+	oldConn := c.conn
 	c.conn = conn
 	c.mu.Unlock()
+
+	if oldConn != nil {
+		oldConn.Close()
+	}
 
 	log.Println("Combined stream WebSocket connected successfully")
 	go c.readMessages()
@@ -128,6 +135,14 @@ func (c *CombinedStreamsClient) readMessages() {
 			_, message, err := conn.ReadMessage()
 			if err != nil {
 				log.Printf("Failed to read combined stream message: %v", err)
+
+				c.mu.RLock()
+				currentConn := c.conn
+				c.mu.RUnlock()
+				if currentConn != conn {
+					return
+				}
+
 				c.handleReconnect()
 				return
 			}
@@ -150,8 +165,6 @@ func (c *CombinedStreamsClient) handleCombinedMessage(message []byte) {
 
 	c.mu.RLock()
 	ch, exists := c.subscribers[combinedMsg.Stream]
-	c.mu.RUnlock()
-
 	if exists {
 		select {
 		case ch <- combinedMsg.Data:
@@ -159,32 +172,94 @@ func (c *CombinedStreamsClient) handleCombinedMessage(message []byte) {
 			log.Printf("Subscriber channel is full: %s", combinedMsg.Stream)
 		}
 	}
+	c.mu.RUnlock()
 }
 
 func (c *CombinedStreamsClient) AddSubscriber(stream string, bufferSize int) <-chan []byte {
 	ch := make(chan []byte, bufferSize)
 	c.mu.Lock()
+	if existing, ok := c.subscribers[stream]; ok {
+		close(existing)
+	}
 	c.subscribers[stream] = ch
 	c.mu.Unlock()
 	return ch
 }
 
 func (c *CombinedStreamsClient) handleReconnect() {
-	if !c.reconnect {
+	if !c.shouldReconnect() {
 		return
 	}
 
-	log.Println("Combined stream attempting to reconnect...")
-	time.Sleep(3 * time.Second)
+	c.reconnectMu.Lock()
+	if c.reconnecting {
+		c.reconnectMu.Unlock()
+		return
+	}
+	c.reconnecting = true
+	c.reconnectMu.Unlock()
 
-	if err := c.Connect(); err != nil {
-		log.Printf("Combined stream reconnection failed: %v", err)
-		go c.handleReconnect()
+	go c.reconnectLoop()
+}
+
+func (c *CombinedStreamsClient) reconnectLoop() {
+	defer func() {
+		c.reconnectMu.Lock()
+		c.reconnecting = false
+		c.reconnectMu.Unlock()
+	}()
+
+	backoff := 1 * time.Second
+	maxBackoff := 30 * time.Second
+
+	for {
+		if !c.shouldReconnect() {
+			return
+		}
+
+		select {
+		case <-c.done:
+			return
+		default:
+		}
+
+		log.Printf("Combined stream attempting to reconnect (backoff=%s)...", backoff)
+		if err := c.Connect(); err == nil {
+			log.Println("Combined stream reconnected successfully")
+			return
+		} else {
+			log.Printf("Combined stream reconnection failed: %v", err)
+		}
+
+		timer := time.NewTimer(backoff)
+		select {
+		case <-c.done:
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return
+		case <-timer.C:
+		}
+
+		if backoff < maxBackoff {
+			backoff *= 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+		}
 	}
 }
 
+func (c *CombinedStreamsClient) shouldReconnect() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.reconnect
+}
+
 func (c *CombinedStreamsClient) Close() {
+	c.mu.Lock()
 	c.reconnect = false
+	c.mu.Unlock()
 	close(c.done)
 
 	c.mu.Lock()

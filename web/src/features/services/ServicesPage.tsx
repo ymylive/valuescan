@@ -5,6 +5,7 @@ import { Button, Badge } from '../../components/ui';
 import { GlassCard } from '../../components/shared';
 import { Play, Square, RotateCcw } from 'lucide-react';
 import { useToastStore } from '../../stores';
+import { buildApiUrl } from '../../services/api';
 
 interface Service {
   name: string;
@@ -22,7 +23,7 @@ export const ServicesPage = () => {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch('/api/services/status');
+      const res = await fetch(buildApiUrl('/services/status'));
       if (res.ok) {
         const data = await res.json();
         setServices((prev) => prev.map((s) => ({ ...s, status: data[s.name] || 'stopped' })));
@@ -42,7 +43,7 @@ export const ServicesPage = () => {
 
   const handleAction = async (name: string, action: 'start' | 'stop' | 'restart') => {
     try {
-      const res = await fetch(`/api/services/${action}`, {
+      const res = await fetch(buildApiUrl(`/services/${action}`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ service: name }),

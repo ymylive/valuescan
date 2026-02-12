@@ -11,11 +11,13 @@ import (
 )
 
 type WSClient struct {
-	conn        *websocket.Conn
-	mu          sync.RWMutex
-	subscribers map[string]chan []byte
-	reconnect   bool
-	done        chan struct{}
+	conn         *websocket.Conn
+	mu           sync.RWMutex
+	subscribers  map[string]chan []byte
+	reconnect    bool
+	done         chan struct{}
+	reconnectMu  sync.Mutex
+	reconnecting bool
 }
 
 type WSMessage struct {
@@ -87,8 +89,13 @@ func (w *WSClient) Connect() error {
 	}
 
 	w.mu.Lock()
+	oldConn := w.conn
 	w.conn = conn
 	w.mu.Unlock()
+
+	if oldConn != nil {
+		oldConn.Close()
+	}
 
 	log.Println("WebSocket connected successfully")
 
@@ -154,6 +161,14 @@ func (w *WSClient) readMessages() {
 			_, message, err := conn.ReadMessage()
 			if err != nil {
 				log.Printf("Failed to read WebSocket message: %v", err)
+
+				w.mu.RLock()
+				currentConn := w.conn
+				w.mu.RUnlock()
+				if currentConn != conn {
+					return
+				}
+
 				w.handleReconnect()
 				return
 			}
@@ -172,8 +187,6 @@ func (w *WSClient) handleMessage(message []byte) {
 
 	w.mu.RLock()
 	ch, exists := w.subscribers[wsMsg.Stream]
-	w.mu.RUnlock()
-
 	if exists {
 		select {
 		case ch <- wsMsg.Data:
@@ -181,25 +194,79 @@ func (w *WSClient) handleMessage(message []byte) {
 			log.Printf("Subscriber channel is full: %s", wsMsg.Stream)
 		}
 	}
+	w.mu.RUnlock()
 }
 
 func (w *WSClient) handleReconnect() {
-	if !w.reconnect {
+	if !w.shouldReconnect() {
 		return
 	}
 
-	log.Println("Attempting to reconnect...")
-	time.Sleep(3 * time.Second)
+	w.reconnectMu.Lock()
+	if w.reconnecting {
+		w.reconnectMu.Unlock()
+		return
+	}
+	w.reconnecting = true
+	w.reconnectMu.Unlock()
 
-	if err := w.Connect(); err != nil {
-		log.Printf("Reconnection failed: %v", err)
-		go w.handleReconnect()
+	go w.reconnectLoop()
+}
+
+func (w *WSClient) reconnectLoop() {
+	defer func() {
+		w.reconnectMu.Lock()
+		w.reconnecting = false
+		w.reconnectMu.Unlock()
+	}()
+
+	backoff := 1 * time.Second
+	maxBackoff := 30 * time.Second
+
+	for {
+		if !w.shouldReconnect() {
+			return
+		}
+
+		select {
+		case <-w.done:
+			return
+		default:
+		}
+
+		log.Printf("Attempting to reconnect (backoff=%s)...", backoff)
+		if err := w.Connect(); err == nil {
+			log.Println("WebSocket reconnected successfully")
+			return
+		} else {
+			log.Printf("Reconnection failed: %v", err)
+		}
+
+		timer := time.NewTimer(backoff)
+		select {
+		case <-w.done:
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return
+		case <-timer.C:
+		}
+
+		if backoff < maxBackoff {
+			backoff *= 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+		}
 	}
 }
 
 func (w *WSClient) AddSubscriber(stream string, bufferSize int) <-chan []byte {
 	ch := make(chan []byte, bufferSize)
 	w.mu.Lock()
+	if existing, ok := w.subscribers[stream]; ok {
+		close(existing)
+	}
 	w.subscribers[stream] = ch
 	w.mu.Unlock()
 	return ch
@@ -207,12 +274,23 @@ func (w *WSClient) AddSubscriber(stream string, bufferSize int) <-chan []byte {
 
 func (w *WSClient) RemoveSubscriber(stream string) {
 	w.mu.Lock()
-	delete(w.subscribers, stream)
+	if ch, ok := w.subscribers[stream]; ok {
+		delete(w.subscribers, stream)
+		close(ch)
+	}
 	w.mu.Unlock()
 }
 
+func (w *WSClient) shouldReconnect() bool {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	return w.reconnect
+}
+
 func (w *WSClient) Close() {
+	w.mu.Lock()
 	w.reconnect = false
+	w.mu.Unlock()
 	close(w.done)
 
 	w.mu.Lock()

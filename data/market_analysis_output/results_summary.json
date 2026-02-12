@@ -1,0 +1,213 @@
+{
+  "generated_at": "2026-02-12T03:21:49.709458+00:00",
+  "north_star_metrics": {
+    "revenue": 372920.0,
+    "net_profit": 164930.0,
+    "ltv_cac_ratio": 4.4988,
+    "retention_d30_mean": 0.3018
+  },
+  "funnel_breakdown": [
+    {
+      "group": "affiliate",
+      "visitors": 15065,
+      "signups": 2177,
+      "activated": 1536,
+      "paid_customers": 956,
+      "rates": {
+        "visitor_to_signup": 0.1445,
+        "signup_to_activated": 0.7056,
+        "activated_to_paid": 0.6224
+      },
+      "bottleneck": "visitor_to_signup"
+    },
+    {
+      "group": "search",
+      "visitors": 15315,
+      "signups": 2210,
+      "activated": 1563,
+      "paid_customers": 972,
+      "rates": {
+        "visitor_to_signup": 0.1443,
+        "signup_to_activated": 0.7072,
+        "activated_to_paid": 0.6219
+      },
+      "bottleneck": "visitor_to_signup"
+    },
+    {
+      "group": "social",
+      "visitors": 16910,
+      "signups": 2442,
+      "activated": 1725,
+      "paid_customers": 1074,
+      "rates": {
+        "visitor_to_signup": 0.1444,
+        "signup_to_activated": 0.7064,
+        "activated_to_paid": 0.6226
+      },
+      "bottleneck": "visitor_to_signup"
+    }
+  ],
+  "ltv_cac_table": [
+    {
+      "channel": "affiliate",
+      "segment": "mid_market",
+      "ltv": 108.3836,
+      "cac": 24.1176,
+      "ltv_cac_ratio": 4.494
+    },
+    {
+      "channel": "affiliate",
+      "segment": "smb",
+      "ltv": 108.5716,
+      "cac": 24.1996,
+      "ltv_cac_ratio": 4.4865
+    },
+    {
+      "channel": "search",
+      "segment": "mid_market",
+      "ltv": 108.1877,
+      "cac": 24.0111,
+      "ltv_cac_ratio": 4.5057
+    },
+    {
+      "channel": "search",
+      "segment": "smb",
+      "ltv": 108.4367,
+      "cac": 24.0603,
+      "ltv_cac_ratio": 4.5069
+    },
+    {
+      "channel": "social",
+      "segment": "mid_market",
+      "ltv": 108.2607,
+      "cac": 24.283,
+      "ltv_cac_ratio": 4.4583
+    },
+    {
+      "channel": "social",
+      "segment": "smb",
+      "ltv": 108.4473,
+      "cac": 23.8838,
+      "ltv_cac_ratio": 4.5406
+    }
+  ],
+  "forecast": {
+    "horizon_days": 7,
+    "point_forecast": [
+      16293.27,
+      16327.32,
+      16331.7,
+      16332.26,
+      16332.33,
+      16332.34,
+      16332.34
+    ],
+    "p10": [
+      16278.56,
+      16312.61,
+      16316.98,
+      16317.54,
+      16317.61,
+      16317.37,
+      16317.62
+    ],
+    "p90": [
+      16306.24,
+      16340.68,
+      16345.06,
+      16345.62,
+      16344.32,
+      16345.31,
+      16345.7
+    ]
+  },
+  "key_drivers": [
+    {
+      "feature": "conv_signup",
+      "coefficient": 19609.206903
+    },
+    {
+      "feature": "conv_paid",
+      "coefficient": -1857.921531
+    },
+    {
+      "feature": "new_customers",
+      "coefficient": 44.703045
+    },
+    {
+      "feature": "price",
+      "coefficient": -24.352686
+    },
+    {
+      "feature": "competitor_price",
+      "coefficient": -18.711354
+    }
+  ],
+  "risks_assumptions": [
+    "Forecast assumes stable channel mix and no structural break.",
+    "Attribution window fixed at 30 days in current run.",
+    "Potential survivor bias if churned users are under-recorded.",
+    "Competitor pricing sampled daily; intraday moves are not modeled."
+  ],
+  "recommended_levers": [
+    {
+      "lever": "improve_funnel_stage",
+      "reason": "bottleneck at visitor_to_signup in group search",
+      "quant_basis": {
+        "visitor_to_signup": 0.1443,
+        "signup_to_activated": 0.7072,
+        "activated_to_paid": 0.6219
+      }
+    }
+  ],
+  "retention": [
+    {
+      "group": "affiliate",
+      "d1": 0.6988,
+      "d7": 0.4946,
+      "d30": 0.3026
+    },
+    {
+      "group": "search",
+      "d1": 0.6974,
+      "d7": 0.4932,
+      "d30": 0.301
+    },
+    {
+      "group": "social",
+      "d1": 0.6975,
+      "d7": 0.4928,
+      "d30": 0.3019
+    }
+  ],
+  "pricing_elasticity": {
+    "elasticity": 3.3665,
+    "status": "ok"
+  },
+  "sensitivity": [
+    {
+      "parameter": "conversion_rate",
+      "delta": 0.05,
+      "revenue_impact": 18646.0,
+      "net_profit_impact": 8246.5
+    },
+    {
+      "parameter": "retention_d30",
+      "delta": 0.04,
+      "revenue_impact": 14916.8,
+      "net_profit_impact": 6597.2
+    },
+    {
+      "parameter": "cac",
+      "delta": -0.08,
+      "revenue_impact": -29833.6,
+      "net_profit_impact": -13194.4
+    },
+    {
+      "parameter": "price",
+      "delta": 0.03,
+      "revenue_impact": 11187.6,
+      "net_profit_impact": 4947.9
+    }
+  ]
+}

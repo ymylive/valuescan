@@ -209,7 +209,6 @@ def _filter_items_by_age(items, max_age_seconds, seen_ids=None):
             skipped_old += 1
             msg_id = _get_message_id(item)
             fingerprint = _get_message_fingerprint(item)
-            fingerprint = _get_message_fingerprint(item)
             msg_type = _get_message_type(item)
             title = item.get("title")
             symbol = _extract_symbol_from_item(item)

@@ -24,7 +24,6 @@ FILES = [
     "sitecustomize.py",
     "signal_monitor/sitecustomize.py",
     "api/sitecustomize.py",
-    "signal_monitor/valuescan_api.py",
     "signal_monitor/chart_pro_v10.py",
     "signal_monitor/ai_signal_analysis.py",
     "signal_monitor/ai_market_analysis.py",

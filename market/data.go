@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"nofx/logger"
 	"math"
+	"nofx/logger"
 	"strconv"
 	"strings"
 	"sync"
@@ -185,7 +185,7 @@ func GetWithTimeframes(symbol string, timeframes []string, primaryTimeframe stri
 	currentRSI7 := calculateRSI(primaryKlines, 7)
 
 	// Calculate price changes
-	priceChange1h := calculatePriceChangeByBars(primaryKlines, primaryTimeframe, 60) // 1 hour
+	priceChange1h := calculatePriceChangeByBars(primaryKlines, primaryTimeframe, 60)  // 1 hour
 	priceChange4h := calculatePriceChangeByBars(primaryKlines, primaryTimeframe, 240) // 4 hours
 
 	// Get OI data
@@ -216,6 +216,8 @@ func calculateTimeframeSeries(klines []Kline, timeframe string, count int) *Time
 	if count <= 0 {
 		count = 10 // default
 	}
+
+	indicators := buildIndicatorSeries(klines)
 
 	data := &TimeframeSeriesData{
 		Timeframe:   timeframe,
@@ -253,40 +255,29 @@ func calculateTimeframeSeries(klines []Kline, timeframe string, count int) *Time
 		data.MidPrices = append(data.MidPrices, klines[i].Close)
 		data.Volume = append(data.Volume, klines[i].Volume)
 
-		// Calculate EMA20 for each point
-		if i >= 19 {
-			ema20 := calculateEMA(klines[:i+1], 20)
-			data.EMA20Values = append(data.EMA20Values, ema20)
+		if !math.IsNaN(indicators.ema20[i]) {
+			data.EMA20Values = append(data.EMA20Values, indicators.ema20[i])
 		}
 
-		// Calculate EMA50 for each point
-		if i >= 49 {
-			ema50 := calculateEMA(klines[:i+1], 50)
-			data.EMA50Values = append(data.EMA50Values, ema50)
+		if !math.IsNaN(indicators.ema50[i]) {
+			data.EMA50Values = append(data.EMA50Values, indicators.ema50[i])
 		}
 
-		// Calculate MACD for each point
-		if i >= 25 {
-			macd := calculateMACD(klines[:i+1])
-			data.MACDValues = append(data.MACDValues, macd)
+		if !math.IsNaN(indicators.macd[i]) {
+			data.MACDValues = append(data.MACDValues, indicators.macd[i])
 		}
 
-		// Calculate RSI for each point
-		if i >= 7 {
-			rsi7 := calculateRSI(klines[:i+1], 7)
-			data.RSI7Values = append(data.RSI7Values, rsi7)
+		if !math.IsNaN(indicators.rsi7[i]) {
+			data.RSI7Values = append(data.RSI7Values, indicators.rsi7[i])
 		}
-		if i >= 14 {
-			rsi14 := calculateRSI(klines[:i+1], 14)
-			data.RSI14Values = append(data.RSI14Values, rsi14)
+		if !math.IsNaN(indicators.rsi14[i]) {
+			data.RSI14Values = append(data.RSI14Values, indicators.rsi14[i])
 		}
 
-		// Calculate Bollinger Bands (period 20, std dev multiplier 2)
-		if i >= 19 {
-			upper, middle, lower := calculateBOLL(klines[:i+1], 20, 2.0)
-			data.BOLLUpper = append(data.BOLLUpper, upper)
-			data.BOLLMiddle = append(data.BOLLMiddle, middle)
-			data.BOLLLower = append(data.BOLLLower, lower)
+		if !math.IsNaN(indicators.bollUpper[i]) {
+			data.BOLLUpper = append(data.BOLLUpper, indicators.bollUpper[i])
+			data.BOLLMiddle = append(data.BOLLMiddle, indicators.bollMiddle[i])
+			data.BOLLLower = append(data.BOLLLower, indicators.bollLower[i])
 		}
 	}
 
@@ -509,6 +500,8 @@ func calculateBOLL(klines []Kline, period int, multiplier float64) (upper, middl
 
 // calculateIntradaySeries calculates intraday series data
 func calculateIntradaySeries(klines []Kline) *IntradayData {
+	indicators := buildIndicatorSeries(klines)
+
 	data := &IntradayData{
 		MidPrices:   make([]float64, 0, 10),
 		EMA20Values: make([]float64, 0, 10),
@@ -528,26 +521,19 @@ func calculateIntradaySeries(klines []Kline) *IntradayData {
 		data.MidPrices = append(data.MidPrices, klines[i].Close)
 		data.Volume = append(data.Volume, klines[i].Volume)
 
-		// Calculate EMA20 for each point
-		if i >= 19 {
-			ema20 := calculateEMA(klines[:i+1], 20)
-			data.EMA20Values = append(data.EMA20Values, ema20)
+		if !math.IsNaN(indicators.ema20[i]) {
+			data.EMA20Values = append(data.EMA20Values, indicators.ema20[i])
 		}
 
-		// Calculate MACD for each point
-		if i >= 25 {
-			macd := calculateMACD(klines[:i+1])
-			data.MACDValues = append(data.MACDValues, macd)
+		if !math.IsNaN(indicators.macd[i]) {
+			data.MACDValues = append(data.MACDValues, indicators.macd[i])
 		}
 
-		// Calculate RSI for each point
-		if i >= 7 {
-			rsi7 := calculateRSI(klines[:i+1], 7)
-			data.RSI7Values = append(data.RSI7Values, rsi7)
+		if !math.IsNaN(indicators.rsi7[i]) {
+			data.RSI7Values = append(data.RSI7Values, indicators.rsi7[i])
 		}
-		if i >= 14 {
-			rsi14 := calculateRSI(klines[:i+1], 14)
-			data.RSI14Values = append(data.RSI14Values, rsi14)
+		if !math.IsNaN(indicators.rsi14[i]) {
+			data.RSI14Values = append(data.RSI14Values, indicators.rsi14[i])
 		}
 	}
 
@@ -559,6 +545,8 @@ func calculateIntradaySeries(klines []Kline) *IntradayData {
 
 // calculateLongerTermData calculates longer-term data
 func calculateLongerTermData(klines []Kline) *LongerTermData {
+	indicators := buildIndicatorSeries(klines)
+
 	data := &LongerTermData{
 		MACDValues:  make([]float64, 0, 10),
 		RSI14Values: make([]float64, 0, 10),
@@ -590,17 +578,175 @@ func calculateLongerTermData(klines []Kline) *LongerTermData {
 	}
 
 	for i := start; i < len(klines); i++ {
-		if i >= 25 {
-			macd := calculateMACD(klines[:i+1])
-			data.MACDValues = append(data.MACDValues, macd)
+		if !math.IsNaN(indicators.macd[i]) {
+			data.MACDValues = append(data.MACDValues, indicators.macd[i])
 		}
-		if i >= 14 {
-			rsi14 := calculateRSI(klines[:i+1], 14)
-			data.RSI14Values = append(data.RSI14Values, rsi14)
+		if !math.IsNaN(indicators.rsi14[i]) {
+			data.RSI14Values = append(data.RSI14Values, indicators.rsi14[i])
 		}
 	}
 
 	return data
+}
+
+type indicatorSeries struct {
+	ema20      []float64
+	ema50      []float64
+	macd       []float64
+	rsi7       []float64
+	rsi14      []float64
+	bollUpper  []float64
+	bollMiddle []float64
+	bollLower  []float64
+}
+
+func buildIndicatorSeries(klines []Kline) indicatorSeries {
+	closes := extractClosePrices(klines)
+	ema12 := calculateEMASeries(closes, 12)
+	ema20 := calculateEMASeries(closes, 20)
+	ema26 := calculateEMASeries(closes, 26)
+	ema50 := calculateEMASeries(closes, 50)
+	rsi7 := calculateRSISeries(closes, 7)
+	rsi14 := calculateRSISeries(closes, 14)
+	bollUpper, bollMiddle, bollLower := calculateBOLLSeries(closes, 20, 2.0)
+
+	macd := makeNaNSeries(len(closes))
+	for i := range closes {
+		if !math.IsNaN(ema12[i]) && !math.IsNaN(ema26[i]) {
+			macd[i] = ema12[i] - ema26[i]
+		}
+	}
+
+	return indicatorSeries{
+		ema20:      ema20,
+		ema50:      ema50,
+		macd:       macd,
+		rsi7:       rsi7,
+		rsi14:      rsi14,
+		bollUpper:  bollUpper,
+		bollMiddle: bollMiddle,
+		bollLower:  bollLower,
+	}
+}
+
+func extractClosePrices(klines []Kline) []float64 {
+	closes := make([]float64, len(klines))
+	for i := range klines {
+		closes[i] = klines[i].Close
+	}
+	return closes
+}
+
+func makeNaNSeries(length int) []float64 {
+	out := make([]float64, length)
+	for i := range out {
+		out[i] = math.NaN()
+	}
+	return out
+}
+
+func calculateEMASeries(closes []float64, period int) []float64 {
+	out := makeNaNSeries(len(closes))
+	if period <= 0 || len(closes) < period {
+		return out
+	}
+
+	sum := 0.0
+	for i := 0; i < period; i++ {
+		sum += closes[i]
+	}
+	ema := sum / float64(period)
+	out[period-1] = ema
+
+	multiplier := 2.0 / float64(period+1)
+	for i := period; i < len(closes); i++ {
+		ema = (closes[i]-ema)*multiplier + ema
+		out[i] = ema
+	}
+
+	return out
+}
+
+func calculateRSISeries(closes []float64, period int) []float64 {
+	out := makeNaNSeries(len(closes))
+	if period <= 0 || len(closes) <= period {
+		return out
+	}
+
+	gains := 0.0
+	losses := 0.0
+	for i := 1; i <= period; i++ {
+		change := closes[i] - closes[i-1]
+		if change > 0 {
+			gains += change
+		} else {
+			losses += -change
+		}
+	}
+
+	avgGain := gains / float64(period)
+	avgLoss := losses / float64(period)
+	out[period] = calculateRSIFromAverages(avgGain, avgLoss)
+
+	for i := period + 1; i < len(closes); i++ {
+		change := closes[i] - closes[i-1]
+		if change > 0 {
+			avgGain = (avgGain*float64(period-1) + change) / float64(period)
+			avgLoss = (avgLoss * float64(period-1)) / float64(period)
+		} else {
+			avgGain = (avgGain * float64(period-1)) / float64(period)
+			avgLoss = (avgLoss*float64(period-1) + (-change)) / float64(period)
+		}
+		out[i] = calculateRSIFromAverages(avgGain, avgLoss)
+	}
+
+	return out
+}
+
+func calculateRSIFromAverages(avgGain, avgLoss float64) float64 {
+	if avgLoss == 0 {
+		return 100
+	}
+	rs := avgGain / avgLoss
+	return 100 - (100 / (1 + rs))
+}
+
+func calculateBOLLSeries(closes []float64, period int, multiplier float64) (upper, middle, lower []float64) {
+	upper = makeNaNSeries(len(closes))
+	middle = makeNaNSeries(len(closes))
+	lower = makeNaNSeries(len(closes))
+
+	if period <= 0 || len(closes) < period {
+		return upper, middle, lower
+	}
+
+	windowSum := 0.0
+	windowSquareSum := 0.0
+	for i := 0; i < len(closes); i++ {
+		closeVal := closes[i]
+		windowSum += closeVal
+		windowSquareSum += closeVal * closeVal
+
+		if i >= period {
+			old := closes[i-period]
+			windowSum -= old
+			windowSquareSum -= old * old
+		}
+
+		if i >= period-1 {
+			sma := windowSum / float64(period)
+			variance := windowSquareSum/float64(period) - sma*sma
+			if variance < 0 {
+				variance = 0
+			}
+			stdDev := math.Sqrt(variance)
+			middle[i] = sma
+			upper[i] = sma + multiplier*stdDev
+			lower[i] = sma - multiplier*stdDev
+		}
+	}
+
+	return upper, middle, lower
 }
 
 // getOpenInterestData retrieves OI data

@@ -71,7 +71,6 @@ def main():
         "signal_monitor/ai_market_analysis.py",
         "signal_monitor/ai_market_summary.py",
         "signal_monitor/macro_event_monitor.py",
-        "signal_monitor/valuescan_api.py",
     ]
 
     for file_path in files_to_upload:

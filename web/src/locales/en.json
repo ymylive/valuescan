@@ -27,8 +27,7 @@
     "dashboard": "Dashboard",
     "configuration": "Configuration",
     "logs": "Logs",
-    "services": "Services",
-    "forecast": "Forecast"
+    "services": "Services"
   },
   "dashboard": {
     "title": "System Overview",
@@ -151,5 +150,47 @@
     "ports": "Port Configuration",
     "security": "Security Configuration",
     "logging": "Logging Configuration"
+  },
+  "app": {
+    "title": "ValueScan Admin Console",
+    "subtitle": "Admin Console"
+  },
+  "settings": {
+    "language": "Switch language",
+    "theme": "Switch theme",
+    "currentLanguage": "Current language",
+    "zh": "??",
+    "en": "English"
+  },
+  "logs": {
+    "title": "System Logs",
+    "sourceFrontend": "Frontend",
+    "sourceBackend": "Backend",
+    "backendServiceSignal": "Signal Monitor",
+    "backendServiceApi": "API Service",
+    "backendServiceTokenRefresher": "Token Refresher",
+    "autoRefresh": "Auto Refresh",
+    "manualRefresh": "Manual Refresh",
+    "export": "Export",
+    "clearFrontend": "Clear Frontend",
+    "statsFrontendTotal": "Frontend Total",
+    "statsErrors": "Errors",
+    "statsWarnings": "Warnings",
+    "statsInfos": "Infos",
+    "loggerSettingsTitle": "Frontend Logger Settings",
+    "loggerEnabled": "Enable Logger",
+    "consoleOutput": "Console Output",
+    "persistLocal": "Persist to LocalStorage",
+    "sendErrorsToBackend": "Send Error Logs to Backend",
+    "logLevel": "Log Level",
+    "maxEntries": "Max Entries",
+    "resetLogger": "Reset Logger Settings",
+    "searchPlaceholder": "Search logs...",
+    "allLevels": "All Levels",
+    "search": "Search",
+    "entries": "Log Entries",
+    "noLogs": "No logs",
+    "clearConfirm": "Clear all frontend logs?",
+    "showPayload": "Show payload"
   }
 }

@@ -28,6 +28,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
+try:
+    from api.rate_limiter import init_rate_limiter, limiter as api_rate_limiter
+except Exception as exc:
+    raise RuntimeError("Failed to import API rate limiter") from exc
+
 from signal_monitor.market_data_sources import (
     fetch_market_snapshot,
     fetch_binance_ticker,
@@ -80,9 +85,27 @@ ADMIN_TOKEN_SECRET = (
     or os.getenv("JWT_SECRET")
     or ""
 )
+DEFAULT_CORS_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+]
+ADMIN_LOGIN_RATE_LIMIT = (os.getenv("NOFX_ADMIN_LOGIN_RATE_LIMIT") or "5 per minute").strip() or "5 per minute"
+
+
+def _allowed_cors_origins() -> List[str]:
+    raw = (os.getenv("NOFX_CORS_ALLOWED_ORIGINS") or "").strip()
+    if raw:
+        origins = [item.strip() for item in raw.split(",") if item.strip()]
+        if origins:
+            return origins
+    return DEFAULT_CORS_ORIGINS[:]
+
 
 app = Flask(__name__, static_folder=str(WEB_DIST), static_url_path="")
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": _allowed_cors_origins()}})
+init_rate_limiter(app)
 
 
 def _is_docker() -> bool:
@@ -917,6 +940,7 @@ def healthcheck() -> Response:
 
 
 @app.route("/api/v1/admin/login", methods=["POST"])
+@api_rate_limiter.limit(ADMIN_LOGIN_RATE_LIMIT)
 def api_v1_admin_login() -> Response:
     if not _admin_auth_ready():
         return _admin_auth_error()
@@ -1166,8 +1190,9 @@ def get_db_status() -> Response:
         db = MessageDatabase()
         stats = db.get_statistics()
         return jsonify({"available": True, "stats": stats})
-    except Exception as exc:
-        return jsonify({"available": False, "error": str(exc)}), 500
+    except Exception:
+        logging.getLogger(__name__).exception("Failed to fetch database status")
+        return jsonify({"available": False, "error": "internal server error"}), 500
 
 
 def _fetch_messages_by_types(types: List[int], limit: int) -> List[Dict[str, Any]]:
@@ -1325,8 +1350,9 @@ def evaluate_trader(portfolio_id: str) -> Response:
         }
         return jsonify(response)
 
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+    except Exception:
+        logging.getLogger(__name__).exception("Trader evaluation failed")
+        return jsonify({"success": False, "error": "internal server error"}), 500
 
 
 @app.route("/api/trader/raw/<portfolio_id>", methods=["GET"])
@@ -1343,8 +1369,9 @@ def get_trader_raw_data(portfolio_id: str) -> Response:
             "portfolio_id": portfolio_id,
             "raw_data": trader_data.raw_data,
         })
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+    except Exception:
+        logging.getLogger(__name__).exception("Trader raw data fetch failed")
+        return jsonify({"success": False, "error": "internal server error"}), 500
 
 
 # ==================== API v1 - 数据源开放接口 ====================

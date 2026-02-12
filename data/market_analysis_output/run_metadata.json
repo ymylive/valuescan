@@ -1,0 +1,348 @@
+{
+  "validation": {
+    "row_count_before": 35,
+    "issues": [],
+    "applied": [
+      {
+        "field": "date",
+        "missing": "drop",
+        "unit": "day"
+      },
+      {
+        "field": "channel",
+        "missing": "drop",
+        "unit": "text"
+      },
+      {
+        "field": "segment",
+        "missing": "drop",
+        "unit": "text"
+      },
+      {
+        "field": "country",
+        "missing": "allow",
+        "unit": "iso2"
+      },
+      {
+        "field": "product_line",
+        "missing": "allow",
+        "unit": "text"
+      },
+      {
+        "field": "currency",
+        "missing": "drop",
+        "unit": "iso4217"
+      },
+      {
+        "field": "visitors",
+        "missing": "zero",
+        "unit": "users"
+      },
+      {
+        "field": "signups",
+        "missing": "zero",
+        "unit": "users"
+      },
+      {
+        "field": "activated",
+        "missing": "zero",
+        "unit": "users"
+      },
+      {
+        "field": "paid_customers",
+        "missing": "zero",
+        "unit": "users"
+      },
+      {
+        "field": "marketing_spend",
+        "missing": "zero",
+        "unit": "usd"
+      },
+      {
+        "field": "new_customers",
+        "missing": "zero",
+        "unit": "users"
+      },
+      {
+        "field": "active_customers",
+        "missing": "zero",
+        "unit": "users"
+      },
+      {
+        "field": "retained_d1",
+        "missing": "zero",
+        "unit": "users"
+      },
+      {
+        "field": "retained_d7",
+        "missing": "zero",
+        "unit": "users"
+      },
+      {
+        "field": "retained_d30",
+        "missing": "zero",
+        "unit": "users"
+      },
+      {
+        "field": "revenue",
+        "missing": "zero",
+        "unit": "usd"
+      },
+      {
+        "field": "gmv",
+        "missing": "zero",
+        "unit": "usd"
+      },
+      {
+        "field": "cogs",
+        "missing": "zero",
+        "unit": "usd"
+      },
+      {
+        "field": "operating_cost",
+        "missing": "zero",
+        "unit": "usd"
+      },
+      {
+        "field": "price",
+        "missing": "zero",
+        "unit": "usd"
+      },
+      {
+        "field": "competitor_price",
+        "missing": "zero",
+        "unit": "usd"
+      },
+      {
+        "field": "units_sold",
+        "missing": "zero",
+        "unit": "units"
+      }
+    ],
+    "metadata": {
+      "currency": "USD",
+      "timezone": "UTC",
+      "grain": "day",
+      "primary_key": [
+        "date",
+        "channel",
+        "segment"
+      ]
+    },
+    "row_count_after": 35
+  },
+  "evaluation": {
+    "baseline": {
+      "rmse": 985.7586,
+      "mape": 6.0062
+    },
+    "seasonal_baseline": {
+      "rmse": 1790.7149,
+      "mape": 11.6694
+    },
+    "linear_regression": {
+      "rmse": 97.5421,
+      "mape": 0.5756
+    },
+    "windows": 1
+  },
+  "config": {
+    "runtime": {
+      "random_seed": 42
+    },
+    "schema": {
+      "currency": "USD",
+      "timezone": "UTC",
+      "grain": "day",
+      "primary_key": [
+        "date",
+        "channel",
+        "segment"
+      ],
+      "fields": [
+        {
+          "name": "date",
+          "type": "date",
+          "required": true,
+          "unit": "day",
+          "missing": "drop"
+        },
+        {
+          "name": "channel",
+          "type": "str",
+          "required": true,
+          "unit": "text",
+          "missing": "drop"
+        },
+        {
+          "name": "segment",
+          "type": "str",
+          "required": true,
+          "unit": "text",
+          "missing": "drop"
+        },
+        {
+          "name": "country",
+          "type": "str",
+          "required": false,
+          "unit": "iso2",
+          "missing": "allow"
+        },
+        {
+          "name": "product_line",
+          "type": "str",
+          "required": false,
+          "unit": "text",
+          "missing": "allow"
+        },
+        {
+          "name": "currency",
+          "type": "str",
+          "required": true,
+          "unit": "iso4217",
+          "missing": "drop"
+        },
+        {
+          "name": "visitors",
+          "type": "float",
+          "required": true,
+          "unit": "users",
+          "missing": "zero"
+        },
+        {
+          "name": "signups",
+          "type": "float",
+          "required": true,
+          "unit": "users",
+          "missing": "zero"
+        },
+        {
+          "name": "activated",
+          "type": "float",
+          "required": true,
+          "unit": "users",
+          "missing": "zero"
+        },
+        {
+          "name": "paid_customers",
+          "type": "float",
+          "required": true,
+          "unit": "users",
+          "missing": "zero"
+        },
+        {
+          "name": "marketing_spend",
+          "type": "float",
+          "required": true,
+          "unit": "usd",
+          "missing": "zero"
+        },
+        {
+          "name": "new_customers",
+          "type": "float",
+          "required": true,
+          "unit": "users",
+          "missing": "zero"
+        },
+        {
+          "name": "active_customers",
+          "type": "float",
+          "required": true,
+          "unit": "users",
+          "missing": "zero"
+        },
+        {
+          "name": "retained_d1",
+          "type": "float",
+          "required": true,
+          "unit": "users",
+          "missing": "zero"
+        },
+        {
+          "name": "retained_d7",
+          "type": "float",
+          "required": true,
+          "unit": "users",
+          "missing": "zero"
+        },
+        {
+          "name": "retained_d30",
+          "type": "float",
+          "required": true,
+          "unit": "users",
+          "missing": "zero"
+        },
+        {
+          "name": "revenue",
+          "type": "float",
+          "required": true,
+          "unit": "usd",
+          "missing": "zero"
+        },
+        {
+          "name": "gmv",
+          "type": "float",
+          "required": true,
+          "unit": "usd",
+          "missing": "zero"
+        },
+        {
+          "name": "cogs",
+          "type": "float",
+          "required": true,
+          "unit": "usd",
+          "missing": "zero"
+        },
+        {
+          "name": "operating_cost",
+          "type": "float",
+          "required": true,
+          "unit": "usd",
+          "missing": "zero"
+        },
+        {
+          "name": "price",
+          "type": "float",
+          "required": true,
+          "unit": "usd",
+          "missing": "zero"
+        },
+        {
+          "name": "competitor_price",
+          "type": "float",
+          "required": true,
+          "unit": "usd",
+          "missing": "zero"
+        },
+        {
+          "name": "units_sold",
+          "type": "float",
+          "required": true,
+          "unit": "units",
+          "missing": "zero"
+        }
+      ]
+    },
+    "modeling": {
+      "min_train_size": 20,
+      "test_window": 5,
+      "seasonal_period": 7,
+      "embargo": 1,
+      "forecast_horizon": 7,
+      "n_bootstrap": 200,
+      "bootstrap_block_size": 5
+    },
+    "definitions": {
+      "kpi_version": "v1.0",
+      "attribution_window_days": 30
+    },
+    "sensitivity": {
+      "deltas": {
+        "conversion_rate": 0.05,
+        "retention_d30": 0.04,
+        "cac": -0.08,
+        "price": 0.03
+      }
+    }
+  }
+}

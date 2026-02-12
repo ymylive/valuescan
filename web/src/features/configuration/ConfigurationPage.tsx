@@ -15,12 +15,17 @@ import {
   SignalMonitorConfig,
   SystemConfig,
   LoggingConfig,
-  EnvironmentConfig,
   AnomalyDetectorConfig,
   USMarketConfig,
   DEFAULT_ANOMALY_CONFIG,
   DEFAULT_US_MARKET_CONFIG,
 } from '../../types/config';
+import {
+  createDefaultAiServiceConfig,
+  createDefaultLoggingConfig,
+  createDefaultSignalMonitorConfig,
+  createDefaultSystemConfig,
+} from '../../services/configDefaults';
 import { configService } from '../../services/configService';
 import { aiConfigApi } from '../../services/aiConfigApi';
 import { configValidator } from '../../utils/configValidation';
@@ -33,7 +38,6 @@ type ConfigState = {
   signal_monitor: SignalMonitorConfig;
   system: SystemConfig;
   logging: LoggingConfig;
-  environment: EnvironmentConfig;
   anomaly: AnomalyDetectorConfig;
   us_market: USMarketConfig;
 };
@@ -157,139 +161,6 @@ const formatSyncTime = (timestamp: number | null): string => {
   return new Date(timestamp).toLocaleString();
 };
 
-const defaultAiConfig: AIServiceConfig = {
-  ai_signal_analysis_api_key: '',
-  ai_signal_analysis_api_url: '',
-  ai_signal_analysis_api_protocol: 'auto',
-  ai_signal_analysis_model: '',
-  ai_signal_analysis_secondary_api_key: '',
-  ai_signal_analysis_secondary_api_url: '',
-  ai_signal_analysis_secondary_api_protocol: 'auto',
-  ai_signal_analysis_secondary_model: '',
-  ai_signal_analysis_tertiary_api_key: '',
-  ai_signal_analysis_tertiary_api_url: '',
-  ai_signal_analysis_tertiary_api_protocol: 'auto',
-  ai_signal_analysis_tertiary_model: '',
-  ai_signal_analysis_mcp_enabled: false,
-  ai_signal_analysis_mcp_query_template:
-    '{symbol} crypto latest market news macro policy risk funding open interest sentiment',
-  ai_signal_analysis_mcp_max_results: 5,
-  ai_signal_analysis_mcp_timeout_sec: 25,
-  ai_signal_analysis_mcp_cache_ttl_sec: 900,
-  ai_signal_analysis_mcp_max_prompt_chars: 2500,
-  ai_signal_analysis_mcp_source_primary_enabled: true,
-  ai_signal_analysis_mcp_source_primary_name: 'brave',
-  ai_signal_analysis_mcp_source_primary_command: 'npx',
-  ai_signal_analysis_mcp_source_primary_args: '-y @modelcontextprotocol/server-brave-search',
-  ai_signal_analysis_mcp_source_primary_tool_name: 'brave_web_search',
-  ai_signal_analysis_mcp_source_primary_env_json: '{"BRAVE_API_KEY":""}',
-  ai_signal_analysis_mcp_source_secondary_enabled: false,
-  ai_signal_analysis_mcp_source_secondary_name: 'exa',
-  ai_signal_analysis_mcp_source_secondary_command: 'npx',
-  ai_signal_analysis_mcp_source_secondary_args: '-y exa-mcp-server',
-  ai_signal_analysis_mcp_source_secondary_tool_name: 'web_search_exa',
-  ai_signal_analysis_mcp_source_secondary_env_json: '{"EXA_API_KEY":""}',
-  enable_ai_signal_analysis_service: false,
-  ai_signal_analysis_interval_hours: 1,
-  ai_signal_analysis_lookback_hours: 24,
-  ai_key_levels_api_key: '',
-  ai_key_levels_api_url: '',
-  ai_key_levels_api_protocol: 'auto',
-  ai_key_levels_model: '',
-  enable_ai_key_levels_service: false,
-  ai_overlays_api_key: '',
-  ai_overlays_api_url: '',
-  ai_overlays_api_protocol: 'auto',
-  ai_overlays_model: '',
-  enable_ai_overlays_service: false,
-  ai_market_analysis_api_key: '',
-  ai_market_analysis_api_url: '',
-  ai_market_analysis_api_protocol: 'auto',
-  ai_market_analysis_model: '',
-  enable_ai_market_analysis: false,
-  ai_market_analysis_interval_hours: 1,
-  ai_market_analysis_lookback_hours: 24,
-  ai_summary_proxy: '',
-};
-
-const defaultSignalConfig: SignalMonitorConfig = {
-  telegram_bot_token: '',
-  telegram_chat_id: '',
-  enable_telegram: true,
-  send_tg_in_mode_1: true,
-  chrome_debug_port: 9222,
-  headless_mode: false,
-  api_path: '',
-  ai_api_path: '',
-  language: 'zh',
-  coinmarketcap_api_key: '',
-  cryptocompare_api_key: '',
-  coingecko_api_key: '',
-  etherscan_api_key: '',
-  poll_interval: 10,
-  request_timeout: 15,
-  max_consecutive_failures: 5,
-  failure_cooldown: 60,
-  auto_relogin: false,
-  auto_relogin_cooldown: 1800,
-  startup_signal_max_age_seconds: 600,
-  signal_max_age_seconds: 600,
-  ai_signal_interval_minutes: 30,
-  realtime_market_enabled: false,
-  token_refresh_interval_hours: 0.8,
-  token_refresh_safety_seconds: 300,
-  login_method: 'auto',
-  refresh_window_start: 0,
-  refresh_window_end: 6,
-  enable_ipc_forwarding: true,
-  ipc_host: '127.0.0.1',
-  ipc_port: 8765,
-  ipc_connect_timeout: 1.5,
-  ipc_retry_delay: 2.0,
-  ipc_max_retries: 3,
-  socks5_proxy: '',
-  http_proxy: '',
-  enable_pro_chart: true,
-  enable_ai_key_levels: false,
-  enable_ai_overlays: false,
-  enable_ai_signal_analysis: true,
-  ai_brief_wait_timeout_seconds: 90,
-  bull_bear_signal_ttl_seconds: 86400,
-  enable_tradingview_chart: true,
-  chart_img_api_key: '',
-  chart_img_layout_id: '',
-  chart_img_width: 800,
-  chart_img_height: 600,
-  chart_img_timeout: 90,
-  auto_delete_charts: true,
-};
-
-const defaultSystemConfig: SystemConfig = {
-  nofx_backend_port: 8080,
-  nofx_frontend_port: 3000,
-  nofx_timezone: 'Asia/Shanghai',
-  jwt_secret: '',
-  data_encryption_key: '',
-  rsa_private_key: '',
-  transport_encryption: false,
-};
-
-const defaultLoggingConfig: LoggingConfig = {
-  log_level: 'INFO',
-  log_to_file: true,
-  log_file: 'signal_monitor.log',
-  log_max_size: 10485760,
-  log_backup_count: 5,
-  log_format: '%(asctime)s [%(levelname)s] %(message)s',
-  log_date_format: '%Y-%m-%d %H:%M:%S',
-};
-
-const defaultEnvConfig: EnvironmentConfig = {
-  valuescan_email: '',
-  valuescan_password: '',
-  valuescan_vps_password: '',
-};
-
 export const ConfigurationPage = () => {
   const addToast = useToastStore((state) => state.addToast);
   const toastSuccess = useCallback((message: string) => addToast('success', message), [addToast]);
@@ -302,11 +173,10 @@ export const ConfigurationPage = () => {
   const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [aiConfig, setAiConfig] = useState<AIServiceConfig>(defaultAiConfig);
-  const [signalConfig, setSignalConfig] = useState<SignalMonitorConfig>(defaultSignalConfig);
-  const [systemConfig, setSystemConfig] = useState<SystemConfig>(defaultSystemConfig);
-  const [loggingConfig, setLoggingConfig] = useState<LoggingConfig>(defaultLoggingConfig);
-  const [environmentConfig, setEnvironmentConfig] = useState<EnvironmentConfig>(defaultEnvConfig);
+  const [aiConfig, setAiConfig] = useState<AIServiceConfig>(() => createDefaultAiServiceConfig());
+  const [signalConfig, setSignalConfig] = useState<SignalMonitorConfig>(() => createDefaultSignalMonitorConfig());
+  const [systemConfig, setSystemConfig] = useState<SystemConfig>(() => createDefaultSystemConfig());
+  const [loggingConfig, setLoggingConfig] = useState<LoggingConfig>(() => createDefaultLoggingConfig());
   const [anomalyConfig, setAnomalyConfig] = useState<AnomalyDetectorConfig>(DEFAULT_ANOMALY_CONFIG);
   const [usMarketConfig, setUsMarketConfig] = useState<USMarketConfig>(DEFAULT_US_MARKET_CONFIG);
 
@@ -316,11 +186,10 @@ export const ConfigurationPage = () => {
       signal_monitor: signalConfig,
       system: systemConfig,
       logging: loggingConfig,
-      environment: environmentConfig,
       anomaly: anomalyConfig,
       us_market: usMarketConfig,
     };
-  }, [aiConfig, signalConfig, systemConfig, loggingConfig, environmentConfig, anomalyConfig, usMarketConfig]);
+  }, [aiConfig, signalConfig, systemConfig, loggingConfig, anomalyConfig, usMarketConfig]);
 
   const currentSnapshot = useMemo(() => {
     return createConfigSnapshot(currentConfig);
@@ -445,7 +314,6 @@ export const ConfigurationPage = () => {
         signal_monitor: config.signal_monitor,
         system: config.system,
         logging: config.logging,
-        environment: config.environment,
         anomaly: config.anomaly,
         us_market: config.us_market,
       };
@@ -454,7 +322,6 @@ export const ConfigurationPage = () => {
       setSignalConfig(config.signal_monitor);
       setSystemConfig(config.system);
       setLoggingConfig(config.logging);
-      setEnvironmentConfig(config.environment);
       setAnomalyConfig(config.anomaly);
       setUsMarketConfig(config.us_market);
 
@@ -599,7 +466,6 @@ export const ConfigurationPage = () => {
       setSignalConfig(config.signal_monitor);
       setSystemConfig(config.system);
       setLoggingConfig(config.logging);
-      setEnvironmentConfig(config.environment);
       setAnomalyConfig(config.anomaly);
       setUsMarketConfig(config.us_market);
       toastSuccess('配置已导入');

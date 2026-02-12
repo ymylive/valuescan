@@ -2,7 +2,7 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { Spinner } from '../../components/ui';
 import { adminCheck } from '../../services/adminAuth';
-import { getAdminToken } from '../../services/api';
+import { getAdminToken, toApiError } from '../../services/api';
 
 const CheckingState = () => (
   <div className="flex h-screen items-center justify-center bg-gray-50 dark:bg-gray-950">
@@ -24,13 +24,17 @@ export const AdminGuard = ({ children }: { children: ReactNode }) => {
         }
         return;
       }
+      if (active) {
+        // Keep authenticated view stable while verifying token with backend.
+        setStatus('authed');
+      }
       try {
         const response = await adminCheck();
         if (active) {
           setStatus(response?.success ? 'authed' : 'unauth');
         }
-      } catch {
-        if (active) {
+      } catch (error) {
+        if (active && toApiError(error).status === 401) {
           setStatus('unauth');
         }
       }
@@ -40,7 +44,7 @@ export const AdminGuard = ({ children }: { children: ReactNode }) => {
     return () => {
       active = false;
     };
-  }, [location.pathname]);
+  }, []);
 
   if (status === 'checking') {
     return <CheckingState />;

@@ -1,11 +1,8 @@
 import { LogLevel, LogEntry, LoggerConfig, LogFilter } from '../types/logger';
 import api from './api';
 
-/**
- * 前端日志服务
- */
 class LoggerService {
-  private config: LoggerConfig = {
+  private readonly DEFAULT_CONFIG: LoggerConfig = {
     enabled: true,
     level: LogLevel.INFO,
     maxEntries: 2000,
@@ -14,8 +11,11 @@ class LoggerService {
     consoleOutput: true,
   };
 
+  private config: LoggerConfig = { ...this.DEFAULT_CONFIG };
   private logs: LogEntry[] = [];
   private readonly STORAGE_KEY = 'nofx_logs';
+  private readonly CONFIG_STORAGE_KEY = 'nofx_log_config';
+
   private readonly LEVEL_PRIORITY = {
     [LogLevel.DEBUG]: 0,
     [LogLevel.INFO]: 1,
@@ -24,64 +24,52 @@ class LoggerService {
   };
 
   constructor() {
+    this.loadConfigFromLocalStorage();
     this.loadFromLocalStorage();
   }
 
-  /**
-   * 设置日志配置
-   */
   setConfig(config: Partial<LoggerConfig>): void {
-    this.config = { ...this.config, ...config };
+    this.config = this.normalizeConfig({ ...this.config, ...config });
+    this.saveConfigToLocalStorage();
   }
 
-  /**
-   * 获取日志配置
-   */
+  resetConfig(): LoggerConfig {
+    this.config = { ...this.DEFAULT_CONFIG };
+    this.saveConfigToLocalStorage();
+    return this.getConfig();
+  }
+
   getConfig(): LoggerConfig {
     return { ...this.config };
   }
 
-  /**
-   * 记录 DEBUG 日志
-   */
   debug(component: string, message: string, data?: unknown): void {
     this.log(LogLevel.DEBUG, component, message, data);
   }
 
-  /**
-   * 记录 INFO 日志
-   */
   info(component: string, message: string, data?: unknown): void {
     this.log(LogLevel.INFO, component, message, data);
   }
 
-  /**
-   * 记录 WARN 日志
-   */
   warn(component: string, message: string, data?: unknown): void {
     this.log(LogLevel.WARN, component, message, data);
   }
 
-  /**
-   * 记录 ERROR 日志
-   */
   error(component: string, message: string, error?: Error, data?: unknown): void {
     this.log(LogLevel.ERROR, component, message, data, error);
   }
 
-  /**
-   * 核心日志记录方法
-   */
   private log(level: LogLevel, component: string, message: string, data?: unknown, error?: Error): void {
-    if (!this.config.enabled) return;
+    if (!this.config.enabled) {
+      return;
+    }
 
-    // 检查日志级别
     if (this.LEVEL_PRIORITY[level] < this.LEVEL_PRIORITY[this.config.level]) {
       return;
     }
 
     const entry: LogEntry = {
-      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
       timestamp: Date.now(),
       level,
       component,
@@ -90,33 +78,25 @@ class LoggerService {
       error,
     };
 
-    // 添加到日志数组
     this.logs.push(entry);
 
-    // 限制日志数量
     if (this.logs.length > this.config.maxEntries) {
       this.logs = this.logs.slice(-this.config.maxEntries);
     }
 
-    // 输出到控制台
     if (this.config.consoleOutput) {
       this.logToConsole(entry);
     }
 
-    // 持久化到本地存储
     if (this.config.persistToLocalStorage) {
       this.saveToLocalStorage();
     }
 
-    // 发送到后端
     if (this.config.sendToBackend && level === LogLevel.ERROR) {
-      this.sendToBackend(entry);
+      void this.sendToBackend(entry);
     }
   }
 
-  /**
-   * 输出到控制台
-   */
   private logToConsole(entry: LogEntry): void {
     const timestamp = new Date(entry.timestamp).toISOString();
     const prefix = `[${timestamp}] [${entry.level}] [${entry.component}]`;
@@ -134,12 +114,11 @@ class LoggerService {
       case LogLevel.ERROR:
         console.error(prefix, entry.message, entry.error, entry.data);
         break;
+      default:
+        console.info(prefix, entry.message, entry.data);
     }
   }
 
-  /**
-   * 保存到本地存储
-   */
   private saveToLocalStorage(): void {
     try {
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.logs));
@@ -148,23 +127,53 @@ class LoggerService {
     }
   }
 
-  /**
-   * 从本地存储加载
-   */
   private loadFromLocalStorage(): void {
     try {
       const stored = localStorage.getItem(this.STORAGE_KEY);
       if (stored) {
-        this.logs = JSON.parse(stored);
+        this.logs = JSON.parse(stored) as LogEntry[];
       }
     } catch (error) {
       console.error('Failed to load logs from localStorage:', error);
     }
   }
 
-  /**
-   * 发送到后端
-   */
+  private normalizeConfig(config: LoggerConfig): LoggerConfig {
+    const maxEntries = Number.isFinite(config.maxEntries)
+      ? Math.max(100, Math.floor(config.maxEntries))
+      : this.DEFAULT_CONFIG.maxEntries;
+
+    return {
+      ...config,
+      maxEntries,
+      level: this.LEVEL_PRIORITY[config.level] != null ? config.level : this.DEFAULT_CONFIG.level,
+    };
+  }
+
+  private loadConfigFromLocalStorage(): void {
+    try {
+      const stored = localStorage.getItem(this.CONFIG_STORAGE_KEY);
+      if (!stored) {
+        return;
+      }
+      const parsed = JSON.parse(stored) as Partial<LoggerConfig>;
+      this.config = this.normalizeConfig({
+        ...this.DEFAULT_CONFIG,
+        ...parsed,
+      });
+    } catch (error) {
+      console.error('Failed to load logger config from localStorage:', error);
+    }
+  }
+
+  private saveConfigToLocalStorage(): void {
+    try {
+      localStorage.setItem(this.CONFIG_STORAGE_KEY, JSON.stringify(this.config));
+    } catch (error) {
+      console.error('Failed to save logger config to localStorage:', error);
+    }
+  }
+
   private async sendToBackend(entry: LogEntry): Promise<void> {
     try {
       await api.post('/logs', {
@@ -173,41 +182,45 @@ class LoggerService {
         component: entry.component,
         message: entry.message,
         data: entry.data,
-        error: entry.error ? {
-          name: entry.error.name,
-          message: entry.error.message,
-          stack: entry.error.stack,
-        } : undefined,
+        error: entry.error
+          ? {
+              name: entry.error.name,
+              message: entry.error.message,
+              stack: entry.error.stack,
+            }
+          : undefined,
       });
     } catch (error) {
       console.error('Failed to send log to backend:', error);
     }
   }
 
-  /**
-   * 获取所有日志
-   */
   getLogs(filter?: LogFilter): LogEntry[] {
     let filtered = [...this.logs];
 
     if (filter) {
-      if (filter.level) {
-        filtered = filtered.filter(log => log.level === filter.level);
+      const { level, component, startTime, endTime, searchText } = filter;
+
+      if (level) {
+        filtered = filtered.filter((log) => log.level === level);
       }
-      if (filter.component) {
-        filtered = filtered.filter(log => log.component.includes(filter.component!));
+
+      if (component) {
+        filtered = filtered.filter((log) => log.component.includes(component));
       }
-      if (filter.startTime) {
-        filtered = filtered.filter(log => log.timestamp >= filter.startTime!);
+
+      if (startTime != null) {
+        filtered = filtered.filter((log) => log.timestamp >= startTime);
       }
-      if (filter.endTime) {
-        filtered = filtered.filter(log => log.timestamp <= filter.endTime!);
+
+      if (endTime != null) {
+        filtered = filtered.filter((log) => log.timestamp <= endTime);
       }
-      if (filter.searchText) {
-        const search = filter.searchText.toLowerCase();
-        filtered = filtered.filter(log =>
-          log.message.toLowerCase().includes(search) ||
-          log.component.toLowerCase().includes(search)
+
+      if (searchText) {
+        const search = searchText.toLowerCase();
+        filtered = filtered.filter(
+          (log) => log.message.toLowerCase().includes(search) || log.component.toLowerCase().includes(search)
         );
       }
     }
@@ -215,24 +228,15 @@ class LoggerService {
     return filtered.sort((a, b) => b.timestamp - a.timestamp);
   }
 
-  /**
-   * 清除所有日志
-   */
   clearLogs(): void {
     this.logs = [];
     this.saveToLocalStorage();
   }
 
-  /**
-   * 导出日志为 JSON
-   */
   exportLogs(): string {
     return JSON.stringify(this.logs, null, 2);
   }
 
-  /**
-   * 获取日志统计
-   */
   getStats(): { total: number; byLevel: Record<LogLevel, number>; byComponent: Record<string, number> } {
     const byLevel: Record<LogLevel, number> = {
       [LogLevel.DEBUG]: 0,
@@ -240,11 +244,10 @@ class LoggerService {
       [LogLevel.WARN]: 0,
       [LogLevel.ERROR]: 0,
     };
-
     const byComponent: Record<string, number> = {};
 
-    this.logs.forEach(log => {
-      byLevel[log.level]++;
+    this.logs.forEach((log) => {
+      byLevel[log.level] += 1;
       byComponent[log.component] = (byComponent[log.component] || 0) + 1;
     });
 

@@ -6,7 +6,9 @@ services:
     container_name: valuescan-backend
     restart: unless-stopped
     ports:
-      - "8081:5000"
+      - "127.0.0.1:8081:5000"
+    env_file:
+      - .env
     volumes:
       - ./data:/app/data
       - ./signal_monitor:/app/signal_monitor
@@ -14,6 +16,7 @@ services:
     environment:
       - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
+      - NOFX_CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,https://testvalue.cornna.xyz,https://api.testvalue.cornna.xyz
     networks:
       - valuescan-network
 

@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 import sys
-sys.path.insert(0, "/root/valuescan")
-sys.path.insert(0, "/root/valuescan/signal_monitor")
 import os
-os.chdir("/root/valuescan/signal_monitor")
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(BASE_DIR))
+sys.path.insert(0, str(BASE_DIR / "signal_monitor"))
+os.chdir(BASE_DIR / "signal_monitor")
 
 from signal_monitor.ai_signal_analysis import analyze_signal
 

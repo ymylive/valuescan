@@ -33,8 +33,6 @@ HEADLESS_MODE = False
 
 # ==================== API 配置 ====================
 # 监听的 API 路径（部分匹配）
-API_PATH = "api/account/message/getWarnMessage"
-AI_API_PATH = "api/account/message/aiMessagePage"
 
 # ==================== Language ====================
 LANGUAGE = "zh"
@@ -83,22 +81,16 @@ NOFX_GDELT_TIMESPAN = "1d"
 
 # ==================== 轮询监控配置 ====================
 # 轮询间隔（秒）- 每隔多少秒轮询一次 signal API
-POLL_INTERVAL = 10
 
 # 请求超时（秒）- API 请求超时时间
-REQUEST_TIMEOUT = 15
 
 # 最大连续失败次数 - 触发冷却前允许的最大连续失败次数
-MAX_CONSECUTIVE_FAILURES = 5
 
 # 失败冷却时间（秒）- 连续失败后的冷却等待时间
-FAILURE_COOLDOWN = 60
 
 # 自动重新登录 - Token 过期时自动尝试重新登录
-AUTO_RELOGIN = False
 
 # 重新登录冷却时间（秒）- 两次自动登录尝试之间的最小间隔
-AUTO_RELOGIN_COOLDOWN = 1800
 
 # 启动时信号最大年龄（秒）- 启动时过滤超过此时间的旧信号
 STARTUP_SIGNAL_MAX_AGE_SECONDS = 600
@@ -128,19 +120,14 @@ AI_SIGNAL_RECENT_LIMIT = 0
 
 # ==================== Token 刷新器配置 ====================
 # Token 刷新间隔（小时）- Token 刷新间隔时间
-TOKEN_REFRESH_INTERVAL_HOURS = 0.8
 
 # 安全边际时间（秒）- Token 过期前提前刷新的时间
-TOKEN_REFRESH_SAFETY_SECONDS = 300
 
 # 登录方法 - Token 刷新使用的登录方法 (auto/http/cdp/browser)
-LOGIN_METHOD = "auto"
 
 # 刷新窗口开始时间（小时，24小时制）- Token 刷新的首选时间段开始
-REFRESH_WINDOW_START = 0
 
 # 刷新窗口结束时间（小时，24小时制）- Token 刷新的首选时间段结束
-REFRESH_WINDOW_END = 6
 
 
 # ==================== AI 市场总结增强配置 ====================

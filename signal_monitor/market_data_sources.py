@@ -192,6 +192,7 @@ _coin_id_last_fetch = 0.0
 _SNAPSHOT_CACHE_TTL = int(os.getenv("NOFX_SNAPSHOT_CACHE_TTL", "600") or 600)
 _METALS_SNAPSHOT_TTL = int(os.getenv("NOFX_METALS_SNAPSHOT_TTL", "0") or 0)
 _METALS_FRESH_SECS = int(os.getenv("NOFX_METALS_FRESH_SECS", "900") or 900)
+_SNAPSHOT_CACHE_MAX_SIZE = int(os.getenv("NOFX_SNAPSHOT_CACHE_MAX_SIZE", "512") or 512)
 _SNAPSHOT_CACHE: Dict[str, Dict[str, Any]] = {}
 COINGECKO_ID_OVERRIDES = {
     "BTC": "bitcoin",
@@ -221,17 +222,51 @@ COINGECKO_ID_OVERRIDES = {
 def _cache_snapshot(symbol: str, snapshot: Dict[str, Any]) -> None:
     if not snapshot:
         return
+    _prune_snapshot_cache()
     _SNAPSHOT_CACHE[symbol] = {"ts": time.time(), "data": snapshot}
+    _prune_snapshot_cache()
+
+
+def _get_snapshot_ttl(symbol: str) -> int:
+    return _METALS_SNAPSHOT_TTL if _is_metal_symbol(symbol) else _SNAPSHOT_CACHE_TTL
+
+
+def _prune_snapshot_cache() -> None:
+    now = time.time()
+
+    expired: List[str] = []
+    for key, entry in _SNAPSHOT_CACHE.items():
+        ts = entry.get("ts")
+        if not isinstance(ts, (int, float)):
+            expired.append(key)
+            continue
+        ttl = _get_snapshot_ttl(key)
+        if ttl > 0 and now-ts > ttl:
+            expired.append(key)
+
+    for key in expired:
+        _SNAPSHOT_CACHE.pop(key, None)
+
+    if _SNAPSHOT_CACHE_MAX_SIZE <= 0 or len(_SNAPSHOT_CACHE) <= _SNAPSHOT_CACHE_MAX_SIZE:
+        return
+
+    oldest_keys = sorted(
+        _SNAPSHOT_CACHE.items(),
+        key=lambda item: float(item[1].get("ts", 0)),
+    )
+    for key, _ in oldest_keys[: len(_SNAPSHOT_CACHE) - _SNAPSHOT_CACHE_MAX_SIZE]:
+        _SNAPSHOT_CACHE.pop(key, None)
 
 
 def _get_cached_snapshot(symbol: str) -> Optional[Dict[str, Any]]:
+    _prune_snapshot_cache()
     entry = _SNAPSHOT_CACHE.get(symbol)
     if not entry:
         return None
     ts = entry.get("ts")
     if not isinstance(ts, (int, float)):
         return None
-    ttl = _METALS_SNAPSHOT_TTL if _is_metal_symbol(symbol) else _SNAPSHOT_CACHE_TTL
+    ttl = _get_snapshot_ttl(symbol)
     if ttl <= 0:
         return None
     if time.time() - ts > ttl:

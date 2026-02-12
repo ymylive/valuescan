@@ -5,6 +5,9 @@ from api.control import control_bp
 from api.config import config_bp, init_config_api
 from api.logs import logs_bp, add_log_entry
 from api.health import health_bp, update_task_status
+from api import control as control_module
+from api import config as config_module
+from api import logs as logs_module
 import json
 import tempfile
 from pathlib import Path
@@ -31,6 +34,16 @@ def client(app):
 def auth_env(monkeypatch):
     """Configure API auth for tests."""
     monkeypatch.setenv('VALUESCAN_API_KEY', 'test-api-key')
+
+
+@pytest.fixture(autouse=True)
+def reset_api_state():
+    """Reset mutable API module state between tests."""
+    control_module._scheduler_state["running"] = False
+    with config_module._config_lock:
+        config_module._config_history.clear()
+    with logs_module._logs_lock:
+        logs_module._log_entries.clear()
 
 
 @pytest.fixture
@@ -98,6 +111,33 @@ class TestControlAPI:
         assert data['status'] == 'success'
 
 
+class TestAuthFailures:
+    """Test auth failure responses on protected endpoints."""
+
+    @pytest.mark.parametrize(
+        ("method", "path"),
+        [
+            ("POST", "/api/control/scheduler/start"),
+            ("GET", "/api/config"),
+            ("GET", "/api/logs"),
+        ],
+    )
+    def test_missing_api_key_rejected(self, client, method, path):
+        response = client.open(path, method=method)
+        assert response.status_code == 401
+        data = response.get_json()
+        assert data['status'] == 'error'
+
+    def test_invalid_api_key_rejected(self, client):
+        response = client.post(
+            '/api/control/trigger/anomaly',
+            headers={'X-API-Key': 'wrong-key'},
+        )
+        assert response.status_code == 401
+        data = response.get_json()
+        assert data['status'] == 'error'
+
+
 class TestConfigAPI:
     """Test config API endpoints."""
 
@@ -126,6 +166,29 @@ class TestConfigAPI:
         assert data['status'] == 'success'
         assert 'history' in data
 
+    def test_update_config_rejects_empty_payload(self, client, auth_headers):
+        response = client.put(
+            '/api/config',
+            data=json.dumps({}),
+            content_type='application/json',
+            headers=auth_headers,
+        )
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data['status'] == 'error'
+
+    def test_update_config_rejects_invalid_schema(self, client, auth_headers):
+        invalid_config = {"version": "3.0.0", "unexpected_field": {}}
+        response = client.put(
+            '/api/config',
+            data=json.dumps(invalid_config),
+            content_type='application/json',
+            headers=auth_headers,
+        )
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data['status'] == 'error'
+
 
 class TestLogsAPI:
     """Test logs API endpoints."""
@@ -142,6 +205,12 @@ class TestLogsAPI:
         response = client.get('/api/logs/stream', headers=auth_headers)
         assert response.status_code == 200
         assert response.mimetype == 'text/event-stream'
+
+    def test_query_logs_rejects_invalid_since(self, client, auth_headers):
+        response = client.get('/api/logs?since=not-a-date', headers=auth_headers)
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data['status'] == 'error'
 
 
 class TestHealthAPI:

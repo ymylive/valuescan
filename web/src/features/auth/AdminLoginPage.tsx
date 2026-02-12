@@ -42,7 +42,7 @@ export const AdminLoginPage = () => {
           <div className="space-y-2">
             <p className="text-xs uppercase tracking-[0.3em] text-gray-500">Admin Access</p>
             <h1 className="text-2xl font-semibold text-white">ValueScan Control Room</h1>
-            <p className="text-sm text-gray-400">Sign in to manage data sources, services, and forecasts.</p>
+            <p className="text-sm text-gray-400">Sign in to manage data sources, services, logs, and configuration.</p>
           </div>
         </CardHeader>
         <CardContent>

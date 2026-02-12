@@ -72,13 +72,6 @@ export interface SignalMonitorConfig {
   enable_telegram: boolean;
   send_tg_in_mode_1: boolean;
 
-  // Browser
-  chrome_debug_port: number;
-  headless_mode: boolean;
-
-  // API
-  api_path: string;
-  ai_api_path: string;
   language: string;
 
   // External Data APIs
@@ -87,26 +80,13 @@ export interface SignalMonitorConfig {
   coingecko_api_key: string;
   etherscan_api_key: string;
 
-  // Polling
-  poll_interval: number;
-  request_timeout: number;
-  max_consecutive_failures: number;
-  failure_cooldown: number;
-  auto_relogin?: boolean;
-  auto_relogin_cooldown?: number;
+  // Runtime Filters
   startup_signal_max_age_seconds: number;
   signal_max_age_seconds: number;
 
   // Scheduled AI Signals
   ai_signal_interval_minutes: number;
   realtime_market_enabled: boolean;
-
-  // Token Refresh
-  token_refresh_interval_hours?: number;
-  token_refresh_safety_seconds?: number;
-  login_method?: string;
-  refresh_window_start?: number;
-  refresh_window_end?: number;
 
   // IPC Forwarding
   enable_ipc_forwarding: boolean;
@@ -156,28 +136,14 @@ export interface LoggingConfig {
   log_date_format: string;
 }
 
-export interface EnvironmentConfig {
-  valuescan_email: string;
-  valuescan_password: string;
-  valuescan_vps_password: string;
-}
-
 export interface CompleteConfig {
   ai_service: AIServiceConfig;
   signal_monitor: SignalMonitorConfig;
   system: SystemConfig;
   logging: LoggingConfig;
-  environment: EnvironmentConfig;
   anomaly: AnomalyDetectorConfig;
   us_market: USMarketConfig;
 }
-
-export const LOGIN_METHODS = [
-  { value: 'auto', label: '自动' },
-  { value: 'http', label: 'HTTP' },
-  { value: 'cdp', label: 'CDP' },
-  { value: 'browser', label: '浏览器' },
-];
 
 export const LOG_LEVELS = [
   { value: 'DEBUG', label: 'DEBUG' },

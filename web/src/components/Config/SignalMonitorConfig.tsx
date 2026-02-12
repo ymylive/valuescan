@@ -1,8 +1,8 @@
 import React from 'react';
+import { Activity, BarChart3, Network, RefreshCw } from 'lucide-react';
 import { GlassCard } from '../shared';
 import { Input } from '../ui';
-import { Activity, Chrome, RefreshCw, Network, BarChart3 } from 'lucide-react';
-import { SignalMonitorConfig, LOGIN_METHODS } from '../../types/config';
+import { SignalMonitorConfig } from '../../types/config';
 import { parseFloatSafe, parseIntSafe } from '../../utils/number';
 
 interface SignalMonitorConfigProps {
@@ -17,183 +17,28 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
 
   return (
     <div className="space-y-6">
-      {/* Browser Configuration */}
       <GlassCard className="p-6">
-        <div className="flex items-center gap-3 mb-6">
-          <Chrome className="text-blue-500" size={24} />
-          <h3 className="text-xl font-bold text-gray-900 dark:text-white">浏览器配置</h3>
-        </div>
-
-        <div className="space-y-4">
-          <div className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              id="headless_mode"
-              checked={config.headless_mode}
-              onChange={(e) => handleChange('headless_mode', e.target.checked)}
-              className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-            />
-            <label htmlFor="headless_mode" className="text-gray-700 dark:text-gray-300">
-              无头模式（不显示浏览器窗口）
-            </label>
-          </div>
-        </div>
-      </GlassCard>
-
-      {/* API Configuration */}
-      <GlassCard className="p-6">
-        <div className="flex items-center gap-3 mb-6">
+        <div className="mb-6 flex items-center gap-3">
           <Activity className="text-green-500" size={24} />
-          <h3 className="text-xl font-bold text-gray-900 dark:text-white">API 配置</h3>
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white">Runtime Settings</h3>
         </div>
 
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              API 路径
-            </label>
-            <Input
-              type="text"
-              value={config.api_path}
-              onChange={(e) => handleChange('api_path', e.target.value)}
-              placeholder="api/account/message/getWarnMessage"
-              className="w-full"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              AI API 路径
-            </label>
-            <Input
-              type="text"
-              value={config.ai_api_path}
-              onChange={(e) => handleChange('ai_api_path', e.target.value)}
-              placeholder="api/account/message/aiMessagePage"
-              className="w-full"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              语言设置
-            </label>
+            <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Language</label>
             <select
               value={config.language}
               onChange={(e) => handleChange('language', e.target.value)}
-              className="w-full px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 focus:border-transparent focus:ring-2 focus:ring-green-500 dark:border-gray-600 dark:bg-gray-800"
             >
               <option value="zh">中文</option>
               <option value="en">English</option>
             </select>
           </div>
-        </div>
-      </GlassCard>
-
-      {/* External Data APIs */}
-      <GlassCard className="p-6">
-        <div className="flex items-center gap-3 mb-6">
-          <BarChart3 className="text-purple-500" size={24} />
-          <h3 className="text-xl font-bold text-gray-900 dark:text-white">外部数据 API</h3>
-        </div>
-
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              CoinMarketCap API Key
-            </label>
-            <Input
-              type="password"
-              value={config.coinmarketcap_api_key}
-              onChange={(e) => handleChange('coinmarketcap_api_key', e.target.value)}
-              placeholder="API Key"
-              className="w-full"
-            />
-          </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              CryptoCompare API Key
-            </label>
-            <Input
-              type="password"
-              value={config.cryptocompare_api_key}
-              onChange={(e) => handleChange('cryptocompare_api_key', e.target.value)}
-              placeholder="API Key"
-              className="w-full"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              CoinGecko API Key
-            </label>
-            <Input
-              type="password"
-              value={config.coingecko_api_key}
-              onChange={(e) => handleChange('coingecko_api_key', e.target.value)}
-              placeholder="API Key"
-              className="w-full"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Etherscan API Key（可选）
-            </label>
-            <Input
-              type="password"
-              value={config.etherscan_api_key}
-              onChange={(e) => handleChange('etherscan_api_key', e.target.value)}
-              placeholder="API Key"
-              className="w-full"
-            />
-          </div>
-
-        </div>
-      </GlassCard>
-
-      {/* Polling Configuration */}
-      <GlassCard className="p-6">
-        <div className="flex items-center gap-3 mb-6">
-          <RefreshCw className="text-orange-500" size={24} />
-          <h3 className="text-xl font-bold text-gray-900 dark:text-white">轮询监控配置</h3>
-        </div>
-
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                轮询间隔（秒）
-              </label>
-              <Input
-                type="number"
-                value={config.poll_interval}
-                onChange={(e) => handleChange('poll_interval', parseIntSafe(e.target.value, config.poll_interval))}
-                min={1}
-                max={300}
-                className="w-full"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                请求超时（秒）
-              </label>
-              <Input
-                type="number"
-                value={config.request_timeout}
-                onChange={(e) => handleChange('request_timeout', parseIntSafe(e.target.value, config.request_timeout))}
-                min={5}
-                max={60}
-                className="w-full"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              信号发送间隔（分钟）
+            <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              AI Signal Interval (minutes)
             </label>
             <Input
               type="number"
@@ -203,72 +48,12 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
               max={1440}
               className="w-full"
             />
-            <p className="text-xs text-gray-500 mt-1">用于 AI 定时信号推送</p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                最大连续失败次数
-              </label>
-              <Input
-                type="number"
-                value={config.max_consecutive_failures}
-                onChange={(e) => handleChange('max_consecutive_failures', parseIntSafe(e.target.value, config.max_consecutive_failures))}
-                min={1}
-                max={20}
-                className="w-full"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                失败冷却时间（秒）
-              </label>
-              <Input
-                type="number"
-                value={config.failure_cooldown}
-                onChange={(e) => handleChange('failure_cooldown', parseIntSafe(e.target.value, config.failure_cooldown))}
-                min={10}
-                max={600}
-                className="w-full"
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              id="auto_relogin"
-              checked={config.auto_relogin}
-              onChange={(e) => handleChange('auto_relogin', e.target.checked)}
-              className="w-5 h-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
-            />
-            <label htmlFor="auto_relogin" className="text-gray-700 dark:text-gray-300">
-              Token 过期时自动重新登录
-            </label>
-          </div>
-
-          {config.auto_relogin && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                重新登录冷却时间（秒）
-              </label>
-              <Input
-                type="number"
-                value={config.auto_relogin_cooldown}
-                onChange={(e) => handleChange('auto_relogin_cooldown', parseIntSafe(e.target.value, config.auto_relogin_cooldown ?? 1800))}
-                min={300}
-                max={7200}
-                className="w-full"
-              />
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                启动时信号最大年龄（秒）
+              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Startup Signal Max Age (sec)
               </label>
               <Input
                 type="number"
@@ -279,10 +64,9 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
                 className="w-full"
               />
             </div>
-
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                运行时信号最大年龄（秒）
+              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Runtime Signal Max Age (sec)
               </label>
               <Input
                 type="number"
@@ -294,102 +78,79 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
               />
             </div>
           </div>
+
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="realtime_market_enabled"
+              checked={config.realtime_market_enabled}
+              onChange={(e) => handleChange('realtime_market_enabled', e.target.checked)}
+              className="h-5 w-5 rounded border-gray-300 text-green-600 focus:ring-green-500"
+            />
+            <label htmlFor="realtime_market_enabled" className="text-gray-700 dark:text-gray-300">
+              Enable realtime market monitoring
+            </label>
+          </div>
         </div>
       </GlassCard>
 
-      {/* Token Refresh Configuration */}
       <GlassCard className="p-6">
-        <div className="flex items-center gap-3 mb-6">
-          <RefreshCw className="text-cyan-500" size={24} />
-          <h3 className="text-xl font-bold text-gray-900 dark:text-white">Token 刷新配置</h3>
+        <div className="mb-6 flex items-center gap-3">
+          <BarChart3 className="text-purple-500" size={24} />
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white">External Data APIs</h3>
         </div>
 
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                刷新间隔（小时）
-              </label>
-              <Input
-                type="number"
-                value={config.token_refresh_interval_hours}
-                onChange={(e) => handleChange('token_refresh_interval_hours', parseFloatSafe(e.target.value, config.token_refresh_interval_hours ?? 0.8))}
-                min={0.1}
-                max={24}
-                step={0.1}
-                className="w-full"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                安全余量（秒）
-              </label>
-              <Input
-                type="number"
-                value={config.token_refresh_safety_seconds}
-                onChange={(e) => handleChange('token_refresh_safety_seconds', parseIntSafe(e.target.value, config.token_refresh_safety_seconds ?? 300))}
-                min={60}
-                max={1800}
-                className="w-full"
-              />
-            </div>
+          <div>
+            <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">CoinMarketCap API Key</label>
+            <Input
+              type="password"
+              value={config.coinmarketcap_api_key}
+              onChange={(e) => handleChange('coinmarketcap_api_key', e.target.value)}
+              placeholder="API Key"
+              className="w-full"
+            />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              登录方法
-            </label>
-            <select
-              value={config.login_method}
-              onChange={(e) => handleChange('login_method', e.target.value)}
-              className="w-full px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
-            >
-              {LOGIN_METHODS.map((method) => (
-                <option key={method.value} value={method.value}>
-                  {method.label}
-                </option>
-              ))}
-            </select>
+            <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">CryptoCompare API Key</label>
+            <Input
+              type="password"
+              value={config.cryptocompare_api_key}
+              onChange={(e) => handleChange('cryptocompare_api_key', e.target.value)}
+              placeholder="API Key"
+              className="w-full"
+            />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                刷新窗口开始（小时）
-              </label>
-              <Input
-                type="number"
-                value={config.refresh_window_start}
-                onChange={(e) => handleChange('refresh_window_start', parseIntSafe(e.target.value, config.refresh_window_start ?? 0))}
-                min={0}
-                max={23}
-                className="w-full"
-              />
-            </div>
+          <div>
+            <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">CoinGecko API Key</label>
+            <Input
+              type="password"
+              value={config.coingecko_api_key}
+              onChange={(e) => handleChange('coingecko_api_key', e.target.value)}
+              placeholder="API Key"
+              className="w-full"
+            />
+          </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                刷新窗口结束（小时）
-              </label>
-              <Input
-                type="number"
-                value={config.refresh_window_end}
-                onChange={(e) => handleChange('refresh_window_end', parseIntSafe(e.target.value, config.refresh_window_end ?? 6))}
-                min={0}
-                max={23}
-                className="w-full"
-              />
-            </div>
+          <div>
+            <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Etherscan API Key (optional)</label>
+            <Input
+              type="password"
+              value={config.etherscan_api_key}
+              onChange={(e) => handleChange('etherscan_api_key', e.target.value)}
+              placeholder="API Key"
+              className="w-full"
+            />
           </div>
         </div>
       </GlassCard>
 
-      {/* IPC Forwarding */}
       <GlassCard className="p-6">
-        <div className="flex items-center gap-3 mb-6">
+        <div className="mb-6 flex items-center gap-3">
           <Network className="text-indigo-500" size={24} />
-          <h3 className="text-xl font-bold text-gray-900 dark:text-white">IPC 转发配置</h3>
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white">IPC Forwarding</h3>
         </div>
 
         <div className="space-y-4">
@@ -399,20 +160,18 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
               id="enable_ipc_forwarding"
               checked={config.enable_ipc_forwarding}
               onChange={(e) => handleChange('enable_ipc_forwarding', e.target.checked)}
-              className="w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+              className="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
             />
-            <label htmlFor="enable_ipc_forwarding" className="text-gray-700 dark:text-gray-300 font-medium">
-              启用 IPC 转发（将信号转发给外部订阅者）
+            <label htmlFor="enable_ipc_forwarding" className="font-medium text-gray-700 dark:text-gray-300">
+              Enable IPC forwarding
             </label>
           </div>
 
           {config.enable_ipc_forwarding && (
-            <div className="space-y-4 pl-8 border-l-2 border-indigo-500/30">
+            <div className="space-y-4 border-l-2 border-indigo-500/30 pl-8">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    IPC 主机
-                  </label>
+                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">IPC Host</label>
                   <Input
                     type="text"
                     value={config.ipc_host}
@@ -421,11 +180,8 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
                     className="w-full"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    IPC 端口
-                  </label>
+                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">IPC Port</label>
                   <Input
                     type="number"
                     value={config.ipc_port}
@@ -439,9 +195,7 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
 
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    连接超时（秒）
-                  </label>
+                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Connect Timeout (s)</label>
                   <Input
                     type="number"
                     value={config.ipc_connect_timeout}
@@ -452,11 +206,8 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
                     className="w-full"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    重试延迟（秒）
-                  </label>
+                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Retry Delay (s)</label>
                   <Input
                     type="number"
                     value={config.ipc_retry_delay}
@@ -467,11 +218,8 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
                     className="w-full"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    最大重试次数
-                  </label>
+                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Max Retries</label>
                   <Input
                     type="number"
                     value={config.ipc_max_retries}
@@ -487,11 +235,10 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
         </div>
       </GlassCard>
 
-      {/* Chart Features */}
       <GlassCard className="p-6">
-        <div className="flex items-center gap-3 mb-6">
-          <BarChart3 className="text-pink-500" size={24} />
-          <h3 className="text-xl font-bold text-gray-900 dark:text-white">图表功能配置</h3>
+        <div className="mb-6 flex items-center gap-3">
+          <RefreshCw className="text-pink-500" size={24} />
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white">Chart Features</h3>
         </div>
 
         <div className="space-y-4">
@@ -501,47 +248,37 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
               id="enable_pro_chart"
               checked={config.enable_pro_chart}
               onChange={(e) => handleChange('enable_pro_chart', e.target.checked)}
-              className="w-5 h-5 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+              className="h-5 w-5 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
             />
             <label htmlFor="enable_pro_chart" className="text-gray-700 dark:text-gray-300">
-              启用 Pro 图表（本地生成K线+热力图+资金流）
+              Enable Pro chart rendering
             </label>
           </div>
 
-          <div>
-            <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                id="enable_ai_key_levels"
-                checked={config.enable_ai_key_levels}
-                onChange={(e) => handleChange('enable_ai_key_levels', e.target.checked)}
-                className="w-5 h-5 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
-              />
-              <label htmlFor="enable_ai_key_levels" className="text-gray-700 dark:text-gray-300 font-medium">
-                使用 AI 主力位（开启后忽视本地算法）
-              </label>
-            </div>
-            <p className="text-xs text-gray-500 ml-8 mt-1">
-              使用 AI 分析并输出主力位坐标，替代本地算法计算
-            </p>
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="enable_ai_key_levels"
+              checked={config.enable_ai_key_levels}
+              onChange={(e) => handleChange('enable_ai_key_levels', e.target.checked)}
+              className="h-5 w-5 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+            />
+            <label htmlFor="enable_ai_key_levels" className="text-gray-700 dark:text-gray-300">
+              Use AI key levels
+            </label>
           </div>
 
-          <div>
-            <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                id="enable_ai_overlays"
-                checked={config.enable_ai_overlays}
-                onChange={(e) => handleChange('enable_ai_overlays', e.target.checked)}
-                className="w-5 h-5 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
-              />
-              <label htmlFor="enable_ai_overlays" className="text-gray-700 dark:text-gray-300 font-medium">
-                使用 AI 辅助线（开启后忽视本地算法）
-              </label>
-            </div>
-            <p className="text-xs text-gray-500 ml-8 mt-1">
-              使用 AI 生成图表叠加层和辅助线，替代本地算法绘制
-            </p>
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="enable_ai_overlays"
+              checked={config.enable_ai_overlays}
+              onChange={(e) => handleChange('enable_ai_overlays', e.target.checked)}
+              className="h-5 w-5 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+            />
+            <label htmlFor="enable_ai_overlays" className="text-gray-700 dark:text-gray-300">
+              Use AI overlays
+            </label>
           </div>
 
           <div className="flex items-center gap-3">
@@ -550,19 +287,17 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
               id="enable_ai_signal_analysis"
               checked={config.enable_ai_signal_analysis}
               onChange={(e) => handleChange('enable_ai_signal_analysis', e.target.checked)}
-              className="w-5 h-5 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+              className="h-5 w-5 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
             />
             <label htmlFor="enable_ai_signal_analysis" className="text-gray-700 dark:text-gray-300">
-              启用 AI 单币简评
+              Enable AI per-signal analysis
             </label>
           </div>
 
           {config.enable_ai_signal_analysis && (
-            <div className="grid grid-cols-2 gap-4 pl-8 border-l-2 border-pink-500/30">
+            <div className="grid grid-cols-2 gap-4 border-l-2 border-pink-500/30 pl-8">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  简评等待超时（秒）
-                </label>
+                <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">AI Wait Timeout (sec)</label>
                 <Input
                   type="number"
                   value={config.ai_brief_wait_timeout_seconds}
@@ -572,11 +307,8 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
                   className="w-full"
                 />
               </div>
-
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  多空信号缓存（秒）
-                </label>
+                <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Bull/Bear TTL (sec)</label>
                 <Input
                   type="number"
                   value={config.bull_bear_signal_ttl_seconds}
@@ -595,19 +327,17 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
               id="enable_tradingview_chart"
               checked={config.enable_tradingview_chart}
               onChange={(e) => handleChange('enable_tradingview_chart', e.target.checked)}
-              className="w-5 h-5 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+              className="h-5 w-5 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
             />
             <label htmlFor="enable_tradingview_chart" className="text-gray-700 dark:text-gray-300">
-              启用 TradingView 图表生成
+              Enable TradingView rendering
             </label>
           </div>
 
           {config.enable_tradingview_chart && (
-            <div className="space-y-4 pl-8 border-l-2 border-pink-500/30">
+            <div className="space-y-4 border-l-2 border-pink-500/30 pl-8">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  chart-img.com API Key
-                </label>
+                <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">chart-img API Key</label>
                 <Input
                   type="password"
                   value={config.chart_img_api_key}
@@ -616,11 +346,8 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
                   className="w-full"
                 />
               </div>
-
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  TradingView 布局 ID
-                </label>
+                <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Layout ID</label>
                 <Input
                   type="text"
                   value={config.chart_img_layout_id}
@@ -629,12 +356,9 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
                   className="w-full"
                 />
               </div>
-
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    图表宽度（像素）
-                  </label>
+                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Width (px)</label>
                   <Input
                     type="number"
                     value={config.chart_img_width}
@@ -644,11 +368,8 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
                     className="w-full"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    图表高度（像素）
-                  </label>
+                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Height (px)</label>
                   <Input
                     type="number"
                     value={config.chart_img_height}
@@ -659,11 +380,8 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
                   />
                 </div>
               </div>
-
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  图表生成超时（秒）
-                </label>
+                <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Timeout (sec)</label>
                 <Input
                   type="number"
                   value={config.chart_img_timeout}
@@ -673,17 +391,16 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
                   className="w-full"
                 />
               </div>
-
               <div className="flex items-center gap-3">
                 <input
                   type="checkbox"
                   id="auto_delete_charts"
                   checked={config.auto_delete_charts}
                   onChange={(e) => handleChange('auto_delete_charts', e.target.checked)}
-                  className="w-5 h-5 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+                  className="h-5 w-5 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
                 />
                 <label htmlFor="auto_delete_charts" className="text-gray-700 dark:text-gray-300">
-                  自动删除生成的图表文件
+                  Auto-delete generated charts
                 </label>
               </div>
             </div>
@@ -691,18 +408,15 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
         </div>
       </GlassCard>
 
-      {/* Network Proxy */}
       <GlassCard className="p-6">
-        <div className="flex items-center gap-3 mb-6">
+        <div className="mb-6 flex items-center gap-3">
           <Network className="text-teal-500" size={24} />
-          <h3 className="text-xl font-bold text-gray-900 dark:text-white">网络代理配置</h3>
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white">Network Proxy</h3>
         </div>
 
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              SOCKS5 代理（可选）
-            </label>
+            <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">SOCKS5 Proxy (optional)</label>
             <Input
               type="text"
               value={config.socks5_proxy}
@@ -710,13 +424,9 @@ export const SignalMonitorConfigComponent: React.FC<SignalMonitorConfigProps> = 
               placeholder="socks5://127.0.0.1:1080"
               className="w-full"
             />
-            <p className="text-xs text-gray-500 mt-1">用于访问币安 API</p>
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              HTTP/HTTPS 代理（可选）
-            </label>
+            <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">HTTP/HTTPS Proxy (optional)</label>
             <Input
               type="text"
               value={config.http_proxy}

@@ -7,6 +7,40 @@ export type ApiError = {
 };
 
 const ADMIN_TOKEN_KEY = 'token';
+const API_HOST_MAPPING: Record<string, string> = {
+  'testvalue.cornna.xyz': 'https://api.testvalue.cornna.xyz/api',
+};
+
+const resolveApiBaseUrl = (): string => {
+  const envBase = ((import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_API_BASE_URL || '').trim();
+  if (envBase) {
+    return envBase.replace(/\/+$/, '');
+  }
+
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname.toLowerCase();
+    if (API_HOST_MAPPING[host]) {
+      return API_HOST_MAPPING[host];
+    }
+  }
+
+  return '/api';
+};
+
+export const API_BASE_URL = resolveApiBaseUrl();
+
+const normalizeApiPath = (path: string): string => {
+  if (!path) return '/';
+  const normalized = path.startsWith('/') ? path : `/${path}`;
+  return normalized.startsWith('/api/') ? normalized.slice(4) : normalized;
+};
+
+export const buildApiUrl = (path: string): string => {
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+  return `${API_BASE_URL}${normalizeApiPath(path)}`;
+};
 
 export const getAdminToken = (): string => {
   const sessionToken = sessionStorage.getItem(ADMIN_TOKEN_KEY);
@@ -33,7 +67,7 @@ export const clearAdminToken = (): void => {
 };
 
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE_URL,
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
